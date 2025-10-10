@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
 
@@ -14,7 +14,7 @@ const defaultContext: ThemeContextType = {
   toggleTheme: () => {},
 };
 
-const ThemeContext = createContext<ThemeContextType>(defaultContext);
+export const ThemeContext = createContext<ThemeContextType>(defaultContext);
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "dark";
@@ -71,7 +71,3 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useTheme() {
-  const context = useContext(ThemeContext);
-  return context;
-}

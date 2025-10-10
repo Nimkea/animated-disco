@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useTheme } from "@/contexts/theme-context";
+import { useTheme } from "@/hooks/useTheme";
 
 interface Star {
   x: number;
