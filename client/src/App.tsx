@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SWUpdatePrompt } from "@/components/sw-update-prompt";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
@@ -51,21 +52,23 @@ function AuthenticatedApp() {
             </div>
           </header>
           <main className="flex-1 overflow-auto p-6 bg-background">
-            <Switch>
-              <Route path="/" component={Home} />
-              <Route path="/wallet" component={Wallet} />
-              <Route path="/deposit" component={Deposit} />
-              <Route path="/withdrawal" component={Withdrawal} />
-              <Route path="/staking" component={Staking} />
-              <Route path="/mining" component={Mining} />
-              <Route path="/referrals" component={Referrals} />
-              <Route path="/profile" component={Profile} />
-              <Route path="/tasks" component={Tasks} />
-              <Route path="/achievements" component={Achievements} />
-              <Route path="/rewards" component={Rewards} />
-              <Route path="/admin" component={AdminDashboard} />
-              <Route component={NotFound} />
-            </Switch>
+            <ErrorBoundary>
+              <Switch>
+                <Route path="/" component={Home} />
+                <Route path="/wallet" component={Wallet} />
+                <Route path="/deposit" component={Deposit} />
+                <Route path="/withdrawal" component={Withdrawal} />
+                <Route path="/staking" component={Staking} />
+                <Route path="/mining" component={Mining} />
+                <Route path="/referrals" component={Referrals} />
+                <Route path="/profile" component={Profile} />
+                <Route path="/tasks" component={Tasks} />
+                <Route path="/achievements" component={Achievements} />
+                <Route path="/rewards" component={Rewards} />
+                <Route path="/admin" component={AdminDashboard} />
+                <Route component={NotFound} />
+              </Switch>
+            </ErrorBoundary>
           </main>
         </div>
       </div>
