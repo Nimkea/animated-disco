@@ -2,7 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SkeletonDashboard } from "@/components/skeletons";
 import {
   Coins,
   TrendingUp,
@@ -63,7 +63,7 @@ export default function Home() {
   });
 
   if (userLoading) {
-    return <HomeSkeleton />;
+    return <SkeletonDashboard />;
   }
 
   const level = user?.level || 1;
@@ -254,27 +254,3 @@ export default function Home() {
   );
 }
 
-function HomeSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <Skeleton className="h-10 w-32" />
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Skeleton className="h-40" />
-        <Skeleton className="h-40" />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-32" />
-        ))}
-      </div>
-    </div>
-  );
-}

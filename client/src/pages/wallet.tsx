@@ -3,16 +3,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wallet as WalletIcon, TrendingUp, ArrowDownToLine, ArrowUpFromLine, Gem, Users, Pickaxe } from "lucide-react";
+import { SkeletonWallet } from "@/components/skeletons";
 import type { Balance, Transaction } from "@shared/schema";
 
 export default function Wallet() {
-  const { data: balance } = useQuery<Balance>({
+  const { data: balance, isLoading: balanceLoading } = useQuery<Balance>({
     queryKey: ["/api/balance"],
   });
 
-  const { data: transactions } = useQuery<Transaction[]>({
+  const { data: transactions, isLoading: transactionsLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions"],
   });
+
+  if (balanceLoading || transactionsLoading) {
+    return <SkeletonWallet />;
+  }
 
   const balanceBreakdown = [
     {
@@ -181,7 +186,7 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
             {transaction.usdtAmount && ` (${parseFloat(transaction.usdtAmount).toFixed(2)} USDT)`}
           </p>
           <p className="text-xs text-muted-foreground">
-            {new Date(transaction.createdAt).toLocaleString()}
+            {transaction.createdAt ? new Date(transaction.createdAt).toLocaleString() : 'N/A'}
           </p>
         </div>
       </div>

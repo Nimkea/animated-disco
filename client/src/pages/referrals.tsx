@@ -11,6 +11,7 @@ import { Users, Copy, Share2, DollarSign, QrCode } from "lucide-react";
 import { SiWhatsapp, SiTelegram, SiX } from "react-icons/si";
 import { ReferralTree } from "@/components/referral-tree";
 import { ReferralLeaderboard } from "@/components/referral-leaderboard";
+import { SkeletonReferralTree } from "@/components/skeletons";
 import type { User, Referral } from "@shared/schema";
 
 interface ReferralStats {
@@ -414,10 +415,7 @@ export default function Referrals() {
         </CardHeader>
         <CardContent>
           {isLoadingTree ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-              <p className="text-muted-foreground mt-4">Loading referrals...</p>
-            </div>
+            <SkeletonReferralTree />
           ) : !referralTree || referralTree.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
