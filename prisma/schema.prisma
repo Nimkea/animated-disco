@@ -32,6 +32,7 @@ model User {
   userAchievements UserAchievement[]
   activities      Activity[]
   sessions        Session[]
+  passwordResets  PasswordReset[]
 }
 
 model Session {
@@ -208,4 +209,18 @@ model Activity {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model PasswordReset {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
 }

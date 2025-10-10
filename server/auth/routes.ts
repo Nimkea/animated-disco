@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
-import { hashPassword, comparePassword } from './password';
+import { hashPassword, comparePassword, generateResetToken } from './password';
 import { signToken } from './jwt';
 import { generateCSRFToken } from './csrf';
 import { requireAuth, loginRateLimiter, type AuthRequest } from './middleware';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -20,6 +21,27 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string(),
+  password: z.string().min(8),
+});
+
+const verifyTokenSchema = z.object({
+  token: z.string(),
+});
+
+const forgotPasswordRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: 'Too many password reset attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // POST /auth/register
@@ -256,6 +278,122 @@ router.get('/csrf', (req, res) => {
   });
 
   res.json({ csrfToken });
+});
+
+// POST /auth/forgot-password
+router.post('/forgot-password', forgotPasswordRateLimiter, async (req, res) => {
+  try {
+    const data = forgotPasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where: { email: data.email },
+    });
+
+    if (!user) {
+      return res.json({ message: 'If an account exists with this email, a password reset link has been sent' });
+    }
+
+    const token = generateResetToken();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await prisma.passwordReset.create({
+      data: {
+        token,
+        userId: user.id,
+        expiresAt,
+      },
+    });
+
+    console.log('Password reset requested for user:', { userId: user.id, timestamp: new Date().toISOString() });
+
+    res.json({ message: 'If an account exists with this email, a password reset link has been sent' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Invalid input', errors: error.errors });
+    }
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST /auth/verify-reset-token
+router.post('/verify-reset-token', async (req, res) => {
+  try {
+    const data = verifyTokenSchema.parse(req.body);
+
+    const resetToken = await prisma.passwordReset.findUnique({
+      where: { token: data.token },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    if (resetToken.usedAt) {
+      return res.status(400).json({ message: 'This reset token has already been used' });
+    }
+
+    if (new Date() > resetToken.expiresAt) {
+      return res.status(400).json({ message: 'Reset token has expired' });
+    }
+
+    res.json({ valid: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Invalid input', errors: error.errors });
+    }
+    console.error('Verify token error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST /auth/reset-password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const data = resetPasswordSchema.parse(req.body);
+
+    const resetToken = await prisma.passwordReset.findUnique({
+      where: { token: data.token },
+      include: { user: true },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    if (resetToken.usedAt) {
+      return res.status(400).json({ message: 'This reset token has already been used' });
+    }
+
+    if (new Date() > resetToken.expiresAt) {
+      return res.status(400).json({ message: 'Reset token has expired' });
+    }
+
+    const passwordHash = await hashPassword(data.password);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordReset.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+      prisma.session.updateMany({
+        where: { userId: resetToken.userId },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Invalid input', errors: error.errors });
+    }
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // Helper function to get referrer chain
