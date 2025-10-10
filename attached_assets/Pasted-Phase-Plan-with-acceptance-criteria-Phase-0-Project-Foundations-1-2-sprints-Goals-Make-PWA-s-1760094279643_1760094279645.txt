@@ -1,0 +1,255 @@
+Phase Plan (with acceptance criteria)
+Phase 0 — Project Foundations (1–2 sprints)
+
+Goals: Make PWA-safe architecture changes early.
+
+Service worker scaffold with Workbox (injectManifest), single source of SW truth.
+
+App shell routing (SPA) and clear SW scope (/).
+
+Feature flags (e.g., configcat, unleash, or simple env-driven flags).
+
+Data layer: adopt TanStack Query for cache policies, retries, and offline mode.
+
+Env/keys mechanics for Web Push (VAPID public key exposure via backend).
+Accept: SW registers; basic precache; no regressions; flags can toggle features at runtime.
+
+Phase 1 — PWA Baseline (installability)
+
+Deliver:
+
+Web App Manifest (name, short_name, theme/background colors, display: standalone, categories).
+
+Icon set (512, 192, maskable) and splash screen configs.
+
+Lighthouse PWA score ≥ 90 on a cold run.
+Accept: “Install app” prompt available on desktop & Android; Lighthouse installability passes.
+
+Phase 2 — Offline Core
+
+Deliver:
+
+Caching strategy via Workbox:
+
+App shell & static assets: StaleWhileRevalidate.
+
+API reads for balances/profile/portfolio: NetworkFirst with fallback.
+
+Images: CacheFirst with expiration.
+
+IndexedDB for: critical snapshots (balances, positions), notification inbox.
+
+Offline UI: connectivity banner, skeletons, clearly labeled cached values (timestamped).
+
+Action queueing (Background Sync if available; else retry queue on reconnect) for deposits/withdrawals/refs.
+Accept: App is usable offline for core flows (view balances, history), queued actions auto-sync after reconnect.
+
+Phase 3 — Push Notifications & Notification Center
+
+Deliver:
+
+Browser push permission flow with clear value proposition and granular preferences.
+
+Backend Web Push (VAPID) endpoints & topic mapping:
+
+Stake maturity
+
+Mining session availability
+
+Referral commissions
+
+Deposit/withdrawal status
+
+In-app Notification Center (badge count, read/unread, filters); sync across tabs.
+
+SW push handler → show notifications; click actions deep-link into app.
+Accept: Test payloads arrive reliably; user can opt in/out by category; inbox state persists offline.
+
+Phase 4 — Realtime & Cross-Tab Sync
+
+Deliver:
+
+WebSocket/SSE channel for live balances, activity feed, timers.
+
+BroadcastChannel (fallback: localStorage events) to keep all tabs in sync.
+
+Accurate countdown timers that survive tab switches; drift-correction from server ticks.
+
+Status change animations tied to state changes.
+Accept: <2s latency on updates in normal load; zero duplicate toasts across multiple tabs.
+
+Phase 5 — Performance Optimization
+
+Deliver:
+
+Route- and component-level code splitting (dynamic imports).
+
+Lazy loading heavy charts/tables; image optimization (responsive, WebP/AVIF), Workbox runtime cache.
+
+Loading skeletons everywhere data is async; error boundaries at route and widget level.
+
+Bundle checks (Source Map Explorer) and Lighthouse/TTI/Web Vitals budgets.
+Accept: TTI ≤ 3s on mid-tier Android over 4G; CLS < 0.1; LCP < 2.5s on key screens.
+
+Phase 6 — Mobile UX Enhancements
+
+Deliver:
+
+Touch targets ≥ 44px; swipe navigation (e.g., tabs, drawers).
+
+Pull-to-refresh (triggers SW refresh + query invalidate).
+
+Native-like animations via Framer Motion.
+
+Haptic feedback via Vibration API (guarded by permissions + user setting).
+Accept: No scroll-jank; pull-to-refresh doesn’t conflict with OS; animations ≤ 200ms & 60fps.
+
+Phase 7 — Security Hardening
+
+Deliver:
+
+Client-side validation (zod/yup) + server validation (authoritative).
+
+XSS defenses: strict CSP (nonce/hash), avoid dangerouslySetInnerHTML, sanitize any rich content.
+
+Session management:
+
+Access token in memory, refresh via httpOnly cookie (backend change).
+
+Token rotation, clock-skew handling, backoff on 401/429.
+
+Rate limiting indicators in UI for repeated actions.
+
+Secure token handling in SW (don’t store tokens there; use postMessage patterns when necessary).
+Accept: CSP report-only shows 0 violations in test; no token leakage to SW or storage; refresh flow stable.
+
+Phase 8 — UX Polish & Delight
+
+Deliver:
+
+Smooth transitions between routes (Framer Motion layout transitions).
+
+Uniform loading states & toast notifications (success/error/undo).
+
+Confirmation dialogs for critical actions.
+
+Tooltips + onboarding (coach marks; first-run checklist).
+
+Achievements: subtle sound effects (muted by default) & confetti on milestones (respect reduced-motion).
+Accept: Consistent interaction patterns; accessibility (A11y) checks pass; reduced-motion respected.
+
+Phase 9 — Analytics & Observability
+
+Deliver:
+
+Consent-aware analytics (GA4 or PostHog) with event schema:
+
+user_activity, feature_usage, funnel steps, conversions.
+
+Performance monitoring (Web Vitals to analytics backend).
+
+Error tracking (Sentry) + session replay (e.g., LogRocket) for consented users.
+
+Dashboards for conversion funnels, latency, error rate, push opt-in.
+Accept: Dashboards live; alerts on SLO breaches; PII safe; sampling set.
+
+Phase 10 — Hardening, QA & Rollout
+
+Deliver:
+
+Playwright/Cypress suites: offline mode, SW update flows, push consent, realtime sync.
+
+Lighthouse CI in pipeline; WebPageTest profiles.
+
+Incremental rollout (1%, 5%, 25%, 100%) via flags.
+
+SW update UX: notify “New version available” → soft reload.
+Accept: All blocking tests green; rollback plan validated.
+
+Architectural & Library Recommendations
+
+Service Worker / Caching: Workbox (injectManifest), strategies: NetworkFirst, StaleWhileRevalidate, CacheFirst w/ expiration.
+
+Data & Offline: TanStack Query + persisted cache (IndexedDB) using Dexie or idb-keyval; background sync plugin when supported.
+
+Realtime: Native WebSocket or Socket.IO; cross-tab with BroadcastChannel.
+
+Storage: IndexedDB for durable data (balances, notifications, activity feed); keep tokens out of SW and localStorage.
+
+UI/UX: Framer Motion, toast lib (e.g., Sonner/React Hot Toast), skeleton components, accessible dialog/toast primitives.
+
+Security: Strict CSP, Subresource Integrity on CDNs, SameSite cookies, PKCE (if OAuth), sanitizers for any HTML.
+
+Analytics/Monitoring: Sentry, GA4/PostHog, optional LogRocket; custom events with clear schema and versioning.
+
+Build/Deploy: Immutable asset hashing; SW versioning; skipWaiting gated by user prompt; clients.claim only after user consent to avoid mid-session resets.
+
+Risk & Mitigation
+
+Service Worker update traps: show update toast; coordinate cache versioning; avoid breaking changes in cached API schemas.
+
+Push adoption/permission fatigue: stage prompts; show pre-prompt explainer; allow granular categories.
+
+Offline write conflicts: server wins; return conflict object; client presents merge/resolution UI where needed.
+
+Timing drift for countdowns: server timestamps + periodic resync; smooth client-side correction.
+
+Token refresh races: single-flight refresh lock; queue 401’d requests until refresh completes.
+
+What to Build Together vs. Stepwise?
+
+Must be phased/stepwise: SW + caching, offline queues, push, realtime, security hardening. These are complex, high-risk, and benefit from staged validation.
+
+Can bundle together later: UX polish (animations, confetti, sounds) can ship with Phase 8 as a grouped “delight” release.
+
+Parallelizable: Performance work (Phase 5) and Mobile UX (Phase 6) can run in parallel once SW and data layer are stable.
+
+Concrete Acceptance Metrics
+
+Installability: Lighthouse PWA ≥ 90.
+
+Offline: Core screens usable; 0 unhandled exceptions offline; queued actions succeed post-reconnect.
+
+Push: Opt-in rate target ≥ 25% (post-education), delivery success ≥ 98%.
+
+Realtime: P50 update latency ≤ 1s, no duplicate events across tabs.
+
+Performance: LCP < 2.5s, CLS < 0.1, TTI ≤ 3s on Moto G Power or equivalent.
+
+Security: 0 CSP violations (prod), no tokens in storage audit, Sentry P99 error rate below agreed threshold.
+
+Developer Checklists (starter)
+
+Service Worker
+
+ injectManifest build step
+
+ Versioned cache names
+
+ Route fallbacks (offline page for non-API routes)
+
+ Update flow (toast + reload)
+
+Offline Queue
+
+ POST/PUT/DELETE wrapped with queue
+
+ Background Sync plugin w/ fallback retry
+
+ Conflict handling strategy
+
+Push
+
+ Backend VAPID & topic routing
+
+ SW push & notificationclick handlers
+
+ Preference center + per-category toggles
+
+Realtime
+
+ Authenticated socket connection
+
+ Reconnect/backoff strategy
+
+ BroadcastChannel cross-tab dedupe
