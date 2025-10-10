@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from "@/hooks/use-toast";
 import { Users, Copy, Share2, DollarSign, QrCode } from "lucide-react";
 import { SiWhatsapp, SiTelegram, SiX } from "react-icons/si";
+import { ReferralTree } from "@/components/referral-tree";
+import { ReferralLeaderboard } from "@/components/referral-leaderboard";
 import type { User, Referral } from "@shared/schema";
 
 interface ReferralStats {
@@ -35,7 +37,7 @@ export default function Referrals() {
     queryKey: ["/api/referrals/stats"],
   });
 
-  const { data: referralTree } = useQuery<Referral[]>({
+  const { data: referralTree, isLoading: isLoadingTree } = useQuery<Referral[]>({
     queryKey: ["/api/referrals/tree"],
   });
 
@@ -411,7 +413,12 @@ export default function Referrals() {
           <CardDescription>Your latest referral activity</CardDescription>
         </CardHeader>
         <CardContent>
-          {!referralTree || referralTree.length === 0 ? (
+          {isLoadingTree ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-muted-foreground mt-4">Loading referrals...</p>
+            </div>
+          ) : !referralTree || referralTree.length === 0 ? (
             <div className="text-center py-12">
               <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No referrals yet</p>
@@ -452,6 +459,12 @@ export default function Referrals() {
           )}
         </CardContent>
       </Card>
+
+      {/* Referral Network Tree */}
+      <ReferralTree referrals={referralTree || []} isLoading={isLoadingTree} />
+
+      {/* Referral Leaderboard */}
+      <ReferralLeaderboard />
 
       <Dialog open={showQR} onOpenChange={setShowQR}>
         <DialogContent>
