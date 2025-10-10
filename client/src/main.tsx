@@ -3,6 +3,7 @@ import App from "./App";
 import "./index.css";
 import { registerSW } from 'virtual:pwa-register';
 import { initMonitoring } from './lib/monitoring';
+import { ThemeProvider } from './contexts/theme-context';
 
 // Initialize monitoring (Sentry + Web Vitals)
 initMonitoring();
@@ -24,4 +25,8 @@ const updateSW = registerSW({
   },
 });
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>
+);

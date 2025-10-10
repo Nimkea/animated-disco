@@ -1,5 +1,6 @@
 import { useLocation } from "wouter";
 import { CosmicBackground } from "@/components/cosmic-background";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
 
@@ -9,6 +10,10 @@ export default function Landing() {
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
       <CosmicBackground />
+      
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
       
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
         <div className="mb-8 animate-in fade-in duration-1000">

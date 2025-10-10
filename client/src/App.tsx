@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SWUpdatePrompt } from "@/components/sw-update-prompt";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
@@ -44,6 +45,7 @@ function AuthenticatedApp() {
               <div className="text-sm text-muted-foreground">
                 Welcome to <span className="font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">XNRT</span>
               </div>
+              <ThemeToggle />
             </div>
           </header>
           <main className="flex-1 overflow-auto p-6 bg-background">

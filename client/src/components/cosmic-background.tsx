@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTheme } from "@/contexts/theme-context";
 
 interface Star {
   x: number;
@@ -9,9 +10,11 @@ interface Star {
 }
 
 export function CosmicBackground() {
+  const { theme } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    if (theme === "light") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -60,7 +63,11 @@ export function CosmicBackground() {
       window.removeEventListener("resize", setCanvasSize);
       cancelAnimationFrame(animationId);
     };
-  }, []);
+  }, [theme]);
+  
+  if (theme === "light") {
+    return null;
+  }
 
   return (
     <canvas
