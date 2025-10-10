@@ -4,9 +4,18 @@
 XNRT is a React PWA off-chain gamification community earning platform featuring in-app utility tokens. Users earn XNRT through staking, mining, referrals, and task completion. The platform aims to provide a robust, engaging, and secure environment for gamified earnings, currently in a production-ready state with a fully functional authentication system, automated earning mechanisms, and an admin dashboard.
 
 ## Recent Changes (October 10, 2025)
+- **Comprehensive Referral System Enhancement**: Added advanced features to the 3-level referral system
+  - **Notifications System**: Created notifications table with `userId`, `type`, `title`, `message`, `read` status, and metadata fields. Auto-generates notifications for commission earnings and new referral joins
+  - **Real-time Notification Center**: Bell icon dropdown in header with unread badge counter, mark as read/all functionality, and loading states
+  - **Referral Network Tree Visualization**: Interactive 3-level tree display with level badges (L1/L2/L3), commission indicators, and member counts per level
+  - **Leaderboard System**: Rankings with top referrers, total commissions, referral counts, and time-period filters (daily/weekly/monthly/all-time). Shows user's position and top 10 performers
+  - **Separate Referral Balance**: Tracked independently in balances table, displayed in wallet, and available for withdrawal source selection
+  - **Performance Optimizations**: Replaced O(n²) leaderboard queries with single aggregated SQL query using proper parameterization
+  - **UX Improvements**: Added loading states to all components preventing misleading empty-state flashes during data fetch
+  - **Security Fix**: Notification endpoints now properly authorize user access before allowing updates
 - **Database Configuration Fix**: Corrected Prisma schema from SQLite to PostgreSQL to match Replit's Neon database environment
   - Updated `prisma/schema.prisma` to use `provider = "postgresql"` with `DATABASE_URL` environment variable
-  - Successfully pushed schema to create all 13 database tables (User, Balance, Stake, MiningSession, Referral, Transaction, Task, UserTask, Achievement, UserAchievement, Activity, Session, PasswordReset)
+  - Successfully pushed schema to create all 14 database tables (User, Balance, Stake, MiningSession, Referral, Transaction, Task, UserTask, Achievement, UserAchievement, Activity, Session, PasswordReset, Notification)
   - Removed obsolete SQLite artifacts (dev.db and migration files) to prevent configuration conflicts
   - Database now fully operational with PostgreSQL
 - **Theme System Fix**: Resolved Vite Fast Refresh compatibility issue
@@ -52,7 +61,13 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Withdrawal System**: XNRT to USDT conversion with a 2% fee, source selection (main/referral balance), BEP20 wallet validation, and admin approval.
 - **Staking System**: Four-tiered system (Royal Sapphire, Legendary Emerald, Imperial Platinum, Mythic Diamond) with varying APY and duration, featuring real-time countdowns and atomic withdrawal.
 - **Mining System**: 24-hour sessions with energy system, ad boosts, and 50% XP to XNRT conversion, with automated reward distribution and optimized API polling.
-- **Referral System**: 3-level commission chain (6%/3%/1% for L1/L2/L3 respectively) triggered by deposits, with commission fallback to company admin. Includes social sharing, QR code generation, and message templates.
+- **Referral System**: Complete 3-level commission chain (6%/3%/1% for L1/L2/L3 respectively) triggered by deposits, with commission fallback to company admin. Features include:
+  - **Network Visualization**: Interactive tree showing all 3 levels with member counts and commission totals per level
+  - **Real-time Notifications**: Automatic notifications for commission earnings and new referral joins with unread badge counter in header
+  - **Leaderboard**: Rankings with time-period filters (daily/weekly/monthly/all-time), showing top performers and user's position
+  - **Separate Balance Tracking**: Referral commissions stored separately, displayed in wallet, available for withdrawal
+  - **Social Sharing**: QR code generation, shareable links, and pre-written message templates for easy promotion
+  - **Performance Optimized**: Aggregated SQL queries for efficient leaderboard calculations and referral tree traversal
 - **Daily Check-in System**: Atomic check-in with streak rewards (XNRT & XP) and anti-exploit measures.
 - **Achievement System**: Auto-unlocks achievements based on user actions (mining, tasks, check-ins, staking, referrals) with accumulated XP rewards and activity logging.
 - **Password Reset System**: Secure password recovery with cryptographically random tokens (64 hex chars), 1-hour expiration, one-time use enforcement, rate limiting (3 requests per 15 minutes), and automatic session revocation on successful reset. Generic responses prevent email enumeration.
