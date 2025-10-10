@@ -4,6 +4,11 @@
 XNRT is a React PWA off-chain gamification community earning platform featuring in-app utility tokens. Users earn XNRT through staking, mining, referrals, and task completion. The platform aims to provide a robust, engaging, and secure environment for gamified earnings, currently in a production-ready state with a fully functional authentication system, automated earning mechanisms, and an admin dashboard.
 
 ## Recent Changes (October 10, 2025)
+- **Referral Commission System Fixed**: Resolved critical bugs in referral chain traversal and commission distribution
+  - **Bug Fix**: Fixed `getReferrerChain()` function that was incorrectly looking up referrers by referral code instead of user ID stored in `referredBy` field
+  - **Commission Distribution**: Now properly traverses 3-level referral chain (L1 → L2 → L3) and distributes commissions at correct rates (6%/3%/1%)
+  - **Reconciliation**: Created admin reconciliation script to redistribute historical commissions that were incorrectly allocated to admin fallback account
+  - **Verification**: Tested with 25,000 XNRT deposits, confirmed 2,500 XNRT (10%) distributed correctly across referrers
 - **Comprehensive Referral System Enhancement**: Added advanced features to the 3-level referral system
   - **Notifications System**: Created notifications table with `userId`, `type`, `title`, `message`, `read` status, and metadata fields. Auto-generates notifications for commission earnings and new referral joins
   - **Real-time Notification Center**: Bell icon dropdown in header with unread badge counter, mark as read/all functionality, and loading states
