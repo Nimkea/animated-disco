@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowUpFromLine, Wallet, AlertCircle, CheckCircle, Clock, XCircle } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Transaction, Balance } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
 
@@ -20,6 +21,7 @@ export default function Withdrawal() {
   const [source, setSource] = useState<"main" | "referral">("main");
   const [amount, setAmount] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const { data: balance } = useQuery<Balance>({
     queryKey: ["/api/balance"],
@@ -105,6 +107,10 @@ export default function Withdrawal() {
       return;
     }
 
+    setShowConfirmDialog(true);
+  };
+
+  const confirmWithdraw = () => {
     withdrawMutation.mutate({ source, amount, walletAddress });
   };
 
@@ -318,7 +324,7 @@ export default function Withdrawal() {
                         {withdrawal.walletAddress?.substring(0, 16)}...
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(withdrawal.createdAt).toLocaleString()}
+                        {withdrawal.createdAt ? new Date(withdrawal.createdAt).toLocaleString() : 'N/A'}
                       </p>
                     </div>
                   </div>
@@ -341,6 +347,16 @@ export default function Withdrawal() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        onConfirm={confirmWithdraw}
+        title="Confirm Withdrawal"
+        description={`You are withdrawing ${parseFloat(amount || "0").toLocaleString()} XNRT from your ${source} balance. After a ${WITHDRAWAL_FEE_PERCENT}% fee, you will receive ${(parseFloat(amount || "0") - (parseFloat(amount || "0") * WITHDRAWAL_FEE_PERCENT) / 100).toLocaleString()} XNRT. This action cannot be undone. Continue?`}
+        confirmText="Confirm Withdrawal"
+        variant="destructive"
+      />
     </div>
   );
 }

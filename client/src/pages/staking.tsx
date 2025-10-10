@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Gem, TrendingUp, Clock, AlertCircle, Sparkles, Wallet, ArrowUpRight, History, BarChart3, ArrowUpDown } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { STAKING_TIERS, type StakingTier, type Stake, type Balance } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -78,6 +79,8 @@ export default function Staking() {
   const [amount, setAmount] = useState("");
   const [historyFilter, setHistoryFilter] = useState<string>("all");
   const [historySortBy, setHistorySortBy] = useState<string>("date");
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [selectedStakeToWithdraw, setSelectedStakeToWithdraw] = useState<Stake | null>(null);
 
   const { data: balance } = useQuery<Balance>({
     queryKey: ["/api/balance"],
@@ -146,6 +149,7 @@ export default function Staking() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/stakes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      setSelectedStakeToWithdraw(null);
     },
     onError: (error: Error) => {
       toast({
@@ -155,6 +159,12 @@ export default function Staking() {
       });
     },
   });
+
+  const confirmWithdrawStake = () => {
+    if (selectedStakeToWithdraw) {
+      withdrawStakeMutation.mutate(selectedStakeToWithdraw.id);
+    }
+  };
 
   const handleStake = () => {
     if (!selectedTier || !amount) return;
@@ -504,8 +514,8 @@ export default function Staking() {
                               className="w-full"
                               variant="default"
                               onClick={() => {
-                                console.log("Withdraw button clicked for stake:", stake.id);
-                                withdrawStakeMutation.mutate(stake.id);
+                                setSelectedStakeToWithdraw(stake);
+                                setShowWithdrawConfirm(true);
                               }}
                               disabled={withdrawStakeMutation.isPending}
                               data-testid={`button-withdraw-${stake.id}`}
@@ -664,6 +674,19 @@ export default function Staking() {
           )}
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={showWithdrawConfirm}
+        onOpenChange={setShowWithdrawConfirm}
+        onConfirm={confirmWithdrawStake}
+        title="Withdraw Stake"
+        description={
+          selectedStakeToWithdraw
+            ? `You are about to withdraw your ${STAKING_TIERS[selectedStakeToWithdraw.tier].name} stake. You will receive ${parseFloat(selectedStakeToWithdraw.amount).toLocaleString()} XNRT principal + ${parseFloat(selectedStakeToWithdraw.rewards).toLocaleString()} XNRT rewards (${parseFloat(selectedStakeToWithdraw.profit).toLocaleString()} XNRT profit). Continue?`
+            : "Are you sure you want to withdraw this stake?"
+        }
+        confirmText="Withdraw Stake"
+      />
     </div>
   );
 }
