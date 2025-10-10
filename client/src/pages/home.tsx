@@ -109,7 +109,7 @@ export default function Home() {
           <h1 className="text-3xl font-bold font-serif">
             Welcome back, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{user?.username || "User"}</span>
           </h1>
-          <p className="text-muted-foreground">Here's what's happening with your XNRT journey</p>
+          <p className="text-muted-foreground">Beyond a coin. It's hope</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-2 px-4 py-2" data-testid="badge-streak">

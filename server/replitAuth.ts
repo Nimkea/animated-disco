@@ -59,11 +59,27 @@ async function upsertUser(
   claims: any,
   referralCode?: string,
 ) {
+  // Construct username from first and last name, or fall back to email/ID
+  const firstName = claims["first_name"] || "";
+  const lastName = claims["last_name"] || "";
+  let username = "";
+  
+  if (firstName && lastName) {
+    username = `${firstName} ${lastName}`.trim();
+  } else if (firstName) {
+    username = firstName;
+  } else if (claims["email"]) {
+    username = claims["email"].split('@')[0];
+  } else {
+    username = `user${Date.now()}`;
+  }
+  
   const userData = {
     id: claims["sub"],
     email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
+    username,
+    firstName,
+    lastName,
     profileImageUrl: claims["profile_image_url"],
     referralCode: referralCode || `REF${claims["sub"].substring(0, 8).toUpperCase()}`,
   };

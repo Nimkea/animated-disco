@@ -4,6 +4,10 @@
 XNRT is a React PWA off-chain gamification community earning platform featuring in-app utility tokens. Users earn XNRT through staking, mining, referrals, and task completion. The platform aims to provide a robust, engaging, and secure environment for gamified earnings, currently in a production-ready state with a fully functional authentication system, automated earning mechanisms, and an admin dashboard.
 
 ## Recent Changes (October 10, 2025)
+- **Home Page Personalization**: Enhanced user experience with personalized greetings and inspirational messaging
+  - **Tagline Update**: Changed dashboard tagline from "Here's what's happening with your XNRT journey" to "Beyond a coin. It's hope" for more inspirational messaging
+  - **Username Display**: Fixed Replit OIDC authentication to properly construct usernames from firstName and lastName claims, ensuring personalized greetings display actual names instead of fallback values
+  - **Smart Fallbacks**: Implemented cascading username logic (FirstName LastName → FirstName → Email prefix → Timestamp) for robust handling of incomplete user data
 - **UX Enhancements - Error Handling & Loading States**: Implemented comprehensive UX improvements for stability and perceived performance
   - **ErrorBoundary Component**: Created React error boundary with fallback UI that gracefully handles component crashes, prevents entire app failure, and provides user-friendly error messages with reload option
   - **Skeleton Loading Screens**: Replaced generic spinners with content-aware skeleton components (SkeletonDashboard, SkeletonWallet, SkeletonReferralTree, SkeletonCard, SkeletonTable, SkeletonStat) improving perceived performance - FCP improved from 7504ms to 508ms
