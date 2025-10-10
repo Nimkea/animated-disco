@@ -993,6 +993,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/admin/reconcile-referrals', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      console.log('[RECONCILE] Starting referral commission reconciliation...');
+      
+      // Get all approved deposits
+      const approvedDeposits = await storage.raw(`
+        SELECT id, "userId", amount, "createdAt"
+        FROM "Transaction"
+        WHERE type = 'deposit' AND status = 'approved'
+        ORDER BY "createdAt" ASC
+      `);
+
+      console.log(`[RECONCILE] Found ${approvedDeposits.length} approved deposits to process`);
+
+      // Clear all existing referral data
+      await storage.raw(`DELETE FROM "Referral"`);
+      console.log('[RECONCILE] Cleared existing referral records');
+
+      // Reset all referral balances to 0
+      await storage.raw(`UPDATE "Balance" SET "referralBalance" = 0`);
+      console.log('[RECONCILE] Reset all referral balances');
+
+      // Redistribute commissions for each deposit
+      let totalProcessed = 0;
+      for (const deposit of approvedDeposits) {
+        const amount = parseFloat(deposit.amount);
+        console.log(`[RECONCILE] Processing deposit ${deposit.id}: ${amount} XNRT for user ${deposit.userId}`);
+        
+        await storage.distributeReferralCommissions(deposit.userId, amount);
+        totalProcessed++;
+      }
+
+      console.log(`[RECONCILE] Reconciliation complete. Processed ${totalProcessed} deposits.`);
+
+      res.json({ 
+        message: "Referral commissions reconciled successfully",
+        depositsProcessed: totalProcessed
+      });
+    } catch (error) {
+      console.error("Error reconciling referrals:", error);
+      res.status(500).json({ message: "Failed to reconcile referrals" });
+    }
+  });
+
   app.post('/api/admin/withdrawals/:id/approve', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
     try {
       const { id } = req.params;
