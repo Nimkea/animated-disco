@@ -3,6 +3,18 @@
 ## Overview
 XNRT is a React PWA off-chain gamification community earning platform featuring in-app utility tokens. Users earn XNRT through staking, mining, referrals, and task completion. The platform aims to provide a robust, engaging, and secure environment for gamified earnings, currently in a production-ready state with a fully functional authentication system, automated earning mechanisms, and an admin dashboard.
 
+## Recent Changes (October 10, 2025)
+- **Database Configuration Fix**: Corrected Prisma schema from SQLite to PostgreSQL to match Replit's Neon database environment
+  - Updated `prisma/schema.prisma` to use `provider = "postgresql"` with `DATABASE_URL` environment variable
+  - Successfully pushed schema to create all 13 database tables (User, Balance, Stake, MiningSession, Referral, Transaction, Task, UserTask, Achievement, UserAchievement, Activity, Session, PasswordReset)
+  - Removed obsolete SQLite artifacts (dev.db and migration files) to prevent configuration conflicts
+  - Database now fully operational with PostgreSQL
+- **Theme System Fix**: Resolved Vite Fast Refresh compatibility issue
+  - Separated `useTheme` hook into dedicated file (`client/src/hooks/useTheme.ts`) to fix HMR crashes
+  - Theme toggle now fully functional in both landing page and authenticated dashboard
+  - Hybrid theme system (dark cosmic ↔ light professional) working seamlessly
+- **Express Configuration**: Added `trust proxy` setting for Replit's reverse proxy environment to fix rate limiting
+
 ## User Preferences
 - **Hybrid Theme System**: Users can toggle between dark cosmic theme and light professional theme
 - Dark cosmic theme by default with twinkling starfield background
