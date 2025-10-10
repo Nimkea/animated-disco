@@ -10,7 +10,11 @@ XNRT is a React PWA off-chain gamification community earning platform featuring 
   - Removed obsolete SQLite artifacts (dev.db and migration files) to prevent configuration conflicts
   - Database now fully operational with PostgreSQL
 - **Theme System Fix**: Resolved Vite Fast Refresh compatibility issue
-  - Separated `useTheme` hook into dedicated file (`client/src/hooks/useTheme.ts`) to fix HMR crashes
+  - Restructured theme system into 3 separate files to fix HMR crashes:
+    - `client/src/contexts/theme.ts` - ThemeContext and types only
+    - `client/src/contexts/theme-context.tsx` - ThemeProvider component only
+    - `client/src/hooks/useTheme.ts` - useTheme hook only
+  - Fixed Fast Refresh incompatibility caused by exporting both component and context from same file
   - Theme toggle now fully functional in both landing page and authenticated dashboard
   - Hybrid theme system (dark cosmic ↔ light professional) working seamlessly
 - **Express Configuration**: Added `trust proxy` setting for Replit's reverse proxy environment to fix rate limiting
