@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { SWUpdatePrompt } from "@/components/sw-update-prompt";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
@@ -110,6 +111,7 @@ export default function App() {
       <TooltipProvider>
         <AppContent />
         <Toaster />
+        <SWUpdatePrompt />
       </TooltipProvider>
     </QueryClientProvider>
   );
