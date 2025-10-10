@@ -21,7 +21,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS for styling, Wouter for routing, and TanStack Query for data fetching and state management.
 - **Backend**: Express.js with TypeScript for API services.
 - **Database**: PostgreSQL (Neon) using a hybrid ORM architecture with Drizzle ORM for schema definition and session management, and Prisma ORM for all database operations.
-- **Authentication**: Replit OIDC integrated with Passport.js and `connect-pg-simple` for session storage.
+- **Authentication**: Hybrid authentication system supporting both Replit OIDC (integrated with Passport.js and `connect-pg-simple` for session storage) and traditional email/password authentication with secure password reset functionality.
 - **Charts**: Recharts for data visualization in analytics.
 
 **Feature Specifications:**
@@ -33,10 +33,11 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Referral System**: 3-level commission chain (6%/3%/1% for L1/L2/L3 respectively) triggered by deposits, with commission fallback to company admin. Includes social sharing, QR code generation, and message templates.
 - **Daily Check-in System**: Atomic check-in with streak rewards (XNRT & XP) and anti-exploit measures.
 - **Achievement System**: Auto-unlocks achievements based on user actions (mining, tasks, check-ins, staking, referrals) with accumulated XP rewards and activity logging.
+- **Password Reset System**: Secure password recovery with cryptographically random tokens (64 hex chars), 1-hour expiration, one-time use enforcement, rate limiting (3 requests per 15 minutes), and automatic session revocation on successful reset. Generic responses prevent email enumeration.
 
 **System Design Choices:**
 - **Automation**: All core earning mechanisms (staking, mining, referral commissions, daily check-ins, achievement unlocks) are fully automated.
-- **Security**: Implemented `requireAuth` and `requireAdmin` middleware, atomic database operations for critical transactions (withdrawals, check-ins), input validation, and `helmet` middleware for security hardening (environment-aware CSP).
+- **Security**: Implemented `requireAuth` and `requireAdmin` middleware, atomic database operations for critical transactions (withdrawals, check-ins, password resets), input validation, rate limiting on sensitive endpoints, and `helmet` middleware for security hardening (environment-aware CSP). Password reset uses cryptographically secure tokens with strict expiration and one-time use enforcement.
 - **Performance**: Optimized Prisma aggregation queries to prevent N+1 problems, reduced API polling intervals, and efficient referral chain traversal.
 - **Code Quality**: Zero LSP/TypeScript errors, 100% type-safe codebase, and comprehensive E2E test coverage for core user journeys.
 
