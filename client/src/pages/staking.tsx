@@ -682,7 +682,7 @@ export default function Staking() {
         title="Withdraw Stake"
         description={
           selectedStakeToWithdraw
-            ? `You are about to withdraw your ${STAKING_TIERS[selectedStakeToWithdraw.tier].name} stake. You will receive ${parseFloat(selectedStakeToWithdraw.amount).toLocaleString()} XNRT principal + ${parseFloat(selectedStakeToWithdraw.rewards).toLocaleString()} XNRT rewards (${parseFloat(selectedStakeToWithdraw.profit).toLocaleString()} XNRT profit). Continue?`
+            ? `You are about to withdraw your ${STAKING_TIERS[selectedStakeToWithdraw.tier as StakingTier].name} stake. You will receive ${parseFloat(selectedStakeToWithdraw.amount).toLocaleString()} XNRT principal + ${parseFloat(selectedStakeToWithdraw.totalProfit).toLocaleString()} XNRT profit. Continue?`
             : "Are you sure you want to withdraw this stake?"
         }
         confirmText="Withdraw Stake"
