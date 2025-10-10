@@ -1,0 +1,73 @@
+Create comprehensive admin dashboard for XNRT platform management:
+
+ADMIN AUTHENTICATION:
+- Admin login with role-based access
+- Permission system (admin, super_admin)
+- Admin user management
+- Action logging and audit trails
+
+ADMIN OVERVIEW:
+- Key metrics dashboard:
+  * Pending deposits/withdrawals count
+  * Daily/weekly volumes
+  * User registration trends
+  * Platform statistics
+- Quick action buttons for urgent items
+- Real-time alerts for new requests
+
+DEPOSIT MANAGEMENT:
+- Pending deposits table with user details
+- Proof of payment image preview
+- Transaction hash verification
+- One-click approve/reject buttons
+- Bulk approval for verified payments
+- Search and filter functionality
+- Automatic XNRT crediting on approval
+- Admin notes for rejected deposits
+
+WITHDRAWAL MANAGEMENT:
+- Pending withdrawals with source breakdown
+- Withdrawal amount and fee calculations
+- User wallet address display with validation
+- Withdrawal rules compliance checking
+- Manual approval workflow
+- Transaction hash recording for completed payments
+- Status update notifications to users
+
+USER MANAGEMENT:
+- User list with activity status
+- Balance breakdown by source
+- User statistics and performance
+- Account activation/deactivation
+- Referral tree viewer
+- User transaction history
+
+ANALYTICS DASHBOARD:
+- Financial flow charts (deposits vs withdrawals)
+- User activity metrics and trends
+- Revenue tracking (withdrawal fees)
+- Popular staking tiers analysis
+- Referral performance analytics
+- Mining session statistics
+
+SYSTEM MANAGEMENT:
+- Platform settings configuration
+- Staking tier management
+- System announcements
+- Maintenance mode toggle
+- Backup and recovery options
+
+ADMIN FEATURES:
+- Real-time notifications for new requests
+- Bulk actions for efficiency
+- Advanced filtering and search
+- Export functionality for reports
+- Admin activity logs
+- Role-based permission control
+
+SECURITY:
+- Two-factor authentication for admins
+- IP whitelisting options
+- Action confirmation for critical operations
+- Audit trail for all admin actions
+- Session management and timeouts

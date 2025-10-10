@@ -1,0 +1,307 @@
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info } from "lucide-react";
+import type { Transaction } from "@shared/schema";
+import { isUnauthorizedError } from "@/lib/authUtils";
+
+const COMPANY_WALLET = "0x715C32deC9534d2fB34e0B567288AF8d895efB59";
+const USDT_TO_XNRT_RATE = 100;
+
+export default function Deposit() {
+  const { toast } = useToast();
+  const [usdtAmount, setUsdtAmount] = useState("");
+  const [transactionHash, setTransactionHash] = useState("");
+
+  const { data: deposits } = useQuery<Transaction[]>({
+    queryKey: ["/api/transactions/deposits"],
+  });
+
+  const depositMutation = useMutation({
+    mutationFn: async (data: { usdtAmount: string; transactionHash: string }) => {
+      return await apiRequest("POST", "/api/transactions/deposit", data);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Deposit Submitted!",
+        description: "Your deposit is pending admin approval",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions/deposits"] });
+      setUsdtAmount("");
+      setTransactionHash("");
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit deposit",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const copyWallet = () => {
+    navigator.clipboard.writeText(COMPANY_WALLET);
+    toast({
+      title: "Copied!",
+      description: "Wallet address copied to clipboard",
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!usdtAmount || !transactionHash) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (parseFloat(usdtAmount) <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid USDT amount",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    depositMutation.mutate({ usdtAmount, transactionHash });
+  };
+
+  const xnrtAmount = usdtAmount ? parseFloat(usdtAmount) * USDT_TO_XNRT_RATE : 0;
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <CheckCircle className="h-5 w-5 text-chart-2" />;
+      case "pending":
+        return <Clock className="h-5 w-5 text-chart-3" />;
+      case "rejected":
+        return <XCircle className="h-5 w-5 text-destructive" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-chart-2/20 text-chart-2 border-chart-2/30";
+      case "pending":
+        return "bg-chart-3/20 text-chart-3 border-chart-3/30";
+      case "rejected":
+        return "bg-destructive/20 text-destructive border-destructive/30";
+      default:
+        return "";
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold font-serif">Deposit</h1>
+        <p className="text-muted-foreground">Deposit USDT to receive XNRT tokens</p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card className="border-primary/20">
+          <CardHeader>
+            <CardTitle>Deposit Instructions</CardTitle>
+            <CardDescription>Follow these steps to deposit</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold flex-shrink-0">
+                  1
+                </div>
+                <div>
+                  <p className="font-semibold">Send USDT to Company Wallet</p>
+                  <p className="text-sm text-muted-foreground">Use BEP20 network</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold flex-shrink-0">
+                  2
+                </div>
+                <div>
+                  <p className="font-semibold">Copy Transaction Hash</p>
+                  <p className="text-sm text-muted-foreground">From your wallet after sending</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold flex-shrink-0">
+                  3
+                </div>
+                <div>
+                  <p className="font-semibold">Submit Deposit Details</p>
+                  <p className="text-sm text-muted-foreground">Wait for admin approval</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold flex-shrink-0">
+                  4
+                </div>
+                <div>
+                  <p className="font-semibold">Receive XNRT</p>
+                  <p className="text-sm text-muted-foreground">1 USDT = 100 XNRT</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-muted/50 rounded-md space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Info className="h-4 w-4 text-primary" />
+                <span>Company Wallet Address</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={COMPANY_WALLET}
+                  readOnly
+                  className="font-mono text-xs"
+                  data-testid="input-company-wallet"
+                />
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={copyWallet}
+                  data-testid="button-copy-wallet"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Network: BEP20 (Binance Smart Chain)</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+          <CardHeader>
+            <CardTitle>Submit Deposit</CardTitle>
+            <CardDescription>Enter your deposit details</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="usdtAmount">USDT Amount</Label>
+              <Input
+                id="usdtAmount"
+                type="number"
+                placeholder="Enter USDT amount"
+                value={usdtAmount}
+                onChange={(e) => setUsdtAmount(e.target.value)}
+                data-testid="input-usdt-amount"
+              />
+            </div>
+
+            {usdtAmount && parseFloat(usdtAmount) > 0 && (
+              <div className="p-4 bg-muted/50 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">You will receive:</span>
+                  <span className="text-2xl font-bold text-primary" data-testid="text-xnrt-amount">
+                    {xnrtAmount.toLocaleString()} XNRT
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="txHash">Transaction Hash</Label>
+              <Textarea
+                id="txHash"
+                placeholder="Paste transaction hash from your wallet"
+                value={transactionHash}
+                onChange={(e) => setTransactionHash(e.target.value)}
+                className="font-mono text-sm"
+                data-testid="input-tx-hash"
+              />
+            </div>
+
+            <Button
+              className="w-full"
+              size="lg"
+              disabled={!usdtAmount || !transactionHash || depositMutation.isPending}
+              onClick={handleSubmit}
+              data-testid="button-submit-deposit"
+            >
+              <ArrowDownToLine className="mr-2 h-5 w-5" />
+              {depositMutation.isPending ? "Submitting..." : "Submit Deposit"}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Deposit History</CardTitle>
+          <CardDescription>Your deposit transactions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!deposits || deposits.length === 0 ? (
+            <div className="text-center py-12">
+              <ArrowDownToLine className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No deposits yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {deposits.map((deposit) => (
+                <div
+                  key={deposit.id}
+                  className="flex items-center justify-between p-4 border border-border rounded-md hover-elevate"
+                  data-testid={`deposit-${deposit.id}`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-md bg-primary/20 flex items-center justify-center">
+                      <ArrowDownToLine className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">
+                        {parseFloat(deposit.usdtAmount || "0").toLocaleString()} USDT → {parseFloat(deposit.amount).toLocaleString()} XNRT
+                      </p>
+                      <p className="text-sm text-muted-foreground font-mono">
+                        {deposit.transactionHash?.substring(0, 16)}...
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(deposit.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right space-y-2">
+                    <Badge className={getStatusColor(deposit.status)} variant="outline">
+                      {getStatusIcon(deposit.status)}
+                      <span className="ml-2">{deposit.status}</span>
+                    </Badge>
+                    {deposit.adminNotes && deposit.status === "rejected" && (
+                      <p className="text-xs text-destructive">{deposit.adminNotes}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

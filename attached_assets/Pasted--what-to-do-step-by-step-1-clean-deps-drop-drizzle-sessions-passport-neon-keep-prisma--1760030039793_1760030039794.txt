@@ -1,0 +1,78 @@
+
+## what to do (step-by-step)
+
+1. clean deps (drop drizzle, sessions/passport, neon; keep prisma + jwt)
+
+```bash
+npm remove drizzle-orm drizzle-kit drizzle-zod @neondatabase/serverless \
+  express-session connect-pg-simple memorystore passport passport-local openid-client \
+  @types/connect-pg-simple @types/passport @types/passport-local @tailwindcss/vite next-themes
+npm i helmet concurrently
+```
+
+2. fix scripts in `package.json` (dev + split builds)
+
+```json
+"scripts": {
+  "dev:server": "NODE_ENV=development tsx server/index.ts",
+  "dev:web": "vite",
+  "dev": "concurrently -k -n WEB,API -c magenta,cyan \"vite\" \"tsx server/index.ts\"",
+  "build:web": "vite build",
+  "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --target=node20 --outdir=dist/server",
+  "build": "npm run build:web && npm run build:server",
+  "start": "NODE_ENV=production node dist/server/index.js",
+  "check": "tsc --noEmit",
+  "prisma:generate": "prisma generate",
+  "prisma:migrate": "prisma migrate dev --name init",
+  "prisma:studio": "prisma studio"
+}
+```
+
+3. set vite outDir
+
+```ts
+// vite.config.ts
+export default { plugins: [react()], build: { outDir: 'dist/client', emptyOutDir: false } }
+```
+
+4. harden server (use the `server/index.ts` I sent: helmet, better CORS, no throw after respond).
+
+5. prisma + sqlite
+
+```env
+# server/.env
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="devsecret"
+CLIENT_URL="http://localhost:5173"
+```
+
+```bash
+npx prisma migrate dev --name init
+```
+
+6. run it
+
+```bash
+npm run dev
+# later prod:
+npm run build && npm start
+```
+
+---
+
+## 
+
+* **DB provider?** → *SQLite via Prisma. Keep Prisma only.*
+* **Keep Drizzle or Neon?** → *No. Remove Drizzle + Neon packages and configs.*
+* **Auth method?** → *Custom JWT (httpOnly cookie) + CSRF. No sessions, no Passport, no OIDC.*
+* **Tailwind plugin upgrade?** → *Stay on Tailwind v3. Remove `@tailwindcss/vite`.*
+* **Dev servers?** → *Run Vite and API together with `npm run dev` (concurrently).*
+* **Build outputs?** → *Client → `dist/client`, Server → `dist/server`. Start with `npm start`.*
+* **Serve SPA in prod?** → *Yes, from `dist/client` with Express static; API on same port.*
+* **CORS origin?** → *Use env `CLIENT_URL`; allow credentials. On Replit previews, allow the preview domain.*
+* **Port?** → *Always `process.env.PORT` on host `0.0.0.0`.*
+* **Add security libs?** → *Yes: `helmet`, rate-limit on `/api/auth` & `/api/finance`.*
+* **Cron/jobs?** → *Yes: staking payouts hourly, leaderboards every 10m (node-cron).*
+* **Environment variables?** →
+  `JWT_SECRET, CLIENT_URL, DATABASE_URL, DEFAULT_TZ=Asia/Karachi, DEPOSIT_RATE=100, WITHDRAW_FEE_PCT=2, REF_WITHDRAW_MIN_XNRT=5000`
+

@@ -1,0 +1,425 @@
+XNRT IS OFF-CHAIN GAMIFICATIN PLATFORM WITH WITH-IN APP UTILITY TOKEN 
+
+## 🎯 **Prompt 1: Foundation & Authentication**
+
+Create a React PWA called "XNRT" - a community earning platform with these features:
+
+TECH STACK:
+- React with TypeScript
+- Tailwind CSS for styling 
+-
+- Modern dark theme with neon blue/purple gradients
+- Mobile-first responsive design
+- PWA capabilities (installable, offline support)
+
+CORE STRUCTURE:
+- Splash Screen with "XNRT" below the XNRT write as "We Build the NextGen" A project of NextGen Rise Foundation.
+- Landing page with login/register forms
+- Main dashboard with sidebar navigation: Home, Wallet, Deposit, Withdrawal, Staking, Mining, Referrals, Profile, Task, Achivements and Rewards
+- User authentication with Auth
+- Real-time data updates 
+
+AUTHENTICATION:
+- Auth with Email/password registration with username, referral code field (referral code optional for Signup)
+- Login form with email/password/forget password
+- User profile creation with username and referral code generation
+- Protected routes requiring authentication
+- Logout functionality
+
+DASHBOARD OVERVIEW:
+- Welcome message with username
+- Total XNRT balance display (large, prominent)
+- Current XP and level display
+- Current streak counter
+- Quick stats cards: Total Earned, Active Stakes, Referrals, Mining Sessions
+- Recent activity feed
+- Quick action buttons for each earning method
+
+DESIGN:
+✨ Glassmorphism Design: Beautiful glass-like cards with blur effects and animated backgrounds
+🎨 Gradient Text: Stunning gradient logos and text effects
+📱 Tab Interface: Smooth switching between login and register modes
+🔄 Animated Interactions: Hover effects, focus states, and button ripples
+🎯 Enhanced UX: Better form validation and user feedback
+📱 Mobile Responsive: Optimized for all screen sizes
+🔐 Security: Proper form validation and error handling
+✨ Smooth Animations: Uses framer-motion for professional-grade animations
+🌟 Twinkling Stars: 100 randomly positioned stars with staggered animations
+🎨 Gradient Effects: Beautiful gradient text and cosmic background
+📱 Responsive Design: Adapts to different screen sizes
+⚡ Performance Optimized: Efficient star generation and cleanup
+🔄 Seamless Transition: Smooth transition to your existing auth flow
+
+*Core Application Modules:**
+1. **Referrals System** - User invitation and reward tracking
+2. **Achievements** - Badge and milestone management
+3. **Tasks** - Quest and challenge system
+4. **Leaderboards** - Ranking and competition displays
+5. **Analytics** - User statistics and performance metrics
+6. **Staking** - Token staking and rewards mechanism
+7. **Notifications** - Real-time alerts and messaging
+8. **Wallet** - Token balance and transaction history
+9. **Deposit/Withdrawal** - Financial transaction management
+10. **Mining Simulation** - Gamified token earning system
+11. **Admin Panel** - Administrative controls and management 
+
+```
+
+## 🎯 **Prompt 2: Staking System**
+
+
+```
+Add comprehensive staking system to the XNRT platform:
+
+STAKING TIERS (exact specifications):
+- Royal Sapphire: 15 days, 50,000-1,000,000 XNRT, 1.1% daily (402% APY)
+- Legendary Emerald: 30 days, 10,000-10,000,000 XNRT, 1.4% daily (511% APY)  
+- Imperial Platinum: 45 days, 5,000-10,000,000 XNRT, 1.5% daily (547% APY)
+- Mythic Diamond: 90 days, 100-10,000,000 XNRT, 2.0% daily (730% APY)
+
+STAKING INTERFACE:
+- Tier selection cards with APY prominently displayed
+- Current balance display with breakdown by source
+- Stake amount input with tier validation
+- ROI calculator showing daily/total profits
+- Active stakes list with countdown timers
+- Progress bars for stake completion
+- Profit tracking
+- use simple profit (Not compound)
+
+STAKING FLOW:
+1. User selects staking tier
+2. Enters stake amount (validates min/max)
+3. Shows profit calculation preview
+4. Confirms stake creation
+5. Real-time updates of active stakes
+6. Daily profit distribution
+7. Maturity notification and withdrawal
+
+FEATURES:
+- Real-time countdown timers for each stake
+- Daily profit visualization
+- Stake history with performance metrics
+- Automatic daily reward distribution
+- Maturity alerts and withdrawal options
+- Multiple concurrent stakes support
+
+
+```
+
+## 🎯 **Prompt 3: Mining & Gamification**
+Continue with this prompt:
+
+```
+Add mining system and gamification to the XNRT platform:
+
+MINING SYSTEM:
+- Session-based mining every 24 hours
+- Base reward: 10 XP per session
+- 24-hour countdown timer between sessions
+- Manual start/end required to claim rewards
+- Ad boost system: watch up to 5 ads for +10% each (max +50% total boost)
+- Session progress tracking with visual indicators
+- Mining history with rewards earned
+
+MINING INTERFACE:
+- Large mining "button symbol of X" (Start Mining / Stop Mining)
+- Countdown timer for next available session
+- Current session progress bar
+- Ad boost counter and percentage display
+- Estimated reward calculation
+- Session statistics and history
+
+AD BOOST SYSTEM:
+- "Watch Ad" buttons (simulate ad watching)
+- Boost percentage tracker (+10%, +20%, etc.)
+- Visual feedback for each ad watched
+- Maximum 5 ads per session limit
+- Final reward calculation with boosts
+
+XP & GAMIFICATION:
+- XP system with points for all activities:
+  * Daily check-in: +10 XP
+  * Mining completion: +10 XP  
+  * Referral signup: +50 XP
+  * Approved deposit: +25 XP
+  * Streak bonuses: +50 xnrt every 7 days
+
+DAILY CHECK-IN:
+- Calendar view with streak tracking
+- Daily XP rewards with streak multipliers
+- Visual streak counter and progress
+- Streak milestone celebrations
+
+ACHIEVEMENTS SYSTEM:
+- Badge collection for milestones
+- Categories: Earnings, Referrals, Streaks, Mining
+- Progress tracking for each achievement
+- XP rewards for unlocking achievements
+
+LEADERBOARDS:
+- Weekly/Monthly XP rankings
+- Top earners by category
+- User ranking display
+- Social competition elements
+
+
+```
+## 🎯 **Prompt 4: Referral System**
+Add the referral system:
+
+```
+Implement 3-level referral system for the XNRT platform:
+
+REFERRAL STRUCTURE:
+- Level 1 (Direct): 6% commission on (Deposit of invited Users)
+- Level 2 (Indirect): 3% commission  
+- Level 3 (Indirect): 1% commission 
+- Company fallback: Missing levels redirect to company account
+
+REFERRAL INTERFACE:
+- Personal referral code display with copy button
+- Referral link generator and sharing options
+- 3-level referral tree visualization
+- Commission tracking by level and source
+- Real-time commission notifications
+
+REFERRAL DASHBOARD:
+- Total referrals count by level
+- Total commissions earned breakdown
+- Recent referral activity feed
+- Commission history with source details
+- Referral performance analytics
+
+COMMISSION SYSTEM:
+- Automatic commission calculation on all earning activities:
+  * Deposit bonuses generate commissions
+- Real-time commission distribution
+- Commission balance tracking separate from main balance
+- Instant commission notifications
+
+SHARING FEATURES:
+- QR code generator for referral link
+- Social media sharing buttons
+- WhatsApp, Telegram, Twitter integration
+- Copy referral message templates
+- Referral code lookup and validation
+
+REFERRAL TREE:
+- Commission flow visualization
+
+GAMIFICATION:
+- Referral milestones (5, 10, 25, 50, 100+ referrals)
+- Special badges for top referrers
+- Referral leaderboards
+- Bonus rewards for active referrers
+
+```
+
+## 🎯 **Prompt 5: Deposit & Withdrawal System**
+Add the financial flows:
+
+```
+Add deposit and withdrawal system with admin approval workflow:
+
+Deposit System Flow:
+User deposits USDT to company wallet address 0x715C32deC9534d2fB34e0B567288AF8d895efB59
+User submits deposit details in app
+Admin reviews and approves the deposit
+User receives XNRT credited to their wallet (e.g., 1 USDT = 100 XNRT)
+Payout System Flow:
+User requests to payout XNRT → USDT
+User provides external wallet address (BEP20)
+Admin manually sends USDT to that address
+On approval:
+XNRT is deducted from user balance
+Status marked approved in system
+If source of funds is referral commission, payout rules (min 5000 xnrt )
+
+WITHDRAWAL FLOW:
+1. User selects withdrawal amount and source
+2. System checks withdrawal rules and eligibility
+3. Shows breakdown: Amount - 2% Fee = Net Received
+4. User enters BEP20 wallet address
+5. Confirms withdrawal request
+6. Admin approval required
+7. Real-time status tracking
+
+WITHDRAWAL INTERFACE:
+- Source balance breakdown cards
+- Withdrawal amount slider/input
+- Fee calculation display
+- Wallet address input with BEP20 validation
+- Eligibility checker with rule explanations
+- Estimated processing time display
+
+TRANSACTION HISTORY:
+- Combined deposits and withdrawals history
+- Status badges (Pending, Approved, Rejected, Paid)
+- Amount, date, and transaction hash display
+- Filter by type and status
+- Export functionality
+
+REAL-TIME UPDATES:
+- Status change notifications
+- Balance updates on approval
+- Toast notifications for status changes
+- Auto-refresh on status updates
+
+```
+
+## 🎯 **Prompt 6: Admin Dashboard**
+Create the admin interface:
+
+```
+Create comprehensive admin dashboard for XNRT platform management:
+
+ADMIN AUTHENTICATION:
+- Admin login with role-based access
+- Permission system (admin, super_admin)
+- Admin user management
+- Action logging and audit trails
+
+ADMIN OVERVIEW:
+- Key metrics dashboard:
+  * Pending deposits/withdrawals count
+  * Daily/weekly volumes
+  * User registration trends
+  * Platform statistics
+- Quick action buttons for urgent items
+- Real-time alerts for new requests
+
+DEPOSIT MANAGEMENT:
+- Pending deposits table with user details
+- Proof of payment image preview
+- Transaction hash verification
+- One-click approve/reject buttons
+- Bulk approval for verified payments
+- Search and filter functionality
+- Automatic XNRT crediting on approval
+- Admin notes for rejected deposits
+
+WITHDRAWAL MANAGEMENT:
+- Pending withdrawals with source breakdown
+- Withdrawal amount and fee calculations
+- User wallet address display with validation
+- Withdrawal rules compliance checking
+- Manual approval workflow
+- Transaction hash recording for completed payments
+- Status update notifications to users
+
+USER MANAGEMENT:
+- User list with activity status
+- Balance breakdown by source
+- User statistics and performance
+- Account activation/deactivation
+- Referral tree viewer
+- User transaction history
+
+ANALYTICS DASHBOARD:
+- Financial flow charts (deposits vs withdrawals)
+- User activity metrics and trends
+- Revenue tracking (withdrawal fees)
+- Popular staking tiers analysis
+- Referral performance analytics
+- Mining session statistics
+
+SYSTEM MANAGEMENT:
+- Platform settings configuration
+- Staking tier management
+- System announcements
+- Maintenance mode toggle
+- Backup and recovery options
+
+ADMIN FEATURES:
+- Real-time notifications for new requests
+- Bulk actions for efficiency
+- Advanced filtering and search
+- Export functionality for reports
+- Admin activity logs
+- Role-based permission control
+
+SECURITY:
+- Two-factor authentication for admins
+- IP whitelisting options
+- Action confirmation for critical operations
+- Audit trail for all admin actions
+- Session management and timeouts
+
+
+```
+
+## 🎯 **Prompt 7: PWA Features & Polish**
+Final enhancement prompt:
+
+```
+Add PWA features and polish to complete the XNRT platform:
+
+PWA CAPABILITIES:
+- Service worker for offline functionality
+- Web app manifest for installation
+- App icons for different devices
+- Splash screen configuration
+- Push notifications for:
+  * Stake maturity alerts
+  * Mining session availability
+  * Referral commission notifications
+  * Deposit/withdrawal status updates
+
+OFFLINE SUPPORT:
+- Cache critical app data
+- Offline balance viewing
+- Queue actions for when online
+- Offline indicators and messages
+- Sync when connection restored
+
+PERFORMANCE OPTIMIZATION:
+- Lazy loading for heavy components
+- Image optimization and caching
+- Code splitting for faster loading
+- Loading skeletons for better UX
+- Error boundaries for stability
+
+REAL-TIME FEATURES:
+- Live balance updates across all tabs
+- Real-time notifications system
+- Live countdown timers
+- Activity feed updates
+- Status change animations
+
+MOBILE OPTIMIZATION:
+- Touch-friendly interactions
+- Swipe gestures for navigation
+- Pull-to-refresh functionality
+- Native-like animations
+- Haptic feedback simulation
+
+SECURITY ENHANCEMENTS:
+- Client-side input validation
+- XSS protection measures
+- Rate limiting indicators
+- Session management
+- Secure token handling
+
+USER EXPERIENCE:
+- Smooth page transitions
+- Loading states for all actions
+- Success/error toast notifications
+- Confirmation dialogs for critical actions
+- Help tooltips and onboarding
+
+ANALYTICS INTEGRATION:
+- User activity tracking
+- Feature usage analytics
+- Performance monitoring
+- Error tracking and reporting
+- Conversion funnel analysis
+
+NOTIFICATION SYSTEM:
+- In-app notification center
+- Real-time alert system
+- Notification preferences
+- Push notification setup
+- Email notification integration
+
+Add final touches like sound effects for achievements, confetti animations for milestones, and comprehensive error handling throughout the application.

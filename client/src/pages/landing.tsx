@@ -1,0 +1,63 @@
+import { useLocation } from "wouter";
+import { CosmicBackground } from "@/components/cosmic-background";
+import { Button } from "@/components/ui/button";
+import { Sparkles } from "lucide-react";
+
+export default function Landing() {
+  const [, setLocation] = useLocation();
+
+  return (
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      <CosmicBackground />
+      
+      <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+        <div className="mb-8 animate-in fade-in duration-1000">
+          <h1 className="text-7xl md:text-9xl font-bold font-serif mb-4 bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent animate-pulse">
+            XNRT
+          </h1>
+          <p className="text-xl md:text-2xl text-foreground/90 font-serif mb-2">
+            We Build the NextGen
+          </p>
+          <p className="text-sm md:text-base text-muted-foreground">
+            A project of NextGen Rise Foundation
+          </p>
+        </div>
+
+        <p className="text-lg md:text-xl text-foreground/80 mb-12 max-w-2xl mx-auto animate-in slide-in-from-bottom duration-1000 delay-300">
+          Join the ultimate off-chain gamification earning platform. 
+          Earn XNRT tokens through staking, mining, referrals, and task completion.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center animate-in slide-in-from-bottom duration-1000 delay-500">
+          <Button
+            size="lg"
+            className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
+            onClick={() => setLocation("/login")}
+            data-testid="button-login"
+          >
+            <Sparkles className="mr-2 h-5 w-5" />
+            Get Started
+          </Button>
+        </div>
+
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
+          {[
+            { label: "Staking", value: "Up to 730% APY" },
+            { label: "Mining", value: "24hr Sessions" },
+            { label: "Referrals", value: "3-Level System" },
+            { label: "Tasks", value: "Daily Rewards" },
+          ].map((stat, i) => (
+            <div 
+              key={stat.label} 
+              className="backdrop-blur-md bg-card/20 border border-card-border rounded-md p-6 hover-elevate"
+              style={{ animationDelay: `${700 + i * 100}ms` }}
+            >
+              <div className="text-3xl font-bold text-primary mb-2">{stat.value}</div>
+              <div className="text-sm text-muted-foreground">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
