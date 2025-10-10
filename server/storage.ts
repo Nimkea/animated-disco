@@ -699,8 +699,9 @@ export class DatabaseStorage implements IStorage {
       
       if (!currentUser || !currentUser.referredBy) break;
 
+      // referredBy stores the user ID, not the referral code
       const referrer = await prisma.user.findUnique({
-        where: { referralCode: currentUser.referredBy },
+        where: { id: currentUser.referredBy },
       });
       
       if (!referrer) break;
