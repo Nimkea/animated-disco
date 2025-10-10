@@ -23,6 +23,8 @@ import {
   type InsertUserAchievement,
   type Activity,
   type InsertActivity,
+  type Notification,
+  type InsertNotification,
 } from "@shared/schema";
 
 const prisma = new PrismaClient();
@@ -118,6 +120,13 @@ function convertPrismaActivity(activity: any): Activity {
   } as Activity;
 }
 
+function convertPrismaNotification(notification: any): Notification {
+  return {
+    ...notification,
+    metadata: notification.metadata || undefined,
+  } as Notification;
+}
+
 export interface IStorage {
   // User operations (IMPORTANT: mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
@@ -172,6 +181,16 @@ export interface IStorage {
   // Activity operations
   createActivity(activity: InsertActivity): Promise<Activity>;
   getActivities(userId: string, limit?: number): Promise<Activity[]>;
+  
+  // Notification operations
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  getNotifications(userId: string, limit?: number): Promise<Notification[]>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  markNotificationAsRead(id: string): Promise<Notification>;
+  markAllNotificationsAsRead(userId: string): Promise<void>;
+  
+  // Raw query support
+  raw(query: string, params?: any[]): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -243,6 +262,18 @@ export class DatabaseStorage implements IStorage {
           referredUserId: user.id,
           level: 1,
           totalCommission: "0",
+        });
+
+        // Create notification for referrer about new referral
+        await this.createNotification({
+          userId: referrer.id,
+          type: "new_referral",
+          title: "🎉 New Referral!",
+          message: `${user.username || 'A new user'} just joined using your referral code!`,
+          metadata: {
+            referredUserId: user.id,
+            referredUsername: user.username,
+          },
         });
 
         // Check and unlock referral achievements for the referrer
@@ -637,6 +668,19 @@ export class DatabaseStorage implements IStorage {
         type: "referral_commission",
         description: `Earned ${commission.toFixed(2)} XNRT commission from level ${level} referral`,
       });
+
+      // Create notification for referrer
+      await this.createNotification({
+        userId: referrer.id,
+        type: "referral_commission",
+        title: "💰 Commission Earned!",
+        message: `You earned ${commission.toFixed(2)} XNRT commission from a level ${level} referral`,
+        metadata: {
+          amount: commission.toString(),
+          level,
+          referredUserId: userId,
+        },
+      });
       
       console.log(`[REFERRAL] Level ${level} commission complete for ${referrer.email}`);
     }
@@ -941,6 +985,65 @@ export class DatabaseStorage implements IStorage {
       take: limit,
     });
     return activities.map(convertPrismaActivity);
+  }
+
+  // Notification operations
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const data: any = {
+      userId: notification.userId,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      read: notification.read || false,
+    };
+    
+    if (notification.metadata !== undefined && notification.metadata !== null) {
+      data.metadata = JSON.stringify(notification.metadata);
+    }
+
+    const newNotification = await prisma.notification.create({ data });
+    return convertPrismaNotification(newNotification);
+  }
+
+  async getNotifications(userId: string, limit: number = 20): Promise<Notification[]> {
+    const notifications = await prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return notifications.map(convertPrismaNotification);
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    return await prisma.notification.count({
+      where: { 
+        userId,
+        read: false,
+      },
+    });
+  }
+
+  async markNotificationAsRead(id: string): Promise<Notification> {
+    const notification = await prisma.notification.update({
+      where: { id },
+      data: { read: true },
+    });
+    return convertPrismaNotification(notification);
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    await prisma.notification.updateMany({
+      where: { 
+        userId,
+        read: false,
+      },
+      data: { read: true },
+    });
+  }
+
+  // Raw query support
+  async raw(query: string, params: any[] = []): Promise<any[]> {
+    return await prisma.$queryRawUnsafe(query, ...params);
   }
 }
 

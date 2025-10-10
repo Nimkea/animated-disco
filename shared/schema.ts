@@ -172,7 +172,26 @@ export const activities = pgTable("activities", {
   description: text("description").notNull(),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("activities_user_id_idx").on(table.userId),
+  index("activities_created_at_idx").on(table.createdAt),
+]);
+
+// Notifications
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: varchar("type").notNull(), // referral_commission, new_referral, achievement_unlocked, etc.
+  title: varchar("title").notNull(),
+  message: text("message").notNull(),
+  metadata: jsonb("metadata"),
+  read: boolean("read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("notifications_user_id_idx").on(table.userId),
+  index("notifications_read_idx").on(table.read),
+  index("notifications_created_at_idx").on(table.createdAt),
+]);
 
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -188,6 +207,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   userTasks: many(userTasks),
   userAchievements: many(userAchievements),
   activities: many(activities),
+  notifications: many(notifications),
 }));
 
 export const balancesRelations = relations(balances, ({ one }) => ({
@@ -260,6 +280,13 @@ export const activitiesRelations = relations(activities, ({ one }) => ({
   }),
 }));
 
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
@@ -296,6 +323,9 @@ export type InsertUserAchievement = typeof userAchievements.$inferInsert;
 
 export type Activity = typeof activities.$inferSelect;
 export type InsertActivity = typeof activities.$inferInsert;
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
 
 // Staking tier configurations
 export const STAKING_TIERS = {

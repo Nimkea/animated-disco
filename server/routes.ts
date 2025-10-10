@@ -389,6 +389,159 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Notification routes
+  app.get('/api/notifications', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const notifications = await storage.getNotifications(userId, limit);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get('/api/notifications/unread-count', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const count = await storage.getUnreadNotificationCount(userId);
+      res.json({ count });
+    } catch (error) {
+      console.error("Error fetching unread notification count:", error);
+      res.status(500).json({ message: "Failed to fetch unread count" });
+    }
+  });
+
+  app.patch('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.authUser!.id;
+      
+      // Get all user notifications to verify ownership
+      const userNotifications = await storage.getNotifications(userId, 1000);
+      const notification = userNotifications.find(n => n.id === id);
+      
+      if (!notification) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      
+      const updatedNotification = await storage.markNotificationAsRead(id);
+      res.json(updatedNotification);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post('/api/notifications/mark-all-read', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      await storage.markAllNotificationsAsRead(userId);
+      res.json({ message: "All notifications marked as read" });
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      res.status(500).json({ message: "Failed to mark all notifications as read" });
+    }
+  });
+
+  // Leaderboard routes
+  app.get('/api/leaderboard/referrals', requireAuth, async (req, res) => {
+    try {
+      const period = (req.query.period as string) || 'all-time';
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const currentUserId = req.authUser!.id;
+      
+      // Calculate date filter based on period
+      let dateFilter: string | null = null;
+      const now = new Date();
+      
+      if (period === 'daily') {
+        dateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      } else if (period === 'weekly') {
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        dateFilter = weekAgo.toISOString();
+      } else if (period === 'monthly') {
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        dateFilter = monthAgo.toISOString();
+      }
+
+      // Use optimized query - single aggregation in database
+      const query = `
+        SELECT 
+          u.id as "userId",
+          u.username,
+          u.email,
+          COUNT(r.id) as "totalReferrals",
+          COALESCE(SUM(r."totalCommission"), 0) as "totalCommission",
+          COUNT(CASE WHEN r.level = 1 THEN 1 END) as "level1Count",
+          COUNT(CASE WHEN r.level = 2 THEN 1 END) as "level2Count",
+          COUNT(CASE WHEN r.level = 3 THEN 1 END) as "level3Count"
+        FROM "User" u
+        LEFT JOIN "Referral" r ON r."referrerId" = u.id
+          ${dateFilter ? `AND r."createdAt" >= $1` : ''}
+        GROUP BY u.id, u.username, u.email
+        HAVING COUNT(r.id) > 0
+        ORDER BY COUNT(r.id) DESC, COALESCE(SUM(r."totalCommission"), 0) DESC
+        LIMIT $${dateFilter ? '2' : '1'}
+      `;
+
+      const leaderboard: any[] = dateFilter 
+        ? await storage.raw(query, [dateFilter, limit])
+        : await storage.raw(query, [limit]);
+
+      // Find current user's stats
+      const userQuery = `
+        SELECT 
+          u.id as "userId",
+          u.username,
+          u.email,
+          COUNT(r.id) as "totalReferrals",
+          COALESCE(SUM(r."totalCommission"), 0) as "totalCommission",
+          COUNT(CASE WHEN r.level = 1 THEN 1 END) as "level1Count",
+          COUNT(CASE WHEN r.level = 2 THEN 1 END) as "level2Count",
+          COUNT(CASE WHEN r.level = 3 THEN 1 END) as "level3Count"
+        FROM "User" u
+        LEFT JOIN "Referral" r ON r."referrerId" = u.id
+          ${dateFilter ? `AND r."createdAt" >= $1` : ''}
+        WHERE u.id = $${dateFilter ? '2' : '1'}
+        GROUP BY u.id, u.username, u.email
+      `;
+
+      const userStats: any[] = dateFilter
+        ? await storage.raw(userQuery, [dateFilter, currentUserId])
+        : await storage.raw(userQuery, [currentUserId]);
+
+      const userPosition = leaderboard.findIndex(item => item.userId === currentUserId);
+
+      res.json({
+        leaderboard: leaderboard.map((item, index) => ({
+          ...item,
+          totalReferrals: parseInt(item.totalReferrals),
+          totalCommission: item.totalCommission.toString(),
+          level1Count: parseInt(item.level1Count),
+          level2Count: parseInt(item.level2Count),
+          level3Count: parseInt(item.level3Count),
+          rank: index + 1,
+        })),
+        userPosition: userPosition === -1 && userStats.length > 0 ? {
+          ...userStats[0],
+          totalReferrals: parseInt(userStats[0].totalReferrals),
+          totalCommission: userStats[0].totalCommission.toString(),
+          level1Count: parseInt(userStats[0].level1Count),
+          level2Count: parseInt(userStats[0].level2Count),
+          level3Count: parseInt(userStats[0].level3Count),
+          rank: userPosition + 1,
+        } : null,
+      });
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ message: "Failed to fetch leaderboard" });
+    }
+  });
+
   // Transaction routes
   app.get('/api/transactions', requireAuth, async (req, res) => {
     try {

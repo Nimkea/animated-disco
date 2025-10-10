@@ -33,6 +33,7 @@ model User {
   activities      Activity[]
   sessions        Session[]
   passwordResets  PasswordReset[]
+  notifications   Notification[]
 }
 
 model Session {
@@ -223,4 +224,21 @@ model PasswordReset {
 
   @@index([userId])
   @@index([token])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  metadata  String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
 }
