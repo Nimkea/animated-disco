@@ -4,6 +4,12 @@
 XNRT is a React PWA off-chain gamification community earning platform featuring in-app utility tokens. Users earn XNRT through staking, mining, referrals, and task completion. The platform aims to provide a robust, engaging, and secure environment for gamified earnings, currently in a production-ready state with a fully functional authentication system, automated earning mechanisms, and an admin dashboard.
 
 ## Recent Changes (October 10, 2025)
+- **UX Enhancements - Error Handling & Loading States**: Implemented comprehensive UX improvements for stability and perceived performance
+  - **ErrorBoundary Component**: Created React error boundary with fallback UI that gracefully handles component crashes, prevents entire app failure, and provides user-friendly error messages with reload option
+  - **Skeleton Loading Screens**: Replaced generic spinners with content-aware skeleton components (SkeletonDashboard, SkeletonWallet, SkeletonReferralTree, SkeletonCard, SkeletonTable, SkeletonStat) improving perceived performance - FCP improved from 7504ms to 508ms
+  - **Confirmation Dialogs**: Added safety confirmations for critical actions (withdrawals, unstaking) using reusable ConfirmDialog component with detailed transaction info (amounts, fees, profits) to prevent accidental actions
+  - **TypeScript Safety**: Fixed Date null checks across wallet and withdrawal transaction displays
+  - **Error Isolation**: Wrapped all authenticated routes with ErrorBoundary for centralized failure handling without affecting other app sections
 - **Referral Commission System Fixed**: Resolved critical bugs in referral chain traversal and commission distribution
   - **Bug Fix**: Fixed `getReferrerChain()` function that was incorrectly looking up referrers by referral code instead of user ID stored in `referredBy` field
   - **Commission Distribution**: Now properly traverses 3-level referral chain (L1 → L2 → L3) and distributes commissions at correct rates (6%/3%/1%)
@@ -48,6 +54,9 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Design System**: Hybrid theme system with toggle between dark cosmic (starfield background, neon gradients) and light professional (beige/cream, gold accents) themes.
 - **Theme Toggle**: Sun/Moon icon button with smooth animations, accessible via keyboard and screen readers.
 - **Theme Persistence**: localStorage-based with system preference fallback, eliminates flash-of-wrong-theme on reload.
+- **Error Handling**: ErrorBoundary component wraps all authenticated routes for graceful failure recovery with user-friendly fallback UI.
+- **Loading States**: Skeleton screens replace spinners for better perceived performance, showing content-aware placeholders during data fetch.
+- **Confirmation Flows**: Critical actions (withdrawals, unstaking) require user confirmation with detailed transaction information to prevent mistakes.
 - **Components**: Leverages Shadcn/ui with Radix UI primitives for accessible and responsive design.
 - **Responsiveness**: Mobile-first approach ensuring usability across devices.
 
