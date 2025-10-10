@@ -13,15 +13,18 @@ app.use(helmet({
   contentSecurityPolicy: isDevelopment ? false : {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'"],
+      scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
+      connectSrc: ["'self'", "wss:", "https:"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
+      workerSrc: ["'self'"],
+      reportUri: ["/csp-report"],
     },
+    reportOnly: true, // Start with report-only mode
   },
   crossOriginEmbedderPolicy: false, // Disabled - not needed and could break third-party resources
 }));

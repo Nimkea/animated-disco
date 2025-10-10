@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { registerSW } from 'virtual:pwa-register';
+import { initMonitoring } from './lib/monitoring';
+
+// Initialize monitoring (Sentry + Web Vitals)
+initMonitoring();
 
 // Register service worker with update prompt
 const updateSW = registerSW({

@@ -9,6 +9,12 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // CSP violation report endpoint
+  app.post('/csp-report', (req, res) => {
+    console.log('[CSP Violation]', JSON.stringify(req.body, null, 2));
+    res.status(204).end();
+  });
+
   // Auth routes
   app.use('/auth', authRoutes);
 
