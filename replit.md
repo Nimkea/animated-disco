@@ -22,6 +22,8 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Backend**: Express.js with TypeScript for API services.
 - **Database**: PostgreSQL (Neon) using a hybrid ORM architecture with Drizzle ORM for schema definition and session management, and Prisma ORM for all database operations.
 - **Authentication**: Hybrid authentication system supporting both Replit OIDC (integrated with Passport.js and `connect-pg-simple` for session storage) and traditional email/password authentication with secure password reset functionality.
+- **PWA**: Full Progressive Web App capabilities with vite-plugin-pwa, Workbox caching strategies (NetworkFirst for API, CacheFirst for assets, StaleWhileRevalidate for app shell), service worker update prompts, and installability on all platforms.
+- **Monitoring**: Optional Sentry integration for error tracking, Web Vitals monitoring (CLS, INP, FCP, LCP, TTFB), and CSP violation reporting.
 - **Charts**: Recharts for data visualization in analytics.
 
 **Feature Specifications:**
@@ -37,8 +39,9 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 
 **System Design Choices:**
 - **Automation**: All core earning mechanisms (staking, mining, referral commissions, daily check-ins, achievement unlocks) are fully automated.
-- **Security**: Implemented `requireAuth` and `requireAdmin` middleware, atomic database operations for critical transactions (withdrawals, check-ins, password resets), input validation, rate limiting on sensitive endpoints, and `helmet` middleware for security hardening (environment-aware CSP). Password reset uses cryptographically secure tokens with strict expiration and one-time use enforcement.
-- **Performance**: Optimized Prisma aggregation queries to prevent N+1 problems, reduced API polling intervals, and efficient referral chain traversal.
+- **Security**: Implemented `requireAuth` and `requireAdmin` middleware, atomic database operations for critical transactions (withdrawals, check-ins, password resets), input validation, rate limiting on sensitive endpoints, and `helmet` middleware for security hardening with CSP in report-only mode. Password reset uses cryptographically secure tokens with strict expiration and one-time use enforcement.
+- **Performance**: Optimized Prisma aggregation queries to prevent N+1 problems, reduced API polling intervals, efficient referral chain traversal, and Workbox-powered offline caching for improved load times.
+- **Progressive Enhancement**: Feature flags system enables phased rollout of PWA features (offline support, push notifications, real-time updates), allowing safe deployment and A/B testing.
 - **Code Quality**: Zero LSP/TypeScript errors, 100% type-safe codebase, and comprehensive E2E test coverage for core user journeys.
 
 ## External Dependencies
@@ -51,3 +54,6 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Routing**: Wouter
 - **Charts**: Recharts
 - **QR Code Generation**: qrcode library
+- **PWA**: vite-plugin-pwa with Workbox
+- **Monitoring**: Sentry (optional), web-vitals
+- **Security**: helmet with Content Security Policy

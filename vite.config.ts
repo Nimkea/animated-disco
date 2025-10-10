@@ -66,7 +66,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /\/api\/.*\/.*/,
+            urlPattern: /\/api\/.*/,
             handler: 'NetworkFirst',
             method: 'GET',
             options: {
