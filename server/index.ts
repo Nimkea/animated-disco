@@ -7,6 +7,10 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
+// Trust proxy - required for Replit's reverse proxy environment
+// This allows express-rate-limit and other middleware to correctly identify client IPs
+app.set('trust proxy', true);
+
 // Security headers - relax only in development for Vite HMR and Replit preview
 const isDevelopment = app.get("env") === "development";
 app.use(helmet({
