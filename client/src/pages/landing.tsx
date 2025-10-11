@@ -17,7 +17,7 @@ export default function Landing() {
       
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
         <div className="mb-8 animate-in fade-in duration-1000">
-          <h1 className="text-7xl md:text-9xl font-bold font-serif mb-4 bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent animate-pulse">
+          <h1 className="text-7xl md:text-9xl font-bold font-serif mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 bg-clip-text text-transparent animate-pulse">
             XNRT
           </h1>
           <p className="text-xl md:text-2xl text-foreground/90 font-serif mb-2">
@@ -36,7 +36,7 @@ export default function Landing() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center animate-in slide-in-from-bottom duration-1000 delay-500">
           <Button
             size="lg"
-            className="text-lg px-8 py-6 bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
+            className="text-lg px-8 py-6 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold transition-all duration-300 shadow-lg hover:shadow-amber-500/50"
             onClick={() => setLocation("/login")}
             data-testid="button-login"
           >
@@ -54,10 +54,10 @@ export default function Landing() {
           ].map((stat, i) => (
             <div 
               key={stat.label} 
-              className="backdrop-blur-md bg-card/20 border border-card-border rounded-md p-6 hover-elevate"
+              className="backdrop-blur-md bg-card/20 border border-amber-500/20 rounded-md p-6 hover-elevate"
               style={{ animationDelay: `${700 + i * 100}ms` }}
             >
-              <div className="text-3xl font-bold text-primary mb-2">{stat.value}</div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-amber-400 to-yellow-500 bg-clip-text text-transparent mb-2">{stat.value}</div>
               <div className="text-sm text-muted-foreground">{stat.label}</div>
             </div>
           ))}
