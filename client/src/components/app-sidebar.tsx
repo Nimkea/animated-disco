@@ -11,7 +11,6 @@ import {
   Trophy,
   Gift,
   LogOut,
-  Sparkles,
   Shield,
 } from "lucide-react";
 
@@ -65,9 +64,12 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-md bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
+          <img 
+            src="/icon-192.png" 
+            alt="XNRT" 
+            className="w-10 h-10 rounded-md"
+            data-testid="img-logo"
+          />
           <div>
             <h2 className="text-xl font-bold font-serif bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
               XNRT
