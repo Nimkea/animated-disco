@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Gem, TrendingUp, Clock, AlertCircle, Sparkles, Wallet, ArrowUpRight, History, BarChart3, ArrowUpDown } from "lucide-react";
@@ -77,6 +78,7 @@ export default function Staking() {
   const { toast } = useToast();
   const [selectedTier, setSelectedTier] = useState<StakingTier | null>(null);
   const [amount, setAmount] = useState("");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<string>("all");
   const [historySortBy, setHistorySortBy] = useState<string>("date");
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
@@ -117,6 +119,7 @@ export default function Staking() {
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
       setAmount("");
       setSelectedTier(null);
+      setShowCreateDialog(false);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -337,7 +340,10 @@ export default function Staking() {
             className={`cursor-pointer transition-all hover-elevate ${
               selectedTier === key ? "border-primary ring-2 ring-primary/20" : ""
             }`}
-            onClick={() => setSelectedTier(key)}
+            onClick={() => {
+              setSelectedTier(key);
+              setShowCreateDialog(true);
+            }}
             data-testid={`tier-${key}`}
           >
             <CardHeader>
@@ -368,56 +374,78 @@ export default function Staking() {
         ))}
       </div>
 
-      {selectedTier && (
-        <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
-          <CardHeader>
-            <CardTitle>Create Stake - {STAKING_TIERS[selectedTier].name}</CardTitle>
-            <CardDescription>Enter the amount you want to stake</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="amount">Stake Amount (XNRT)</Label>
-              <Input
-                id="amount"
-                type="number"
-                placeholder={`Min: ${STAKING_TIERS[selectedTier].minAmount.toLocaleString()}`}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                data-testid="input-stake-amount"
-              />
-            </div>
+      {/* Create Stake Modal */}
+      <Dialog 
+        open={!!selectedTier && showCreateDialog} 
+        onOpenChange={(open) => {
+          setShowCreateDialog(open);
+          if (!open) {
+            // Reset state when dialog closes
+            setSelectedTier(null);
+            setAmount("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {selectedTier && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  Create Stake — {STAKING_TIERS[selectedTier].name}
+                </DialogTitle>
+                <DialogDescription>
+                  Enter the amount you want to stake
+                </DialogDescription>
+              </DialogHeader>
 
-            {amount && parseFloat(amount) > 0 && (
-              <div className="space-y-3 p-4 bg-muted/50 rounded-md">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Daily Profit:</span>
-                  <span className="font-bold text-chart-2">+{profit.daily.toLocaleString()} XNRT</span>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="amount">Stake Amount (XNRT)</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder={`Min: ${STAKING_TIERS[selectedTier].minAmount.toLocaleString()}`}
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    data-testid="input-stake-amount"
+                  />
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Profit ({STAKING_TIERS[selectedTier].duration} days):</span>
-                  <span className="font-bold text-chart-2">+{profit.total.toLocaleString()} XNRT</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Final Amount:</span>
-                  <span className="font-bold text-primary">
-                    {(parseFloat(amount) + profit.total).toLocaleString()} XNRT
-                  </span>
-                </div>
+
+                {amount && parseFloat(amount) > 0 && (
+                  <div className="space-y-3 p-4 bg-muted/50 rounded-md">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Daily Profit:</span>
+                      <span className="font-bold text-chart-2">+{profit.daily.toLocaleString()} XNRT</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Total Profit ({STAKING_TIERS[selectedTier].duration} days):
+                      </span>
+                      <span className="font-bold text-chart-2">+{profit.total.toLocaleString()} XNRT</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Final Amount:</span>
+                      <span className="font-bold text-primary">
+                        {(parseFloat(amount) + profit.total).toLocaleString()} XNRT
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  size="lg"
+                  disabled={!amount || createStakeMutation.isPending}
+                  onClick={handleStake}
+                  data-testid="button-create-stake"
+                >
+                  {createStakeMutation.isPending ? "Creating..." : "Create Stake"}
+                </Button>
               </div>
-            )}
-
-            <Button
-              className="w-full"
-              size="lg"
-              disabled={!amount || createStakeMutation.isPending}
-              onClick={handleStake}
-              data-testid="button-create-stake"
-            >
-              {createStakeMutation.isPending ? "Creating..." : "Create Stake"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="active" className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
