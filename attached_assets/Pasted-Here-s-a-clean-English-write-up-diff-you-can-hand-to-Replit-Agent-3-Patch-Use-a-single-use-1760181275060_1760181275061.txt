@@ -1,0 +1,92 @@
+Here’s a clean, English write-up + diff you can hand to Replit Agent 3.
+
+# Patch: Use a single user source on Home, fix welcome name & refresh after check-in
+
+**Problem**
+`Home` was fetching the user from `/api/auth/user` while the rest of the app (and `useAuth`) uses `/auth/me`. That mismatch made `user` undefined, so the heading fell back to “User”.
+
+**Fix**
+
+* Stop querying `/api/auth/user` in `Home`.
+* Use the existing `useAuth()` hook (which hits `/auth/me` and is already used app-wide).
+* Invalidate the same key (`/auth/me`) after Daily Check-in so streak/xp refresh immediately.
+* Add a robust `displayName` fallback chain.
+
+---
+
+## Diff — `client/src/pages/home.tsx`
+
+```diff
+@@
+-import { useQuery, useMutation } from "@tanstack/react-query";
++import { useQuery, useMutation } from "@tanstack/react-query";
+ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+@@
+-import type { User, Balance } from "@shared/schema";
++import type { Balance } from "@shared/schema";
++import { useAuth } from "@/hooks/useAuth";
+@@
+ export default function Home() {
+   const { toast } = useToast();
+-  
+-  const { data: user, isLoading: userLoading } = useQuery<User>({
+-    queryKey: ["/api/auth/user"],
+-  });
++  // Single source of truth for current user
++  const { user, isLoading: userLoading } = useAuth();
+ 
+   const { data: balance, isLoading: balanceLoading } = useQuery<Balance>({
+     queryKey: ["/api/balance"],
+   });
+@@
+   const checkinMutation = useMutation({
+     mutationFn: async () => {
+       const res = await apiRequest("POST", "/api/checkin");
+       return await res.json();
+     },
+     onSuccess: (data: any) => {
+       toast({
+         title: "Check-in Successful!",
+         description: `Day ${data.streak} streak! Earned ${data.xnrtReward} XNRT and ${data.xpReward} XP`,
+       });
+-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
++      // Refresh the user that useAuth reads
++      queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
+       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+     },
+@@
+-  const level = user?.level || 1;
+-  const xp = user?.xp || 0;
+-  const streak = user?.streak || 0;
++  const level = user?.level ?? 1;
++  const xp = user?.xp ?? 0;
++  const streak = user?.streak ?? 0;
++  const displayName =
++    user?.username ||
++    (user as any)?.name ||
++    user?.email?.split("@")?.[0] ||
++    "User";
+@@
+-          <h1 className="text-3xl font-bold font-serif">
+-            Welcome, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{user?.username || user?.email?.split('@')?.[0] || "User"}</span>
+-          </h1>
++          <h1 className="text-3xl font-bold font-serif">
++            Welcome, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{displayName}</span>
++          </h1>
+```
+
+---
+
+## Why this works
+
+* `useAuth()` centralizes auth state and already powers route gating.
+* Using the same query key (`/auth/me`) ensures cache consistency and avoids duplicate network calls.
+* The `displayName` chain covers username → name → email prefix → “User”.
+
+## Quick test
+
+1. Log in; open `/` — you should see your real name/username instead of “User”.
+2. Click **Daily Check-in** — streak/XP should update immediately without reload.
+
+> Note: the **“User: Unknown (@Unknown)”** in admin Deposit/Withdrawal lists is a separate backend response issue (user object not joined). We can patch that next by joining `user` in those list APIs.
