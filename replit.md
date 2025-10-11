@@ -4,11 +4,13 @@
 XNRT is a React PWA off-chain gamification community earning platform that allows users to earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. The platform aims to provide an engaging and secure environment for gamified earnings, currently featuring a fully functional authentication system, automated earning mechanisms, and an admin dashboard. Its vision is to offer a robust and inspiring earning experience.
 
 ## User Preferences
-- **Hybrid Theme System**: Users can toggle between dark cosmic theme and light professional theme
-- Dark cosmic theme by default with twinkling starfield background
-- Light professional theme with clean beige/cream aesthetic
+- **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
+- Light mode: Black cosmic background with golden twinkling stars and golden UI accents
+- Dark mode: Black cosmic background with white twinkling stars and golden UI accents
+- Unified golden amber brand color (HSL 42 90% 50%) across all interactive elements
+- Space Grotesk (sans-serif) and Lora (serif) typography throughout
 - Mobile-first responsive design
-- Accessibility via Radix UI primitives with ARIA labels
+- Accessibility via Radix UI primitives with ARIA labels and proper color contrast (AA compliant)
 - Testing-friendly with comprehensive data-testid coverage
 
 ## System Architecture
