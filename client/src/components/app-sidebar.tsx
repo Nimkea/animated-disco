@@ -26,6 +26,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,14 @@ export function AppSidebar() {
   const { data: user } = useQuery<UserType>({
     queryKey: ["/auth/me"],
   });
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  // Event delegation: auto-close mobile sidebar on any navigation click
+  const handleAnyNavClick: React.MouseEventHandler = (e) => {
+    if (!isMobile) return;
+    const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+    if (a) setOpenMobile(false);
+  };
 
   return (
     <Sidebar>
@@ -68,7 +77,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent onClickCapture={handleAnyNavClick}>
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs text-muted-foreground px-4">
             Navigation
