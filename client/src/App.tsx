@@ -5,11 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { SWUpdatePrompt } from "@/components/sw-update-prompt";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+import { PWAUpdateNotification } from "@/components/pwa-update-notification";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useAuth } from "@/hooks/useAuth";
+import { useNotificationBadge } from "@/hooks/use-notification-badge";
 import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
@@ -36,6 +38,9 @@ function AuthenticatedApp() {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
+
+  // Enable notification badge on app icon
+  useNotificationBadge();
 
   return (
     <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
@@ -120,7 +125,8 @@ export default function App() {
       <TooltipProvider>
         <AppContent />
         <Toaster />
-        <SWUpdatePrompt />
+        <PWAInstallPrompt />
+        <PWAUpdateNotification />
       </TooltipProvider>
     </QueryClientProvider>
   );
