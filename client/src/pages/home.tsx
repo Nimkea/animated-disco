@@ -17,14 +17,14 @@ import {
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Balance } from "@shared/schema";
+import type { Balance } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Home() {
   const { toast } = useToast();
   
-  const { data: user, isLoading: userLoading } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
-  });
+  // Single source of truth for current user
+  const { user, isLoading: userLoading } = useAuth();
 
   const { data: balance, isLoading: balanceLoading } = useQuery<Balance>({
     queryKey: ["/api/balance"],
@@ -49,7 +49,8 @@ export default function Home() {
         title: "Check-in Successful!",
         description: `Day ${data.streak} streak! Earned ${data.xnrtReward} XNRT and ${data.xpReward} XP`,
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      // Refresh the user that useAuth reads
+      queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
@@ -66,10 +67,15 @@ export default function Home() {
     return <SkeletonDashboard />;
   }
 
-  const level = user?.level || 1;
-  const xp = user?.xp || 0;
-  const streak = user?.streak || 0;
+  const level = user?.level ?? 1;
+  const xp = user?.xp ?? 0;
+  const streak = user?.streak ?? 0;
   const xnrtBalance = balance?.xnrtBalance || "0";
+  const displayName =
+    user?.username ||
+    (user as any)?.name ||
+    user?.email?.split("@")?.[0] ||
+    "User";
 
   const quickStats = [
     {
@@ -107,7 +113,7 @@ export default function Home() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold font-serif">
-            Welcome, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{user?.username || user?.email?.split('@')?.[0] || "User"}</span>
+            Welcome, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{displayName}</span>
           </h1>
           <p className="text-muted-foreground">Beyond a coin. It's hope</p>
         </div>
