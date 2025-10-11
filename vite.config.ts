@@ -12,9 +12,12 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'favicon-16x16.png', 'favicon-32x32.png'],
       manifest: {
+        id: '/?app-id=xnrt',
         name: 'XNRT - We Build the NextGen',
         short_name: 'XNRT',
         description: 'Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion.',
+        start_url: '/?source=pwa',
+        scope: '/',
         theme_color: '#000000',
         background_color: '#000000',
         display: 'standalone',
@@ -31,6 +34,29 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
+          }
+        ],
+        shortcuts: [
+          {
+            name: 'Staking',
+            short_name: 'Stake',
+            description: 'Start staking XNRT tokens',
+            url: '/staking',
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'Mining',
+            short_name: 'Mine',
+            description: 'Start a mining session',
+            url: '/mining',
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'Referrals',
+            short_name: 'Refer',
+            description: 'View referral network',
+            url: '/referrals',
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }]
           }
         ]
       },
