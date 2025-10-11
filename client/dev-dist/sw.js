@@ -67,13 +67,10 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-13fdf7ef'], (function (workbox) { 'use strict';
+define(['./workbox-6c6c3b19'], (function (workbox) { 'use strict';
 
-  self.addEventListener('message', event => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-      self.skipWaiting();
-    }
-  });
+  self.skipWaiting();
+  workbox.clientsClaim();
 
   /**
    * The precacheAndRoute() method efficiently caches and responds to
@@ -81,12 +78,13 @@ define(['./workbox-13fdf7ef'], (function (workbox) { 'use strict';
    * See https://goo.gl/S9QRab
    */
   workbox.precacheAndRoute([{
-    "url": "index.html",
-    "revision": "0.gjk5e44h288"
+    "url": "/index.html",
+    "revision": "0.4ol5okj6fmg"
   }], {});
   workbox.cleanupOutdatedCaches();
-  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
-    allowlist: [/^\/$/]
+  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
+    allowlist: [/^\/$/],
+    denylist: [/^\/api\/.*/, /\/[^/?]+\.(?:js|css|json|png|jpg|jpeg|svg|gif|webp|ico|map|woff|woff2)$/]
   }));
   workbox.registerRoute(/^https:\/\/fonts\.googleapis\.com\/.*/i, new workbox.CacheFirst({
     "cacheName": "google-fonts-cache",
@@ -106,21 +104,32 @@ define(['./workbox-13fdf7ef'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
-  workbox.registerRoute(/\/api\/.*/, new workbox.NetworkFirst({
-    "cacheName": "api-cache",
-    "networkTimeoutSeconds": 5,
+  workbox.registerRoute(/\.(?:js|css)$/, new workbox.CacheFirst({
+    "cacheName": "static-assets",
     plugins: [new workbox.ExpirationPlugin({
-      maxEntries: 50,
-      maxAgeSeconds: 300
-    }), new workbox.CacheableResponsePlugin({
-      statuses: [0, 200]
+      maxEntries: 60,
+      maxAgeSeconds: 2592000
     })]
   }), 'GET');
-  workbox.registerRoute(/\.(png|jpg|jpeg|svg|gif|webp)$/, new workbox.CacheFirst({
-    "cacheName": "images-cache",
+  workbox.registerRoute(/manifest\.webmanifest$/, new workbox.StaleWhileRevalidate({
+    "cacheName": "app-manifest",
+    plugins: []
+  }), 'GET');
+  workbox.registerRoute(/\.(?:ico|png|svg)$/, new workbox.StaleWhileRevalidate({
+    "cacheName": "app-icons",
     plugins: [new workbox.ExpirationPlugin({
-      maxEntries: 200,
-      maxAgeSeconds: 604800
+      maxEntries: 50,
+      maxAgeSeconds: 2592000
+    })]
+  }), 'GET');
+  workbox.registerRoute(/\/api\/.*/, new workbox.NetworkFirst({
+    "cacheName": "api-cache",
+    "networkTimeoutSeconds": 3,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 50,
+      maxAgeSeconds: 60
+    }), new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
     })]
   }), 'GET');
 

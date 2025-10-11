@@ -9,6 +9,7 @@ export default defineConfig({
     react(),
     runtimeErrorOverlay(),
     VitePWA({
+      strategies: 'generateSW',
       registerType: 'prompt',
       devOptions: {
         enabled: true,
@@ -65,7 +66,15 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
+        navigateFallback: '/index.html',
+        navigateFallbackAllowlist: [/.*/],
+        navigateFallbackDenylist: [
+          /^\/api\/.*/,
+          /\/[^/?]+\.(?:js|css|json|png|jpg|jpeg|svg|gif|webp|ico|map|woff|woff2)$/
+        ],
+        clientsClaim: true,
+        skipWaiting: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -96,29 +105,47 @@ export default defineConfig({
             }
           },
           {
+            urlPattern: /\.(?:js|css)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'static-assets',
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 60 * 60 * 24 * 30
+              }
+            }
+          },
+          {
+            urlPattern: /manifest\.webmanifest$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'app-manifest'
+            }
+          },
+          {
+            urlPattern: /\.(?:ico|png|svg)$/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'app-icons',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 30
+              }
+            }
+          },
+          {
             urlPattern: /\/api\/.*/,
             handler: 'NetworkFirst',
             method: 'GET',
             options: {
               cacheName: 'api-cache',
-              networkTimeoutSeconds: 5,
+              networkTimeoutSeconds: 3,
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 5
+                maxAgeSeconds: 60
               },
               cacheableResponse: {
                 statuses: [0, 200]
-              }
-            }
-          },
-          {
-            urlPattern: /\.(png|jpg|jpeg|svg|gif|webp)$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: {
-                maxEntries: 200,
-                maxAgeSeconds: 60 * 60 * 24 * 7
               }
             }
           }
