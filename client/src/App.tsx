@@ -15,6 +15,7 @@ import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
+import Auth from "@/pages/auth";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import Home from "@/pages/home";
@@ -80,6 +81,7 @@ function UnauthenticatedApp() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
+      <Route path="/auth" component={Auth} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/forgot-password" component={ForgotPassword} />
