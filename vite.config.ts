@@ -13,9 +13,11 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'prompt',
+      injectRegister: 'auto',
       devOptions: {
         enabled: true,
         type: 'module',
+        navigateFallback: 'index.html',
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'favicon-16x16.png', 'favicon-32x32.png'],
       manifest: {
@@ -64,92 +66,6 @@ export default defineConfig({
             description: 'View referral network',
             url: '/referrals',
             icons: [{ src: '/icon-192.png', sizes: '192x192' }]
-          }
-        ]
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
-        navigateFallback: '/index.html',
-        navigateFallbackAllowlist: [/.*/],
-        navigateFallbackDenylist: [
-          /^\/api\/.*/,
-          /\/[^/?]+\.(?:js|css|json|png|jpg|jpeg|svg|gif|webp|ico|map|woff|woff2)$/
-        ],
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'gstatic-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
-          {
-            urlPattern: /\.(?:js|css)$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'static-assets',
-              expiration: {
-                maxEntries: 60,
-                maxAgeSeconds: 60 * 60 * 24 * 30
-              }
-            }
-          },
-          {
-            urlPattern: /manifest\.webmanifest$/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'app-manifest'
-            }
-          },
-          {
-            urlPattern: /\.(?:ico|png|svg)$/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'app-icons',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 30
-              }
-            }
-          },
-          {
-            urlPattern: /\/api\/.*/,
-            handler: 'NetworkFirst',
-            method: 'GET',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 3,
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
           }
         ]
       },
