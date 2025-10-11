@@ -1,0 +1,159 @@
+Thanks for sharing your `sw.js`. It’s a solid Workbox-based start, but a few things will keep your PWA from behaving like a real offline-first SPA. Here’s what’s off, and exactly how to fix it.
+
+---
+
+# What’s wrong (and why it matters)
+
+1. **SPA routing is effectively disabled offline**
+   Your navigation route only allows `/`:
+
+```js
+workbox.registerRoute(
+  new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
+    allowlist: [/^\/$/]  // ← only the root path
+  })
+);
+```
+
+Any deep link like `/dashboard`, `/staking`, etc. won’t get `index.html` offline.
+
+2. **Only `index.html` is precached**
+   Your precache manifest is:
+
+```js
+workbox.precacheAndRoute([{ url: "index.html", revision: "0.5bbrh4ggd8g" }], {});
+```
+
+So JS/CSS chunks, icons, manifest, etc. are not available offline.
+
+3. **New SW doesn’t take control immediately**
+   You handle `SKIP_WAITING`, but you don’t **claim clients** on activate. Users won’t see the new SW until the next page load.
+
+4. **API runtime cache may be too stale**
+   `NetworkFirst` with a 5s timeout and `maxAgeSeconds: 300` can serve **5-minute-old** GET responses if the network is flaky. That’s often too long for account balances/statuses.
+
+5. **Static assets (JS/CSS) aren’t runtime-cached**
+   Images and Google Fonts are cached, but JS/CSS aren’t—so they’ll fail offline unless they’re precached.
+
+6. **Manifest/icons not handled**
+   `manifest.webmanifest`, favicons, and app icons aren’t precached or runtime-cached.
+
+---
+
+# Minimal, targeted fixes
+
+## A) Make the SPA work offline
+
+Replace your navigation route with an allowlist for **all** navigations and a denylist for APIs/static files that shouldn’t hit the SPA shell:
+
+```js
+workbox.registerRoute(
+  new workbox.NavigationRoute(
+    workbox.createHandlerBoundToURL("index.html"),
+    {
+      allowlist: [/.*/],
+      denylist: [
+        /^\/api\//,
+        // don’t rewrite real asset/file requests:
+        /\/[^/?]+\.(?:js|css|json|png|jpg|jpeg|svg|gif|webp|ico|map)$/
+      ],
+    }
+  )
+);
+```
+
+## B) Precache all build assets (best)
+
+If you can change the build, switch to Workbox’s injected manifest:
+
+```js
+// at build time this becomes a full list of hashed assets
+workbox.precacheAndRoute(self.__WB_MANIFEST);
+```
+
+* **Vite**: use `vite-plugin-pwa` with `injectRegister: 'auto'` and `workbox` mode, or `generateSW` + `workbox` options.
+* **Rollup/Webpack**: use the corresponding Workbox plugin to inject the manifest.
+
+If you can’t change the build right now, at least add runtime caching for JS/CSS (see D).
+
+## C) Take control immediately (so updates apply now)
+
+Add this near the top/bottom of your SW:
+
+```js
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    if ('navigationPreload' in self.registration) {
+      await self.registration.navigationPreload.enable();
+    }
+    await self.clients.claim();
+  })());
+});
+```
+
+And in your app’s registration code, prompt the waiting SW to activate:
+
+```js
+if (registration.waiting) {
+  registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+}
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  // optional: refresh to load the new SW-controlled app shell
+  window.location.reload();
+});
+```
+
+## D) Add runtime caching for JS/CSS + manifest/icons
+
+```js
+// JS/CSS: long-lived, versioned by filename => CacheFirst is fine
+workbox.registerRoute(/\.(?:js|css)$/, new workbox.CacheFirst({
+  cacheName: 'static-assets',
+  plugins: [new workbox.ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 })]
+}), 'GET');
+
+// Web manifest: usually small and updated occasionally
+workbox.registerRoute(/manifest\.webmanifest$/, new workbox.StaleWhileRevalidate({
+  cacheName: 'app-manifest'
+}), 'GET');
+
+// Favicons/app icons
+workbox.registerRoute(/\.(?:ico|png|svg)$/, new workbox.StaleWhileRevalidate({
+  cacheName: 'app-icons',
+  plugins: [new workbox.ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 })]
+}), 'GET');
+```
+
+## E) Tighten API caching (or disable if dynamic)
+
+If API data must be fresh, either disable caching or shorten the staleness window:
+
+```js
+workbox.registerRoute(/\/api\/.*/, new workbox.NetworkFirst({
+  cacheName: 'api-cache',
+  networkTimeoutSeconds: 3,
+  plugins: [
+    new workbox.ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 60 }), // 1 minute
+    new workbox.CacheableResponsePlugin({ statuses: [200] }),
+  ],
+}), 'GET');
+```
+
+If responses are private/authenticated, consider **no caching** or vary the cache by auth state (cookies/headers)—or just remove the route.
+
+---
+
+# Quick checklist to finish PWA setup
+
+* Ensure your app serves:
+
+  * `/sw.js` at the site root
+  * `/manifest.webmanifest` and `<link rel="manifest" href="/manifest.webmanifest">`
+  * icons referenced in the manifest (and ideally precached)
+* In production, verify `navigator.serviceWorker.register('/sw.js')` succeeds (HTTPS required).
+* If using `vite-plugin-pwa`, confirm that `sw.js` and `manifest` are generated to the final public root and aren’t 404ing.
+* Test deep links offline (`/staking`, `/mining`, etc.). They should show your app shell, not a network error.
+
+---
+
+
