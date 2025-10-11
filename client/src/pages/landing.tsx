@@ -20,15 +20,15 @@ export default function Landing() {
           <h1 className="text-7xl md:text-9xl font-bold font-serif mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 bg-clip-text text-transparent animate-pulse">
             XNRT
           </h1>
-          <p className="text-xl md:text-2xl text-foreground/90 font-serif mb-2">
+          <p className="text-xl md:text-2xl text-white/90 font-serif mb-2">
             We Build the NextGen
           </p>
-          <p className="text-sm md:text-base text-muted-foreground">
+          <p className="text-sm md:text-base text-white/60">
             A project of NextGen Rise Foundation
           </p>
         </div>
 
-        <p className="text-lg md:text-xl text-foreground/80 mb-12 max-w-2xl mx-auto animate-in slide-in-from-bottom duration-1000 delay-300">
+        <p className="text-lg md:text-xl text-white/70 mb-12 max-w-2xl mx-auto animate-in slide-in-from-bottom duration-1000 delay-300">
           Join the ultimate off-chain gamification earning platform. 
           Earn XNRT tokens through staking, mining, referrals, and task completion.
         </p>
@@ -54,11 +54,11 @@ export default function Landing() {
           ].map((stat, i) => (
             <div 
               key={stat.label} 
-              className="backdrop-blur-md bg-card/20 border border-amber-500/20 rounded-md p-6 hover-elevate"
+              className="backdrop-blur-md bg-white/5 border border-amber-500/30 rounded-md p-6 hover-elevate"
               style={{ animationDelay: `${700 + i * 100}ms` }}
             >
               <div className="text-3xl font-bold bg-gradient-to-r from-amber-400 to-yellow-500 bg-clip-text text-transparent mb-2">{stat.value}</div>
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
+              <div className="text-sm text-white/50">{stat.label}</div>
             </div>
           ))}
         </div>

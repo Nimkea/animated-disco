@@ -14,7 +14,6 @@ export function CosmicBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (theme === "light") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -50,7 +49,13 @@ export function CosmicBackground() {
 
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+        
+        // Golden stars for light mode, white stars for dark mode
+        const starColor = theme === "light" 
+          ? `rgba(251, 191, 36, ${star.opacity})` // Amber-400 golden
+          : `rgba(255, 255, 255, ${star.opacity})`; // White
+        
+        ctx.fillStyle = starColor;
         ctx.fill();
       });
 
@@ -64,10 +69,6 @@ export function CosmicBackground() {
       cancelAnimationFrame(animationId);
     };
   }, [theme]);
-  
-  if (theme === "light") {
-    return null;
-  }
 
   return (
     <canvas
