@@ -95,6 +95,10 @@ function convertPrismaTransaction(transaction: any): Transaction {
     netAmount: transaction.netAmount ? decimalToString(transaction.netAmount) : undefined,
     approvedBy: transaction.approvedBy || undefined,
     approvedAt: transaction.approvedAt || undefined,
+    user: transaction.user ? {
+      email: transaction.user.email,
+      username: transaction.user.username,
+    } : undefined,
   } as Transaction;
 }
 
@@ -874,6 +878,14 @@ export class DatabaseStorage implements IStorage {
       where: {
         type,
         status: "pending",
+      },
+      include: {
+        user: {
+          select: {
+            email: true,
+            username: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
