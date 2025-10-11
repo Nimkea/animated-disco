@@ -30,8 +30,8 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Wouter for routing, and TanStack Query for data management.
 - **Backend**: Express.js with TypeScript.
 - **Database**: PostgreSQL (Neon) using Drizzle ORM for schema definition and session management, and Prisma ORM for database operations.
-- **Authentication**: Hybrid system supporting Replit OIDC (Passport.js) and traditional email/password, with secure password reset and session management.
-- **PWA**: Full Progressive Web App capabilities via vite-plugin-pwa and Workbox for offline support, caching, and installability. App shortcuts enable quick access to Staking, Mining, and Referrals from the device home screen.
+- **Authentication**: Hybrid system supporting Replit OIDC (Passport.js) and traditional email/password, with secure password reset and session management. All pages use centralized `useAuth()` hook querying `/auth/me` for consistent user state and cache invalidation.
+- **PWA**: Full Progressive Web App capabilities via vite-plugin-pwa and Workbox for offline support, caching, and installability. App shortcuts enable quick access to Staking, Mining, and Referrals from the device home screen. Custom XNRT branded icon integrated across all PWA touchpoints.
 - **Monitoring**: Optional Sentry integration for error tracking and Web Vitals monitoring.
 - **Charts**: Recharts for data visualization.
 
