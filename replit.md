@@ -15,7 +15,7 @@ XNRT is a React PWA off-chain gamification community earning platform that allow
 XNRT utilizes a robust architecture designed for performance, scalability, and security.
 
 **UI/UX Decisions:**
-- **Design System**: Hybrid theme system with toggle between dark cosmic (starfield background, neon gradients) and light professional (beige/cream, gold accents) themes, with persistence via localStorage.
+- **Design System**: Hybrid theme system with toggle between dark cosmic (starfield background, golden gradients) and light professional (beige/cream, gold accents) themes, with persistence via localStorage. Landing page features luxurious golden color palette (amber-to-yellow gradients) for premium brand feel.
 - **Authentication Experience**: Glassmorphic `/auth` page with backdrop-blur effects, tabbed Login/Register interface, and framer-motion animations (card entrance, logo spring, tab transitions, button interactions).
 - **Error Handling**: An ErrorBoundary component provides graceful failure recovery with user-friendly fallback UI for all authenticated routes.
 - **Loading States**: Content-aware skeleton screens are used for improved perceived performance during data fetching.
