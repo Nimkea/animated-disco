@@ -64,7 +64,7 @@ export default function Mining() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
       queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
     },
     onError: (error: Error) => {

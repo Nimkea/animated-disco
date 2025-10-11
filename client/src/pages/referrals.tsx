@@ -12,7 +12,8 @@ import { SiWhatsapp, SiTelegram, SiX } from "react-icons/si";
 import { ReferralTree } from "@/components/referral-tree";
 import { ReferralLeaderboard } from "@/components/referral-leaderboard";
 import { SkeletonReferralTree } from "@/components/skeletons";
-import type { User, Referral } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
+import type { Referral } from "@shared/schema";
 
 interface ReferralStats {
   level1Count: number;
@@ -30,9 +31,7 @@ export default function Referrals() {
   const [showQR, setShowQR] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  const { data: user } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
-  });
+  const { user } = useAuth();
 
   const { data: referralStats } = useQuery<ReferralStats>({
     queryKey: ["/api/referrals/stats"],

@@ -2,12 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Gift, Sparkles, TrendingUp, Award } from "lucide-react";
-import type { User, Balance } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
+import type { Balance } from "@shared/schema";
 
 export default function Rewards() {
-  const { data: user } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
-  });
+  const { user } = useAuth();
 
   const { data: balance } = useQuery<Balance>({
     queryKey: ["/api/balance"],

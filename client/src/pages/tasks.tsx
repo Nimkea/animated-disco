@@ -26,7 +26,7 @@ export default function Tasks() {
         description: `You earned ${data.xpReward} XP and ${data.xnrtReward} XNRT!`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/user"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
     },
     onError: (error: Error) => {
