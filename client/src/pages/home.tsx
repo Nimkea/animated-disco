@@ -107,7 +107,7 @@ export default function Home() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold font-serif">
-            Welcome, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{user?.username || user?.email?.split('@')[0] || "User"}</span>
+            Welcome, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{user?.username || user?.email?.split('@')?.[0] || "User"}</span>
           </h1>
           <p className="text-muted-foreground">Beyond a coin. It's hope</p>
         </div>
