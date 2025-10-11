@@ -3,7 +3,13 @@
 ## Overview
 XNRT is a React PWA off-chain gamification community earning platform featuring in-app utility tokens. Users earn XNRT through staking, mining, referrals, and task completion. The platform aims to provide a robust, engaging, and secure environment for gamified earnings, currently in a production-ready state with a fully functional authentication system, automated earning mechanisms, and an admin dashboard.
 
-## Recent Changes (October 10, 2025)
+## Recent Changes (October 10-11, 2025)
+- **Mining System Bug Fixes**: Resolved critical bugs preventing mining sessions from working correctly
+  - **Session Retrieval Fix**: Fixed `getCurrentMiningSession()` to query for `status: "active"` instead of incorrectly searching `nextAvailable >= now` (which found future sessions instead of current ones)
+  - **Auto-Completion Logic**: Added automatic completion for expired mining sessions that reach their 24-hour endTime, properly calculating and awarding rewards (XP = finalReward, XNRT = finalReward * 0.5)
+  - **Reward Calculation**: Implemented proper finalReward calculation in auto-completion: `baseReward + Math.floor((baseReward * boostPercentage) / 100)` matching manual stop behavior
+  - **Ad Boost Synchronization**: Removed local state drift by ensuring frontend always uses server's `currentSession.adBoostCount` data instead of maintaining separate client-side counter
+  - **Complete Flow**: Mining now works end-to-end - start session, watch ads (up to 5x for 50% boost), auto-complete after 24hrs or manually stop anytime
 - **Home Page Personalization**: Enhanced user experience with personalized greetings and inspirational messaging
   - **Tagline Update**: Changed dashboard tagline from "Here's what's happening with your XNRT journey" to "Beyond a coin. It's hope" for more inspirational messaging
   - **Username Display**: Fixed Replit OIDC authentication to properly construct usernames from firstName and lastName claims, ensuring personalized greetings display actual names instead of fallback values
