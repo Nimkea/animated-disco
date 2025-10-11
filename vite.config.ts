@@ -9,7 +9,9 @@ export default defineConfig({
     react(),
     runtimeErrorOverlay(),
     VitePWA({
-      strategies: 'generateSW',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'prompt',
       devOptions: {
         enabled: true,
@@ -150,6 +152,9 @@ export default defineConfig({
             }
           }
         ]
+      },
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}']
       }
     }),
     ...(process.env.NODE_ENV !== "production" &&
