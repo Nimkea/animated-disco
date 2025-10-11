@@ -484,15 +484,63 @@ export class DatabaseStorage implements IStorage {
 
   // Mining operations
   async getCurrentMiningSession(userId: string): Promise<MiningSession | undefined> {
+    // Find active session
     const session = await prisma.miningSession.findFirst({
       where: {
         userId,
-        nextAvailable: {
-          gte: new Date(),
-        },
+        status: "active",
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Auto-complete expired sessions
+    if (session && session.endTime && new Date() >= new Date(session.endTime)) {
+      // Calculate final reward based on baseReward and boostPercentage
+      const baseReward = session.baseReward || 10;
+      const boostPercentage = session.boostPercentage || 0;
+      const finalReward = baseReward + Math.floor((baseReward * boostPercentage) / 100);
+      
+      const xpReward = finalReward;
+      const xnrtReward = finalReward * 0.5;
+
+      // Mark session as completed with updated finalReward
+      await this.updateMiningSession(session.id, {
+        status: "completed",
+        finalReward: finalReward,
+        endTime: new Date(),
+      });
+
+      // Update user XP
+      const user = await this.getUser(userId);
+      if (user) {
+        await this.updateUser(userId, {
+          xp: (user.xp || 0) + xpReward,
+        });
+      }
+
+      // Update user balance with XNRT rewards
+      const balance = await this.getBalance(userId);
+      if (balance) {
+        await this.updateBalance(userId, {
+          miningBalance: (parseFloat(balance.miningBalance) + xnrtReward).toString(),
+          totalEarned: (parseFloat(balance.totalEarned) + xnrtReward).toString(),
+        });
+      }
+
+      // Log activity
+      await this.createActivity({
+        userId,
+        type: "mining_completed",
+        description: `Completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`,
+      });
+
+      // Check and unlock achievements
+      await this.checkAndUnlockAchievements(userId);
+
+      // Return undefined since session is now completed
+      return undefined;
+    }
+
     return session || undefined;
   }
 

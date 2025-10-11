@@ -12,7 +12,6 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 
 export default function Mining() {
   const { toast } = useToast();
-  const [adBoostCount, setAdBoostCount] = useState(0);
 
   const { data: currentSession } = useQuery<MiningSession>({
     queryKey: ["/api/mining/current"],
@@ -33,7 +32,6 @@ export default function Mining() {
         description: "Your mining session has begun. Watch ads to boost your rewards!",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
-      setAdBoostCount(0);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -68,7 +66,6 @@ export default function Mining() {
       queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
-      setAdBoostCount(0);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -95,10 +92,10 @@ export default function Mining() {
       return await apiRequest("POST", "/api/mining/watch-ad", {});
     },
     onSuccess: () => {
-      setAdBoostCount(prev => prev + 1);
+      const newBoostCount = (currentSession?.adBoostCount || 0) + 1;
       toast({
         title: "Ad Watched!",
-        description: `+10% boost added! Total: ${(adBoostCount + 1) * 10}%`,
+        description: `+10% boost added! Total: ${newBoostCount * 10}%`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
     },
