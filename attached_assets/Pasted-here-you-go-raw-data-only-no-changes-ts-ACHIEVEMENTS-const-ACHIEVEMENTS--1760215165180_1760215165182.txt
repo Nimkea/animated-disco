@@ -1,0 +1,303 @@
+here you go — raw data only, no changes.
+
+```ts
+// ACHIEVEMENTS
+const ACHIEVEMENTS = [
+  // --- Staking Milestones ---
+  { name: "First Step", description: "Complete your first stake", icon: "🚀",
+    category: "staking", requirementType: "stakes_count", requirementValue: 1,
+    rewardXnrt: 100, badgeColor: "bronze" },
+  { name: "Steady Staker", description: "Complete 5 stakes", icon: "📈",
+    category: "staking", requirementType: "stakes_count", requirementValue: 5,
+    rewardXnrt: 500, badgeColor: "silver" },
+  { name: "Staking Master", description: "Complete 25 stakes", icon: "🏆",
+    category: "staking", requirementType: "stakes_count", requirementValue: 25,
+    rewardXnrt: 2500, badgeColor: "gold" },
+  { name: "Whale Staker", description: "Stake 1,000,000 XNRT total", icon: "🐋",
+    category: "staking", requirementType: "total_staked", requirementValue: 1_000_000,
+    rewardXnrt: 10_000, badgeColor: "platinum" },
+  { name: "Diamond Hands", description: "Stake 10,000,000 XNRT total", icon: "💎",
+    category: "staking", requirementType: "total_staked", requirementValue: 10_000_000,
+    rewardXnrt: 50_000, badgeColor: "diamond" },
+
+  // --- Duration ---
+  { name: "Patient Investor", description: "Maintain a stake for 30 days", icon: "⏳",
+    category: "duration", requirementType: "longest_stake_days", requirementValue: 30,
+    rewardXnrt: 1000, badgeColor: "bronze" },
+  { name: "Long-term Vision", description: "Maintain a stake for 90 days", icon: "🔮",
+    category: "duration", requirementType: "longest_stake_days", requirementValue: 90,
+    rewardXnrt: 3000, badgeColor: "silver" },
+  { name: "Legendary Patience", description: "Maintain a stake for 180 days", icon: "🏛️",
+    category: "duration", requirementType: "longest_stake_days", requirementValue: 180,
+    rewardXnrt: 10_000, badgeColor: "gold" },
+  { name: "Time Master", description: "Maintain a stake for 365 days", icon: "⚡",
+    category: "duration", requirementType: "longest_stake_days", requirementValue: 365,
+    rewardXnrt: 25_000, badgeColor: "mythic" },
+
+  // --- ROI ---
+  { name: "First Profits", description: "Earn 1,000 XNRT in ROI", icon: "💰",
+    category: "rewards", requirementType: "roi_earned", requirementValue: 1_000,
+    rewardXnrt: 200, badgeColor: "bronze" },
+  { name: "Profit Machine", description: "Earn 10,000 XNRT in ROI", icon: "🤑",
+    category: "rewards", requirementType: "roi_earned", requirementValue: 10_000,
+    rewardXnrt: 1_000, badgeColor: "silver" },
+  { name: "ROI King", description: "Earn 100,000 XNRT in ROI", icon: "👑",
+    category: "rewards", requirementType: "roi_earned", requirementValue: 100_000,
+    rewardXnrt: 5_000, badgeColor: "gold" },
+
+  // --- Activity ---
+  { name: "Daily User", description: "Be active for 7 days", icon: "📅",
+    category: "activity", requirementType: "days_active", requirementValue: 7,
+    rewardXnrt: 300, badgeColor: "bronze" },
+  { name: "Dedicated Member", description: "Be active for 30 days", icon: "🎯",
+    category: "activity", requirementType: "days_active", requirementValue: 30,
+    rewardXnrt: 1_500, badgeColor: "silver" },
+  { name: "Platform Veteran", description: "Be active for 100 days", icon: "🛡️",
+    category: "activity", requirementType: "days_active", requirementValue: 100,
+    rewardXnrt: 5_000, badgeColor: "gold" },
+
+  // --- Tiers ---
+  { name: "Elite Explorer", description: "Complete an Elite tier stake", icon: "🌟",
+    category: "tiers", requirementType: "tier_reached", requirementValue: 1,
+    rewardXnrt: 200, badgeColor: "bronze" },
+  { name: "Master Strategist", description: "Complete a Master tier stake", icon: "🎖️",
+    category: "tiers", requirementType: "tier_reached", requirementValue: 2,
+    rewardXnrt: 500, badgeColor: "silver" },
+  { name: "Legendary Investor", description: "Complete a Legend tier stake", icon: "🗡️",
+    category: "tiers", requirementType: "tier_reached", requirementValue: 3,
+    rewardXnrt: 1_000, badgeColor: "gold" },
+  { name: "Mythic Champion", description: "Complete a Mythic tier stake", icon: "🌌",
+    category: "tiers", requirementType: "tier_reached", requirementValue: 11,
+    rewardXnrt: 15_000, badgeColor: "mythic" },
+];
+```
+
+```ts
+// TASK TEMPLATES
+const TASK_TEMPLATES = [
+  {
+    title: "Follow us on Twitter",
+    description: "Follow our official Twitter account and like our latest post",
+    link: "https://twitter.com/xnrt_official",
+    rewardAmount: 10,
+    rewardType: "XNRT",
+    isActive: true,
+    dailyLimit: 1,
+    loyaltyPoints: 5
+  },
+  {
+    title: "Join our Telegram group",
+    description: "Join our Telegram community and introduce yourself",
+    link: "https://t.me/xnrt_community",
+    rewardAmount: 15,
+    rewardType: "XNRT",
+    isActive: true,
+    dailyLimit: 1,
+    loyaltyPoints: 8
+  },
+  {
+    title: "Subscribe to YouTube channel",
+    description: "Subscribe to our YouTube channel and watch our latest video",
+    link: "https://youtube.com/@xnrt",
+    rewardAmount: 20,
+    rewardType: "XNRT",
+    isActive: true,
+    dailyLimit: 1,
+    loyaltyPoints: 10
+  },
+  {
+    title: "Share on Facebook",
+    description: "Share our platform announcement on your Facebook profile",
+    link: "https://facebook.com/xnrt",
+    rewardAmount: 25,
+    rewardType: "XNRT",
+    isActive: true,
+    dailyLimit: 1,
+    loyaltyPoints: 12
+  },
+  {
+    title: "Write a review",
+    description: "Write a positive review about XNRT on Trustpilot or similar platform",
+    link: "https://trustpilot.com",
+    rewardAmount: 50,
+    rewardType: "XNRT",
+    isActive: true,
+    dailyLimit: 1,
+    loyaltyPoints: 20
+  },
+  {
+    title: "🎉 LIMITED: New Year Launch Bonus",
+    description: "Complete this special launch task to celebrate our platform launch! Available for limited time only.",
+    link: "https://xnrt.platform/launch-event",
+    rewardAmount: 100,
+    rewardType: "XNRT",
+    isActive: true,
+    startDate: new Date(),
+    endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    dailyLimit: 1,
+    loyaltyPoints: 30
+  },
+  {
+    title: "📱 Daily Check-in Bonus",
+    description: "Visit our platform daily and claim your attendance reward. Can be done multiple times per day!",
+    link: "https://xnrt.platform/daily-checkin",
+    rewardAmount: 5,
+    rewardType: "XNRT",
+    isActive: true,
+    dailyLimit: 3,
+    loyaltyPoints: 2
+  },
+  {
+    title: "🚀 Early Adopter Reward",
+    description: "Be among the first 1000 users to join our platform and get exclusive rewards",
+    link: "https://xnrt.platform/early-adopter",
+    rewardAmount: 75,
+    rewardType: "XNRT",
+    isActive: true,
+    endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    dailyLimit: 1,
+    loyaltyPoints: 25
+  }
+];
+```
+
+```ts
+// STREAK MILESTONES
+const STREAK_MILESTONES = [
+  // Login Streaks
+  { streakType: 'login', dayCount: 3, rewardType: 'XNRT' as const,
+    rewardAmount: "5", description: '3-day login streak milestone', isActive: true },
+  { streakType: 'login', dayCount: 7, rewardType: 'XNRT' as const,
+    rewardAmount: "15", description: '7-day login streak milestone', isActive: true },
+  { streakType: 'login', dayCount: 30, rewardType: 'XNRT' as const,
+    rewardAmount: "100", description: '30-day login streak milestone', isActive: true },
+  { streakType: 'login', dayCount: 100, rewardType: 'XNRT' as const,
+    rewardAmount: "500", description: '100-day login streak milestone', isActive: true },
+
+  // Task Completion Streaks
+  { streakType: 'task_completion', dayCount: 3, rewardType: 'XNRT' as const,
+    rewardAmount: "25", description: '3-day task completion streak', isActive: true },
+  { streakType: 'task_completion', dayCount: 7, rewardType: 'XNRT' as const,
+    rewardAmount: "75", description: '7-day task completion streak', isActive: true },
+  { streakType: 'task_completion', dayCount: 15, rewardType: 'XNRT' as const,
+    rewardAmount: "200", description: '15-day task completion streak', isActive: true },
+  { streakType: 'task_completion', dayCount: 30, rewardType: 'XNRT' as const,
+    rewardAmount: "500", description: '30-day task completion streak', isActive: true },
+
+  // Mining Session Streaks
+  { streakType: 'mining_session', dayCount: 7, rewardType: 'XNRT' as const,
+    rewardAmount: "50", description: '7-day mining streak milestone', isActive: true },
+  { streakType: 'mining_session', dayCount: 15, rewardType: 'XNRT' as const,
+    rewardAmount: "150", description: '15-day mining streak milestone', isActive: true },
+  { streakType: 'mining_session', dayCount: 30, rewardType: 'XNRT' as const,
+    rewardAmount: "400", description: '30-day mining streak milestone', isActive: true },
+
+  // Daily Check-in Streaks
+  { streakType: 'daily_checkin', dayCount: 7, rewardType: 'XNRT' as const,
+    rewardAmount: "20", description: '7-day check-in streak milestone', isActive: true },
+  { streakType: 'daily_checkin', dayCount: 30, rewardType: 'XNRT' as const,
+    rewardAmount: "100", description: '30-day check-in streak milestone', isActive: true },
+  { streakType: 'daily_checkin', dayCount: 60, rewardType: 'XNRT' as const,
+    rewardAmount: "250", description: '60-day check-in streak milestone', isActive: true },
+
+  // Staking Activity Streaks
+  { streakType: 'stake_created', dayCount: 3, rewardType: 'XNRT' as const,
+    rewardAmount: "100", description: '3 stakes created milestone', isActive: true },
+  { streakType: 'stake_created', dayCount: 7, rewardType: 'XNRT' as const,
+    rewardAmount: "300", description: '7 stakes created milestone', isActive: true },
+  { streakType: 'stake_created', dayCount: 15, rewardType: 'XNRT' as const,
+    rewardAmount: "750", description: '15 stakes created milestone', isActive: true }
+];
+```
+
+```ts
+// ONBOARDING
+const ONBOARDING_STEPS = [
+  // Profile Setup
+  { stepKey: "welcome_tour", title: "Welcome to XNRT Platform",
+    description: "Take a quick tour of the platform and learn about its features",
+    category: "profile", orderIndex: 1, requiredAction: "navigate_to",
+    targetSelector: ".welcome-guide", rewardType: "xp", rewardAmount: 10 },
+  { stepKey: "complete_profile", title: "Complete Your Profile",
+    description: "Add your username and basic information to get started",
+    category: "profile", orderIndex: 2, requiredAction: "fill_form",
+    targetSelector: ".profile-form", rewardType: "xp", rewardAmount: 25 },
+  { stepKey: "verify_email", title: "Verify Your Email",
+    description: "Confirm your email address to secure your account",
+    category: "profile", orderIndex: 3, requiredAction: "click_button",
+    targetSelector: ".verify-email-btn", rewardType: "xp", rewardAmount: 15 },
+
+  // Wallet Setup
+  { stepKey: "explore_wallet", title: "Explore Your Wallet",
+    description: "Learn about XNRT tokens and how to manage your wallet",
+    category: "wallet", orderIndex: 4, requiredAction: "navigate_to",
+    targetSelector: ".wallet-section", rewardType: "xp", rewardAmount: 20 },
+  { stepKey: "first_deposit", title: "Make Your First Deposit",
+    description: "Deposit USDT to receive XNRT tokens (1 USDT = 100 XNRT)",
+    category: "wallet", orderIndex: 5, requiredAction: "fill_form",
+    targetSelector: ".deposit-form", rewardType: "xnrt", rewardAmount: 50 },
+  { stepKey: "check_balance", title: "Check Your Balance",
+    description: "View your XNRT token balance and transaction history",
+    category: "wallet", orderIndex: 6, requiredAction: "click_button",
+    targetSelector: ".balance-card", rewardType: "xp", rewardAmount: 15 },
+
+  // Staking
+  { stepKey: "learn_staking", title: "Learn About Staking",
+    description: "Understand how staking works and different tier options",
+    category: "staking", orderIndex: 7, requiredAction: "navigate_to",
+    targetSelector: ".staking-info", rewardType: "xp", rewardAmount: 30 },
+  { stepKey: "view_tiers", title: "Explore Staking Tiers",
+    description: "Browse available staking tiers and their ROI percentages",
+    category: "staking", orderIndex: 8, requiredAction: "click_button",
+    targetSelector: ".staking-tiers", rewardType: "xp", rewardAmount: 20 },
+  { stepKey: "first_stake", title: "Create Your First Stake",
+    description: "Start earning passive income by staking your XNRT tokens",
+    category: "staking", orderIndex: 9, requiredAction: "fill_form",
+    targetSelector: ".staking-form", rewardType: "xnrt", rewardAmount: 100 },
+
+  // Rewards & Features
+  { stepKey: "daily_checkin", title: "Daily Check-in",
+    description: "Perform your first daily check-in to earn loyalty XP",
+    category: "rewards", orderIndex: 10, requiredAction: "click_button",
+    targetSelector: ".checkin-btn", rewardType: "xp", rewardAmount: 25 },
+  { stepKey: "explore_tasks", title: "Explore Task System",
+    description: "Learn about available tasks and how to earn rewards",
+    category: "rewards", orderIndex: 11, requiredAction: "navigate_to",
+    targetSelector: ".tasks-section", rewardType: "xp", rewardAmount: 20 },
+  { stepKey: "referral_system", title: "Understand Referrals",
+    description: "Learn how to invite friends and earn referral rewards",
+    category: "rewards", orderIndex: 12, requiredAction: "navigate_to",
+    targetSelector: ".referral-dashboard", rewardType: "xp", rewardAmount: 30 },
+  { stepKey: "loyalty_system", title: "Check Loyalty Progress",
+    description: "View your loyalty level and XP progress",
+    category: "rewards", orderIndex: 13, requiredAction: "navigate_to",
+    targetSelector: ".loyalty-card", rewardType: "xp", rewardAmount: 25 },
+  { stepKey: "complete_onboarding", title: "Onboarding Complete!",
+    description: "Congratulations! You've completed the XNRT platform onboarding",
+    category: "rewards", orderIndex: 14, requiredAction: "click_button",
+    targetSelector: ".completion-badge", rewardType: "xnrt", rewardAmount: 200 },
+];
+
+const ONBOARDING_BADGES = [
+  { badgeKey: "welcome_newcomer", name: "Welcome Newcomer",
+    description: "Completed the welcome tour", iconUrl: "/badges/welcome.svg",
+    category: "onboarding", rarity: "common", conditions: { completedSteps: 1 },
+    rewardXp: 10, rewardXnrt: 0 },
+  { badgeKey: "profile_master", name: "Profile Master",
+    description: "Completed profile setup", iconUrl: "/badges/profile.svg",
+    category: "onboarding", rarity: "common", conditions: { completedSteps: 3 },
+    rewardXp: 25, rewardXnrt: 0 },
+  { badgeKey: "wallet_explorer", name: "Wallet Explorer",
+    description: "Learned about wallet features", iconUrl: "/badges/wallet.svg",
+    category: "onboarding", rarity: "common", conditions: { completedSteps: 6 },
+    rewardXp: 50, rewardXnrt: 25 },
+  { badgeKey: "staking_pioneer", name: "Staking Pioneer",
+    description: "Created your first stake", iconUrl: "/badges/staking.svg",
+    category: "onboarding", rarity: "rare", conditions: { completedSteps: 9 },
+    rewardXp: 100, rewardXnrt: 50 },
+  { badgeKey: "onboarding_champion", name: "Onboarding Champion",
+    description: "Completed the entire onboarding process", iconUrl: "/badges/champion.svg",
+    category: "onboarding", rarity: "epic", conditions: { completedSteps: 14 },
+    rewardXp: 200, rewardXnrt: 100 },
+];
+```
