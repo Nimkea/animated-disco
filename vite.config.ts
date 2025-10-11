@@ -10,6 +10,10 @@ export default defineConfig({
     runtimeErrorOverlay(),
     VitePWA({
       registerType: 'prompt',
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'favicon-16x16.png', 'favicon-32x32.png'],
       manifest: {
         id: '/?app-id=xnrt',

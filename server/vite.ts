@@ -44,6 +44,13 @@ export async function setupVite(app: Express, server: Server) {
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
 
+    // Skip SPA fallback for static files - let Vite middleware handle them
+    // This includes manifest.json, service workers, images, fonts, etc.
+    const hasFileExtension = /\.[a-z0-9]+$/i.test(url.split('?')[0]);
+    if (hasFileExtension && !url.endsWith('.html')) {
+      return next();
+    }
+
     try {
       const clientTemplate = path.resolve(
         import.meta.dirname,
