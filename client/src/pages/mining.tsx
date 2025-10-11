@@ -184,6 +184,38 @@ export default function Mining() {
   const boostPercentage = currentSession?.boostPercentage || 0;
   const estimatedReward = (currentSession?.baseReward || 10) + (currentSession?.baseReward || 10) * (boostPercentage / 100);
 
+  const isCoolingDown = !isSessionActive && !canStartMining;
+  const isReady = !isSessionActive && canStartMining;
+
+  const getSessionStatus = () => {
+    if (isSessionActive) {
+      return { label: "Mining in Progress", variant: "default" as const, icon: Pickaxe, bgClass: "" };
+    }
+    if (isReady) {
+      return { label: "Ready to Start!", variant: "default" as const, icon: Zap, bgClass: "bg-chart-2 text-white" };
+    }
+    return { label: "Cooling Down", variant: "secondary" as const, icon: Clock, bgClass: "" };
+  };
+
+  const status = getSessionStatus();
+
+  const formatNextAvailable = () => {
+    if (!currentSession?.nextAvailable) return "";
+    const date = new Date(currentSession.nextAvailable);
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+    
+    if (isToday) {
+      return `Today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    return date.toLocaleString([], { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -194,75 +226,94 @@ export default function Mining() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
           <CardHeader>
-            <CardTitle>Mining Session</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Mining Session</CardTitle>
+              <Badge 
+                variant={status.variant}
+                className={`gap-1.5 ${status.bgClass}`}
+                data-testid="badge-status"
+              >
+                <status.icon className="h-3.5 w-3.5" />
+                {status.label}
+              </Badge>
+            </div>
             <CardDescription>
-              {isSessionActive ? "Session in progress" : canStartMining ? "Ready to start" : "Next session available in"}
+              {isSessionActive && "Watch ads to boost your rewards!"}
+              {isReady && "Click START to begin mining"}
+              {isCoolingDown && `Available ${formatNextAvailable()}`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center justify-center">
-              <div
-                className={`w-40 h-40 rounded-full flex items-center justify-center cursor-pointer transition-all ${
-                  isSessionActive
-                    ? "bg-gradient-to-br from-chart-2 to-chart-3 hover:scale-105 active:scale-95"
-                    : canStartMining
-                    ? "bg-gradient-to-br from-primary to-secondary hover:scale-105 active:scale-95"
-                    : "bg-muted cursor-not-allowed"
-                }`}
-                onClick={() => {
-                  if (isSessionActive) {
-                    stopMiningMutation.mutate();
-                  } else if (canStartMining) {
-                    startMiningMutation.mutate();
-                  }
-                }}
-                data-testid="button-mining-toggle"
-              >
-                <div className="text-center">
-                  <Pickaxe className="h-16 w-16 text-white mx-auto mb-2" />
-                  <p className="text-white font-bold">
-                    {isSessionActive ? "STOP" : "START"}
-                  </p>
+              <div className="relative">
+                <div
+                  className={`w-40 h-40 rounded-full flex items-center justify-center cursor-pointer transition-all ${
+                    isSessionActive
+                      ? "bg-gradient-to-br from-chart-2 to-chart-3 hover:scale-105 active:scale-95"
+                      : isReady
+                      ? "bg-gradient-to-br from-primary to-secondary hover:scale-105 active:scale-95 animate-pulse"
+                      : "bg-muted cursor-not-allowed opacity-50"
+                  }`}
+                  onClick={() => {
+                    if (isSessionActive) {
+                      stopMiningMutation.mutate();
+                    } else if (isReady) {
+                      startMiningMutation.mutate();
+                    }
+                  }}
+                  data-testid="button-mining-toggle"
+                >
+                  <div className="text-center">
+                    <Pickaxe className="h-16 w-16 text-white mx-auto mb-2" />
+                    <p className="text-white font-bold">
+                      {isSessionActive ? "STOP" : "START"}
+                    </p>
+                  </div>
                 </div>
+                {isCoolingDown && timeLeft !== "Ready!" && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center bg-background/80 backdrop-blur-sm rounded-full px-4 py-2">
+                      <div className="flex items-center gap-2 text-xl font-mono font-bold text-primary">
+                        <Clock className="h-5 w-5" />
+                        <span data-testid="text-countdown">{timeLeft}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {!canStartMining && !isSessionActive && (
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2 text-2xl font-mono font-bold">
-                  <Clock className="h-6 w-6 text-primary" />
-                  <span data-testid="text-countdown">{timeLeft}</span>
-                </div>
-              </div>
-            )}
-
             {isSessionActive && (
               <>
-                <div className="text-center mb-4">
+                <div className="text-center">
                   <div className="flex items-center justify-center gap-2 text-lg font-mono font-semibold text-chart-2">
                     <Clock className="h-5 w-5" />
                     <span data-testid="text-active-countdown">{timeLeft}</span>
                   </div>
                 </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Base Reward:</span>
+                    <span className="font-bold">{currentSession.baseReward} XP</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Boost:</span>
+                    <Badge variant="secondary" className="font-mono">
+                      +{boostPercentage}%
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Estimated Reward:</span>
+                    <span className="font-bold text-chart-2 text-xl">{Math.round(estimatedReward)} XP</span>
+                  </div>
+                </div>
               </>
             )}
 
-            {isSessionActive && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Base Reward:</span>
-                  <span className="font-bold">{currentSession.baseReward} XP</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Boost:</span>
-                  <Badge variant="secondary" className="font-mono">
-                    +{boostPercentage}%
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Estimated Reward:</span>
-                  <span className="font-bold text-chart-2 text-xl">{Math.round(estimatedReward)} XP</span>
-                </div>
+            {isReady && (
+              <div className="text-center space-y-2">
+                <p className="text-lg font-semibold text-chart-2">Ready to Mine!</p>
+                <p className="text-sm text-muted-foreground">Earn XP and convert to XNRT tokens</p>
               </div>
             )}
           </CardContent>
