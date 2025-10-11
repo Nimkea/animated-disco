@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,8 @@ interface ReferralStats {
   level2Commission: string;
   level3Commission: string;
   totalCommission: string;
+  actualBalance: string;
+  companyCommissions: string;
 }
 
 export default function Referrals() {
@@ -83,28 +85,35 @@ export default function Referrals() {
     window.open(url, '_blank');
   };
 
-  const generateQRCode = async () => {
-    if (qrCanvasRef.current && referralLink) {
-      try {
-        await QRCode.toCanvas(qrCanvasRef.current, referralLink, {
-          width: 300,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF',
-          },
-        });
-        setShowQR(true);
-      } catch (error) {
-        console.error('Error generating QR code:', error);
-        toast({
-          title: "Error",
-          description: "Failed to generate QR code",
-          variant: "destructive",
-        });
-      }
-    }
+  const openQRDialog = () => {
+    setShowQR(true);
   };
+
+  // Generate QR code when dialog opens
+  useEffect(() => {
+    if (showQR && qrCanvasRef.current && referralLink) {
+      // Use requestAnimationFrame to ensure canvas is in DOM
+      requestAnimationFrame(async () => {
+        try {
+          await QRCode.toCanvas(qrCanvasRef.current!, referralLink, {
+            width: 300,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF',
+            },
+          });
+        } catch (error) {
+          console.error('Error generating QR code:', error);
+          toast({
+            title: "Error",
+            description: "Failed to generate QR code",
+            variant: "destructive",
+          });
+        }
+      });
+    }
+  }, [showQR, referralLink, toast]);
 
   const downloadQRCode = () => {
     if (qrCanvasRef.current) {
@@ -150,6 +159,8 @@ export default function Referrals() {
       commission: referralStats?.level1Commission || "0",
       rate: "6%",
       color: "text-chart-1",
+      title: "Level 1",
+      description: "Direct referrals",
     },
     {
       level: 2,
@@ -157,6 +168,8 @@ export default function Referrals() {
       commission: referralStats?.level2Commission || "0",
       rate: "3%",
       color: "text-chart-2",
+      title: "Level 2",
+      description: "Indirect referrals",
     },
     {
       level: 3,
@@ -164,6 +177,17 @@ export default function Referrals() {
       commission: referralStats?.level3Commission || "0",
       rate: "1%",
       color: "text-chart-3",
+      title: "Level 3",
+      description: "Indirect referrals",
+    },
+    {
+      level: 0,
+      count: 0,
+      commission: referralStats?.companyCommissions || "0",
+      rate: "Varies",
+      color: "text-primary",
+      title: "Company",
+      description: "Fallback commissions",
     },
   ];
 
@@ -255,7 +279,7 @@ export default function Referrals() {
             <Button
               className="w-full mt-2"
               variant="outline"
-              onClick={generateQRCode}
+              onClick={openQRDialog}
               data-testid="button-generate-qr"
             >
               <QrCode className="mr-2 h-5 w-5" />
@@ -266,14 +290,14 @@ export default function Referrals() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Total Commissions</CardTitle>
-            <CardDescription>Earnings from all referral levels</CardDescription>
+            <CardTitle>Total Commission Balance</CardTitle>
+            <CardDescription>Withdrawable earnings from all sources</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2 mb-6">
               <DollarSign className="h-8 w-8 text-chart-2" />
               <span className="text-5xl font-bold font-mono text-chart-2" data-testid="text-total-commission">
-                {parseFloat(referralStats?.totalCommission || "0").toLocaleString()}
+                {parseFloat(referralStats?.actualBalance || "0").toLocaleString()}
               </span>
               <span className="text-2xl text-muted-foreground">XNRT</span>
             </div>
@@ -285,30 +309,44 @@ export default function Referrals() {
                   {(referralStats?.level1Count || 0) + (referralStats?.level2Count || 0) + (referralStats?.level3Count || 0)}
                 </span>
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Direct Commissions:</span>
+                <span className="font-bold">
+                  {parseFloat(referralStats?.totalCommission || "0").toLocaleString()} XNRT
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Company Commissions:</span>
+                <span className="font-bold">
+                  {parseFloat(referralStats?.companyCommissions || "0").toLocaleString()} XNRT
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {levelStats.map((stat) => (
-          <Card key={stat.level} className="hover-elevate">
+      <div className="grid gap-4 md:grid-cols-4">
+        {levelStats.map((stat, index) => (
+          <Card key={index} className="hover-elevate">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Level {stat.level}</CardTitle>
+                <CardTitle className="text-lg">{stat.title}</CardTitle>
                 <Badge variant="secondary" className="font-mono">{stat.rate}</Badge>
               </div>
               <CardDescription>
-                {stat.level === 1 ? "Direct" : "Indirect"} referrals
+                {stat.description}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Count:</span>
-                <span className="text-2xl font-bold" data-testid={`stat-level${stat.level}-count`}>
-                  {stat.count}
-                </span>
-              </div>
+              {stat.level > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Count:</span>
+                  <span className="text-2xl font-bold" data-testid={`stat-level${stat.level}-count`}>
+                    {stat.count}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Earned:</span>
                 <span className={`text-xl font-bold ${stat.color}`} data-testid={`stat-level${stat.level}-commission`}>

@@ -360,15 +360,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.authUser!.id;
       const referrals = await storage.getReferralsByReferrer(userId);
+      const balance = await storage.getBalance(userId);
+
+      const level1Total = referrals.filter(r => r.level === 1).reduce((sum, r) => sum + parseFloat(r.totalCommission), 0);
+      const level2Total = referrals.filter(r => r.level === 2).reduce((sum, r) => sum + parseFloat(r.totalCommission), 0);
+      const level3Total = referrals.filter(r => r.level === 3).reduce((sum, r) => sum + parseFloat(r.totalCommission), 0);
+      const directCommissions = level1Total + level2Total + level3Total;
+      const actualBalance = parseFloat(balance?.referralBalance || "0");
+      const companyCommissions = actualBalance - directCommissions;
 
       const stats = {
         level1Count: referrals.filter(r => r.level === 1).length,
         level2Count: referrals.filter(r => r.level === 2).length,
         level3Count: referrals.filter(r => r.level === 3).length,
-        level1Commission: referrals.filter(r => r.level === 1).reduce((sum, r) => sum + parseFloat(r.totalCommission), 0).toString(),
-        level2Commission: referrals.filter(r => r.level === 2).reduce((sum, r) => sum + parseFloat(r.totalCommission), 0).toString(),
-        level3Commission: referrals.filter(r => r.level === 3).reduce((sum, r) => sum + parseFloat(r.totalCommission), 0).toString(),
+        level1Commission: level1Total.toString(),
+        level2Commission: level2Total.toString(),
+        level3Commission: level3Total.toString(),
         totalCommission: referrals.reduce((sum, r) => sum + parseFloat(r.totalCommission), 0).toString(),
+        actualBalance: actualBalance.toString(),
+        companyCommissions: companyCommissions.toString(),
       };
 
       res.json(stats);
