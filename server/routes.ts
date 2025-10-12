@@ -593,7 +593,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const period = (req.query.period as string) || 'all-time';
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const currentUserId = req.authUser!.id;
-      const isAdmin = req.authUser!.role === 'admin';
+      
+      const currentUser = await storage.getUser(currentUserId);
+      const isAdmin = currentUser?.isAdmin || false;
       
       // Calculate date filter based on period
       let dateFilter: string | null = null;
@@ -722,7 +724,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const period = (req.query.period as string) || 'all-time';
       const category = (req.query.category as string) || 'overall';
       const currentUserId = req.authUser!.id;
-      const isAdmin = req.authUser!.role === 'admin';
+      
+      const currentUser = await storage.getUser(currentUserId);
+      const isAdmin = currentUser?.isAdmin || false;
 
       const result = await storage.getXPLeaderboard(currentUserId, period, category, isAdmin);
       res.json(result);

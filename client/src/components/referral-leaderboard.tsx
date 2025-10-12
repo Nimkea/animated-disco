@@ -7,15 +7,16 @@ import { Trophy, Medal, Award, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface LeaderboardEntry {
-  userId: string;
-  username: string;
-  email: string;
+  displayName: string;
   totalReferrals: number;
   totalCommission: string;
   level1Count: number;
   level2Count: number;
   level3Count: number;
   rank: number;
+  userId?: string;
+  username?: string;
+  email?: string;
 }
 
 interface LeaderboardResponse {
@@ -72,9 +73,9 @@ export function ReferralLeaderboard() {
         ) : data && data.leaderboard.length > 0 ? (
           <>
             <div className="space-y-2">
-              {data.leaderboard.slice(0, 10).map((entry) => (
+              {data.leaderboard.slice(0, 10).map((entry, index) => (
                 <div
-                  key={entry.userId}
+                  key={`rank-${index}`}
                   className={`flex items-center gap-4 p-3 rounded-lg border ${
                     entry.rank <= 3 ? 'bg-gradient-to-r from-primary/5 to-transparent border-primary/20' : 'bg-card border-border'
                   }`}
@@ -84,7 +85,7 @@ export function ReferralLeaderboard() {
                     {getRankIcon(entry.rank)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate">{entry.username || entry.email}</p>
+                    <p className="font-semibold truncate" data-testid={`text-displayname-${entry.rank}`}>{entry.displayName}</p>
                     <div className="flex gap-2 text-xs text-muted-foreground">
                       <span>{entry.totalReferrals} referrals</span>
                       <span>•</span>
@@ -108,7 +109,7 @@ export function ReferralLeaderboard() {
                     <span className="text-sm font-bold text-primary">#{data.userPosition.rank}</span>
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold">You</p>
+                    <p className="font-semibold" data-testid="text-displayname-user">{data.userPosition.displayName}</p>
                     <div className="flex gap-2 text-xs text-muted-foreground">
                       <span>{data.userPosition.totalReferrals} referrals</span>
                       <span>•</span>
