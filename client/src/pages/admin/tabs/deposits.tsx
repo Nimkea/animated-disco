@@ -112,24 +112,24 @@ export default function DepositsTab() {
       setBulkConfirmDialogOpen(false);
       setBulkAdminNotes("");
       
-      const { approved, failed, errors } = data;
+      const { approved, failed, total } = data;
       if (failed > 0) {
         toast({
           title: "Partial Success",
-          description: `${approved} deposits approved, ${failed} failed. ${errors.join(", ")}`,
-          variant: "destructive",
+          description: `Successfully approved ${approved} of ${total} deposits. ${failed} failed.`,
+          variant: "default",
         });
       } else {
         toast({
           title: "Success",
-          description: `${approved} deposits approved successfully`,
+          description: `Successfully approved ${approved} deposit${approved !== 1 ? 's' : ''}`,
         });
       }
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to process bulk approval",
+        description: "Failed to approve deposits",
         variant: "destructive",
       });
     },
@@ -146,24 +146,24 @@ export default function DepositsTab() {
       setBulkConfirmDialogOpen(false);
       setBulkAdminNotes("");
       
-      const { rejected, failed, errors } = data;
+      const { rejected, failed, total } = data;
       if (failed > 0) {
         toast({
           title: "Partial Success",
-          description: `${rejected} deposits rejected, ${failed} failed. ${errors.join(", ")}`,
-          variant: "destructive",
+          description: `Successfully rejected ${rejected} of ${total} deposits. ${failed} failed.`,
+          variant: "default",
         });
       } else {
         toast({
           title: "Success",
-          description: `${rejected} deposits rejected successfully`,
+          description: `Successfully rejected ${rejected} deposit${rejected !== 1 ? 's' : ''}`,
         });
       }
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to process bulk rejection",
+        description: "Failed to reject deposits",
         variant: "destructive",
       });
     },
@@ -244,10 +244,13 @@ export default function DepositsTab() {
         </Button>
       </div>
 
-      {/* Bulk Actions Bar */}
+      {/* Bulk Actions Bar - Sticky at Bottom */}
       {selectedDepositIds.size > 0 && (
-        <Card className="border-primary bg-primary/5">
-          <CardContent className="py-4">
+        <div 
+          className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+          data-testid="bar-bulk-actions"
+        >
+          <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <Badge variant="secondary" className="text-base px-3 py-1" data-testid="text-selected-count">
@@ -264,10 +267,10 @@ export default function DepositsTab() {
                   onClick={() => handleBulkAction('approve')}
                   disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
                   className="gap-1"
-                  data-testid="button-bulk-approve"
+                  data-testid="button-approve-selected"
                 >
                   <CheckCircle className="h-4 w-4" />
-                  Approve All
+                  Approve Selected
                 </Button>
                 <Button
                   variant="destructive"
@@ -275,10 +278,10 @@ export default function DepositsTab() {
                   onClick={() => handleBulkAction('reject')}
                   disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
                   className="gap-1"
-                  data-testid="button-bulk-reject"
+                  data-testid="button-reject-selected"
                 >
                   <XCircle className="h-4 w-4" />
-                  Reject All
+                  Reject Selected
                 </Button>
                 <Button
                   variant="ghost"
@@ -292,8 +295,8 @@ export default function DepositsTab() {
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       <Card>
@@ -326,14 +329,25 @@ export default function DepositsTab() {
             </div>
           ) : filteredDeposits && filteredDeposits.length > 0 ? (
             <div className="space-y-3">
-              {filteredDeposits.map((deposit) => (
+              {filteredDeposits.map((deposit) => {
+                const isSelected = selectedDepositIds.has(deposit.id);
+                return (
                 <div
                   key={deposit.id}
-                  className="flex flex-col gap-3 p-4 border border-border rounded-md hover-elevate"
+                  className={`flex flex-col gap-3 p-4 border rounded-md hover-elevate transition-all ${
+                    isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                  }`}
                   data-testid={`deposit-${deposit.id}`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3 flex-1">
+                      {/* Selection Checkbox */}
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleDepositSelection(deposit.id)}
+                        className="mt-1"
+                        data-testid={`checkbox-select-deposit-${deposit.id}`}
+                      />
                       {/* Inline Thumbnail Preview */}
                       {deposit.proofImageUrl && (
                         <button
@@ -435,7 +449,8 @@ export default function DepositsTab() {
                     </Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-center py-8 text-muted-foreground">
@@ -506,6 +521,64 @@ export default function DepositsTab() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Action Confirmation Dialog */}
+      <AlertDialog open={bulkConfirmDialogOpen} onOpenChange={setBulkConfirmDialogOpen}>
+        <AlertDialogContent data-testid="dialog-bulk-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulkAction === 'approve' ? 'Approve Selected Deposits' : 'Reject Selected Deposits'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {bulkAction === 'approve' 
+                ? `You are about to approve ${selectedDepositIds.size} deposit${selectedDepositIds.size !== 1 ? 's' : ''} totaling ${totalXNRT.toLocaleString()} XNRT. This action will credit the respective amounts to users' main balances.`
+                : `You are about to reject ${selectedDepositIds.size} deposit${selectedDepositIds.size !== 1 ? 's' : ''}. This action cannot be undone.`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Admin Notes (Optional)</label>
+              <Textarea
+                placeholder={`Add notes about this ${bulkAction === 'approve' ? 'approval' : 'rejection'}...`}
+                value={bulkAdminNotes}
+                onChange={(e) => setBulkAdminNotes(e.target.value)}
+                data-testid="textarea-bulk-admin-notes"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBulkConfirmDialogOpen(false);
+                setBulkAdminNotes("");
+              }}
+              data-testid="button-cancel-bulk-action"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={bulkAction === 'approve' ? 'default' : 'destructive'}
+              onClick={confirmBulkAction}
+              disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
+              data-testid="button-confirm-bulk-action"
+            >
+              {bulkApproveMutation.isPending || bulkRejectMutation.isPending ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-1"></div>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  {bulkAction === 'approve' ? <CheckCircle className="h-4 w-4 mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
+                  Confirm {bulkAction === 'approve' ? 'Approval' : 'Rejection'}
+                </>
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

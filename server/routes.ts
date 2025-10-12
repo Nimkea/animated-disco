@@ -1073,6 +1073,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk approve deposits
+  app.post('/api/admin/deposits/bulk-approve', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { depositIds, notes } = req.body;
+
+      if (!depositIds || !Array.isArray(depositIds) || depositIds.length === 0) {
+        return res.status(400).json({ message: "Invalid deposit IDs" });
+      }
+
+      // Process all deposits sequentially to prevent race conditions
+      const successful: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      const errors: string[] = [];
+
+      for (const id of depositIds) {
+        try {
+          const deposit = await storage.getTransactionById(id);
+
+          if (!deposit || deposit.type !== "deposit") {
+            throw new Error(`Deposit ${id} not found`);
+          }
+
+          if (deposit.status !== "pending") {
+            throw new Error(`Deposit ${id} already processed`);
+          }
+
+          // Update transaction status with optional admin notes
+          await storage.updateTransaction(id, { 
+            status: "approved",
+            adminNotes: notes || deposit.adminNotes,
+            approvedBy: req.authUser!.id,
+            approvedAt: new Date(),
+          });
+
+          // Add to user balance
+          const balance = await storage.getBalance(deposit.userId);
+          if (balance) {
+            await storage.updateBalance(deposit.userId, {
+              xnrtBalance: (parseFloat(balance.xnrtBalance) + parseFloat(deposit.amount)).toString(),
+              totalEarned: (parseFloat(balance.totalEarned) + parseFloat(deposit.amount)).toString(),
+            });
+          }
+
+          // Distribute referral commissions
+          await storage.distributeReferralCommissions(deposit.userId, parseFloat(deposit.amount));
+
+          // Log activity
+          await storage.createActivity({
+            userId: deposit.userId,
+            type: "deposit_approved",
+            description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT approved${notes ? ` - ${notes}` : ''}`,
+          });
+
+          successful.push(id);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          failed.push({ 
+            id, 
+            error: errorMessage
+          });
+          errors.push(`${id}: ${errorMessage}`);
+        }
+      }
+
+      res.json({
+        approved: successful.length,
+        failed: failed.length,
+        total: depositIds.length,
+        successful,
+        failures: failed,
+        errors,
+      });
+    } catch (error) {
+      console.error("Error bulk approving deposits:", error);
+      res.status(500).json({ message: "Failed to process bulk approval" });
+    }
+  });
+
+  // Bulk reject deposits
+  app.post('/api/admin/deposits/bulk-reject', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { depositIds, notes } = req.body;
+
+      if (!depositIds || !Array.isArray(depositIds) || depositIds.length === 0) {
+        return res.status(400).json({ message: "Invalid deposit IDs" });
+      }
+
+      // Process all deposits sequentially to prevent race conditions
+      const successful: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      const errors: string[] = [];
+
+      for (const id of depositIds) {
+        try {
+          const deposit = await storage.getTransactionById(id);
+
+          if (!deposit || deposit.type !== "deposit") {
+            throw new Error(`Deposit ${id} not found`);
+          }
+
+          if (deposit.status !== "pending") {
+            throw new Error(`Deposit ${id} already processed`);
+          }
+
+          // Update transaction status with optional admin notes
+          await storage.updateTransaction(id, { 
+            status: "rejected",
+            adminNotes: notes || deposit.adminNotes,
+            approvedBy: req.authUser!.id,
+            approvedAt: new Date(),
+          });
+
+          // Log activity
+          await storage.createActivity({
+            userId: deposit.userId,
+            type: "deposit_rejected",
+            description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT rejected${notes ? ` - ${notes}` : ''}`,
+          });
+
+          successful.push(id);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          failed.push({ 
+            id, 
+            error: errorMessage
+          });
+          errors.push(`${id}: ${errorMessage}`);
+        }
+      }
+
+      res.json({
+        rejected: successful.length,
+        failed: failed.length,
+        total: depositIds.length,
+        successful,
+        failures: failed,
+        errors,
+      });
+    } catch (error) {
+      console.error("Error bulk rejecting deposits:", error);
+      res.status(500).json({ message: "Failed to process bulk rejection" });
+    }
+  });
+
   app.post('/api/admin/reconcile-referrals', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
     try {
       console.log('[RECONCILE] Starting referral commission reconciliation...');
