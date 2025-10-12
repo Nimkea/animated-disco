@@ -41,7 +41,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Withdrawal System**: XNRT to USDT conversion with 2% fee, multi-source support (main, staking, mining, referral balances), 5000 XNRT minimum for mining/referral sources, and admin approval.
 - **Staking System**: Four-tiered system with varying APY and duration, featuring real-time countdowns and automated daily reward distribution.
 - **Mining System**: 24-hour sessions with ad boosts, XP to XNRT conversion, and automated reward distribution.
-- **Referral System**: 3-level commission chain (6%/3%/1%) with network visualization, real-time notifications, a leaderboard, separate balance tracking, and social sharing features.
+- **Referral System**: 3-level commission chain (6%/3%/1%) with network visualization, real-time notifications, a leaderboard with privacy controls, separate balance tracking, and social sharing features.
 - **Daily Check-in System**: Atomic check-ins with streak rewards, calendar view showing monthly grid with check-in history, and anti-exploit measures.
 - **Achievement System**: Auto-unlocks achievements based on user actions with XP rewards and confetti celebrations.
 - **XP Leaderboard System**: Weekly/monthly rankings with category filters (Overall, Mining, Staking, Referrals), top 10 display with trophy icons.
@@ -72,6 +72,14 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Security**: helmet
 
 ## Recent Updates (Oct 12, 2025)
+### Leaderboard Privacy Controls ✅
+- **User Anonymization**: Non-admin users see only anonymized handles (Player-XXXX) on all leaderboards
+- **Admin Visibility**: Admin users can view full user information (userId, username, email) in leaderboard entries
+- **Stable Hashing**: Anonymized handles generated using SHA-256 hash (first 4 characters) for stable per-user identifiers
+- **No Identifier Leaks**: userId/username/email excluded from API responses for non-admins; removed from DOM keys and data-testid attributes
+- **Dual Implementation**: Privacy controls applied to both XP Leaderboard (Overall/Mining/Staking/Referrals) and Referral Leaderboard
+- **Security**: Backend validates admin status via database lookup; frontend conditionally renders user IDs only when isAdmin is true
+
 ### Comprehensive Platform Testing ✅
 - **API Testing:** All 30+ endpoints verified working correctly
 - **Security Fixes:** 
@@ -93,7 +101,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 ### Earlier Updates
 ### Platform Enhancements
 - **Calendar View for Daily Check-ins**: Monthly grid showing check-in history with visual streak display, month/year navigation, golden amber styling for checked days.
-- **XP Leaderboard System**: Weekly/monthly rankings with category filters (Overall, Mining, Staking, Referrals), dedicated /leaderboard page with tabs, top 10 display with trophy icons for top 3 ranks.
+- **XP Leaderboard System**: Weekly/monthly rankings with category filters (Overall, Mining, Staking, Referrals), dedicated /leaderboard page with tabs, top 10 display with trophy icons for top 3 ranks. **Privacy Controls:** Non-admin users see anonymized handles (Player-XXXX stable hash format) only; admins see full user information including IDs, usernames, and emails.
 - **Confetti Celebrations**: canvas-confetti integration with 4 celebration types (achievement/streak/levelup/default), feature flag controlled, triggers across achievements, check-ins, tasks, and mining.
 - **Admin Enhancements**: Proof of payment image upload (base64, 5MB max), inline thumbnail preview (80x80px with hover effects), bulk deposit approval/rejection with sequential processing to prevent race conditions.
 - **Withdrawal System Expansion**: Added mining and staking balance sources (4 total: main, staking, mining, referral), enforced 5000 XNRT minimum for mining and referral balances, proper balance deduction logic.
