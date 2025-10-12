@@ -653,14 +653,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const usdtAmount = netAmount / 100;
 
       const balance = await storage.getBalance(userId);
-      const availableBalance = source === "main" ? parseFloat(balance?.xnrtBalance || "0") : parseFloat(balance?.referralBalance || "0");
+      let availableBalance = 0;
+      
+      switch (source) {
+        case "main":
+          availableBalance = parseFloat(balance?.xnrtBalance || "0");
+          break;
+        case "staking":
+          availableBalance = parseFloat(balance?.stakingBalance || "0");
+          break;
+        case "mining":
+          availableBalance = parseFloat(balance?.miningBalance || "0");
+          break;
+        case "referral":
+          availableBalance = parseFloat(balance?.referralBalance || "0");
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid source" });
+      }
 
       if (withdrawAmount > availableBalance) {
         return res.status(400).json({ message: "Insufficient balance" });
       }
 
       if (source === "referral" && withdrawAmount < 5000) {
-        return res.status(400).json({ message: "Minimum withdrawal from referral balance is 5000 XNRT" });
+        return res.status(400).json({ message: "Minimum withdrawal from referral balance is 5,000 XNRT" });
+      }
+
+      if (source === "mining" && withdrawAmount < 5000) {
+        return res.status(400).json({ message: "Minimum withdrawal from mining balance is 5,000 XNRT" });
       }
 
       const transaction = await storage.createTransaction({
@@ -1279,7 +1300,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Deduct from balance
       const balance = await storage.getBalance(withdrawal.userId);
       if (balance) {
-        const sourceBalance = withdrawal.source === "main" ? "xnrtBalance" : "referralBalance";
+        let sourceBalance: "xnrtBalance" | "stakingBalance" | "miningBalance" | "referralBalance";
+        
+        switch (withdrawal.source) {
+          case "main":
+            sourceBalance = "xnrtBalance";
+            break;
+          case "staking":
+            sourceBalance = "stakingBalance";
+            break;
+          case "mining":
+            sourceBalance = "miningBalance";
+            break;
+          case "referral":
+            sourceBalance = "referralBalance";
+            break;
+          default:
+            sourceBalance = "xnrtBalance";
+        }
+        
         await storage.updateBalance(withdrawal.userId, {
           [sourceBalance]: (parseFloat(balance[sourceBalance]) - parseFloat(withdrawal.amount)).toString(),
         });

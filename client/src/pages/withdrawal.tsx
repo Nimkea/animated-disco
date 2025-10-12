@@ -15,10 +15,11 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 
 const WITHDRAWAL_FEE_PERCENT = 2;
 const MIN_REFERRAL_WITHDRAWAL = 5000;
+const MIN_MINING_WITHDRAWAL = 5000;
 
 export default function Withdrawal() {
   const { toast } = useToast();
-  const [source, setSource] = useState<"main" | "referral">("main");
+  const [source, setSource] = useState<"main" | "staking" | "mining" | "referral">("main");
   const [amount, setAmount] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -76,9 +77,22 @@ export default function Withdrawal() {
     }
 
     const withdrawAmount = parseFloat(amount);
-    const availableBalance = source === "main" 
-      ? parseFloat(balance?.xnrtBalance || "0")
-      : parseFloat(balance?.referralBalance || "0");
+    let availableBalance = 0;
+    
+    switch (source) {
+      case "main":
+        availableBalance = parseFloat(balance?.xnrtBalance || "0");
+        break;
+      case "staking":
+        availableBalance = parseFloat(balance?.stakingBalance || "0");
+        break;
+      case "mining":
+        availableBalance = parseFloat(balance?.miningBalance || "0");
+        break;
+      case "referral":
+        availableBalance = parseFloat(balance?.referralBalance || "0");
+        break;
+    }
 
     if (withdrawAmount <= 0) {
       toast({
@@ -98,10 +112,10 @@ export default function Withdrawal() {
       return;
     }
 
-    if (source === "referral" && withdrawAmount < MIN_REFERRAL_WITHDRAWAL) {
+    if ((source === "referral" || source === "mining") && withdrawAmount < 5000) {
       toast({
         title: "Minimum Not Met",
-        description: `Minimum withdrawal from referral balance is ${MIN_REFERRAL_WITHDRAWAL.toLocaleString()} XNRT`,
+        description: `Minimum withdrawal from ${source} balance is 5,000 XNRT`,
         variant: "destructive",
       });
       return;
@@ -119,11 +133,23 @@ export default function Withdrawal() {
   const netAmount = withdrawAmount - fee;
   const usdtAmount = netAmount / 100;
 
-  const availableBalance = source === "main" 
-    ? parseFloat(balance?.xnrtBalance || "0")
-    : parseFloat(balance?.referralBalance || "0");
+  let availableBalance = 0;
+  switch (source) {
+    case "main":
+      availableBalance = parseFloat(balance?.xnrtBalance || "0");
+      break;
+    case "staking":
+      availableBalance = parseFloat(balance?.stakingBalance || "0");
+      break;
+    case "mining":
+      availableBalance = parseFloat(balance?.miningBalance || "0");
+      break;
+    case "referral":
+      availableBalance = parseFloat(balance?.referralBalance || "0");
+      break;
+  }
 
-  const canWithdraw = source === "main" || withdrawAmount >= MIN_REFERRAL_WITHDRAWAL;
+  const canWithdraw = source === "main" || source === "staking" || withdrawAmount >= 5000;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -160,21 +186,59 @@ export default function Withdrawal() {
         <p className="text-muted-foreground">Convert XNRT to USDT and withdraw to your wallet</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className={source === "main" ? "border-primary ring-2 ring-primary/20" : ""}>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card 
+          className={`cursor-pointer transition-all ${source === "main" ? "border-primary ring-2 ring-primary/20" : "hover:border-primary/50"}`}
+          onClick={() => setSource("main")}
+        >
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">Main Balance</p>
               <Wallet className="h-5 w-5 text-primary" />
             </div>
             <p className="text-3xl font-bold font-mono" data-testid="text-main-balance">
-              {availableBalance.toLocaleString()}
+              {parseFloat(balance?.xnrtBalance || "0").toLocaleString()}
             </p>
             <p className="text-sm text-muted-foreground">XNRT</p>
           </CardContent>
         </Card>
 
-        <Card className={source === "referral" ? "border-chart-2 ring-2 ring-chart-2/20" : ""}>
+        <Card 
+          className={`cursor-pointer transition-all ${source === "staking" ? "border-chart-1 ring-2 ring-chart-1/20" : "hover:border-chart-1/50"}`}
+          onClick={() => setSource("staking")}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground">Staking Balance</p>
+              <Wallet className="h-5 w-5 text-chart-1" />
+            </div>
+            <p className="text-3xl font-bold font-mono" data-testid="text-staking-balance">
+              {parseFloat(balance?.stakingBalance || "0").toLocaleString()}
+            </p>
+            <p className="text-sm text-muted-foreground">XNRT</p>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className={`cursor-pointer transition-all ${source === "mining" ? "border-chart-3 ring-2 ring-chart-3/20" : "hover:border-chart-3/50"}`}
+          onClick={() => setSource("mining")}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground">Mining Balance</p>
+              <Wallet className="h-5 w-5 text-chart-3" />
+            </div>
+            <p className="text-3xl font-bold font-mono" data-testid="text-mining-balance">
+              {parseFloat(balance?.miningBalance || "0").toLocaleString()}
+            </p>
+            <p className="text-sm text-muted-foreground">XNRT (Min: 5,000)</p>
+          </CardContent>
+        </Card>
+
+        <Card 
+          className={`cursor-pointer transition-all ${source === "referral" ? "border-chart-2 ring-2 ring-chart-2/20" : "hover:border-chart-2/50"}`}
+          onClick={() => setSource("referral")}
+        >
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">Referral Balance</p>
@@ -183,21 +247,21 @@ export default function Withdrawal() {
             <p className="text-3xl font-bold font-mono" data-testid="text-referral-balance">
               {parseFloat(balance?.referralBalance || "0").toLocaleString()}
             </p>
-            <p className="text-sm text-muted-foreground">XNRT (Min: {MIN_REFERRAL_WITHDRAWAL.toLocaleString()})</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-muted-foreground">Withdrawal Fee</p>
-              <AlertCircle className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="text-3xl font-bold font-mono">{WITHDRAWAL_FEE_PERCENT}%</p>
-            <p className="text-sm text-muted-foreground">Applied to all withdrawals</p>
+            <p className="text-sm text-muted-foreground">XNRT (Min: 5,000)</p>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm text-muted-foreground">Withdrawal Fee</p>
+            <AlertCircle className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="text-3xl font-bold font-mono">{WITHDRAWAL_FEE_PERCENT}%</p>
+          <p className="text-sm text-muted-foreground">Applied to all withdrawals</p>
+        </CardContent>
+      </Card>
 
       <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
         <CardHeader>
@@ -207,11 +271,23 @@ export default function Withdrawal() {
         <CardContent className="space-y-4">
           <div>
             <Label>Source Balance</Label>
-            <RadioGroup value={source} onValueChange={(v) => setSource(v as "main" | "referral")}>
+            <RadioGroup value={source} onValueChange={(v) => setSource(v as "main" | "staking" | "mining" | "referral")}>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="main" id="main" data-testid="radio-main" />
                 <Label htmlFor="main" className="cursor-pointer">
                   Main Balance ({parseFloat(balance?.xnrtBalance || "0").toLocaleString()} XNRT)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="staking" id="staking" data-testid="radio-staking" />
+                <Label htmlFor="staking" className="cursor-pointer">
+                  Staking Balance ({parseFloat(balance?.stakingBalance || "0").toLocaleString()} XNRT)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="mining" id="mining" data-testid="radio-mining" />
+                <Label htmlFor="mining" className="cursor-pointer">
+                  Mining Balance ({parseFloat(balance?.miningBalance || "0").toLocaleString()} XNRT)
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
@@ -228,7 +304,7 @@ export default function Withdrawal() {
             <Input
               id="amount"
               type="number"
-              placeholder={source === "referral" ? `Min: ${MIN_REFERRAL_WITHDRAWAL.toLocaleString()}` : "Enter amount"}
+              placeholder={(source === "referral" || source === "mining") ? "Min: 5,000 XNRT" : "Enter amount"}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               data-testid="input-withdrawal-amount"
@@ -270,10 +346,10 @@ export default function Withdrawal() {
             />
           </div>
 
-          {!canWithdraw && source === "referral" && (
+          {!canWithdraw && (source === "referral" || source === "mining") && (
             <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-md text-sm text-destructive">
               <AlertCircle className="h-4 w-4" />
-              <span>Minimum withdrawal from referral balance is {MIN_REFERRAL_WITHDRAWAL.toLocaleString()} XNRT</span>
+              <span>Minimum withdrawal from {source} balance is 5,000 XNRT</span>
             </div>
           )}
 
