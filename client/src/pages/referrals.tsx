@@ -329,7 +329,7 @@ export default function Referrals() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        {levelStats.map((stat, index) => (
+        {levelStats.filter(stat => user?.isAdmin || stat.level > 0).map((stat, index) => (
           <Card key={index} className="hover-elevate">
             <CardHeader>
               <div className="flex items-center justify-between">
