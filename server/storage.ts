@@ -172,6 +172,7 @@ export interface IStorage {
   getMiningHistory(userId: string): Promise<MiningSession[]>;
   createMiningSession(session: InsertMiningSession): Promise<MiningSession>;
   updateMiningSession(id: string, updates: Partial<MiningSession>): Promise<MiningSession>;
+  processMiningRewards(): Promise<void>;
   
   // Referral operations
   getReferralsByReferrer(referrerId: string): Promise<Referral[]>;
@@ -530,6 +531,66 @@ export class DatabaseStorage implements IStorage {
         await this.updateStake(stake.id, {
           status: "completed",
         });
+      }
+    }
+  }
+
+  async processMiningRewards(): Promise<void> {
+    const activeSessions = await prisma.miningSession.findMany({
+      where: { status: "active" },
+    });
+    const now = new Date();
+
+    for (const session of activeSessions) {
+      if (!session.endTime) continue;
+      const endTime = new Date(session.endTime);
+      
+      if (now >= endTime) {
+        const xpReward = session.finalReward;
+        const xnrtReward = session.finalReward * 0.5;
+
+        await this.updateMiningSession(session.id, {
+          status: "completed",
+          endTime: now,
+        });
+
+        const user = await this.getUser(session.userId);
+        if (user) {
+          await this.updateUser(session.userId, {
+            xp: (user.xp || 0) + xpReward,
+          });
+        }
+
+        const balance = await this.getBalance(session.userId);
+        if (balance) {
+          await this.updateBalance(session.userId, {
+            miningBalance: (parseFloat(balance.miningBalance) + xnrtReward).toString(),
+            totalEarned: (parseFloat(balance.totalEarned) + xnrtReward).toString(),
+          });
+        }
+
+        await this.createActivity({
+          userId: session.userId,
+          type: "mining_completed",
+          description: `Auto-completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`,
+        });
+
+        const { notifyUser } = await import("./notifications");
+        void notifyUser(session.userId, {
+          type: "mining_completed",
+          title: "⛏️ Mining Complete!",
+          message: `You earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT from your 24-hour mining session`,
+          url: "/mining",
+          metadata: {
+            xpReward,
+            xnrtReward: xnrtReward.toString(),
+            sessionId: session.id,
+          },
+        }).catch(err => {
+          console.error('Error sending mining notification (non-blocking):', err);
+        });
+
+        await this.checkAndUnlockAchievements(session.userId);
       }
     }
   }

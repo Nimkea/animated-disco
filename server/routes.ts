@@ -266,17 +266,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.authUser!.id;
       
-      // Check if can start mining
-      const history = await storage.getMiningHistory(userId);
-      const lastSession = history[0];
-      
-      if (lastSession && new Date(lastSession.nextAvailable) > new Date()) {
-        return res.status(400).json({ message: "Please wait 24 hours between mining sessions" });
+      // Check if user already has an active session
+      const currentSession = await storage.getCurrentMiningSession(userId);
+      if (currentSession && currentSession.status === "active") {
+        return res.status(400).json({ message: "You already have an active mining session" });
       }
 
       const startTime = new Date();
       const endTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const nextAvailable = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const session = await storage.createMiningSession({
         userId,
         baseReward: 10,
@@ -285,7 +282,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         finalReward: 10,
         startTime,
         endTime,
-        nextAvailable,
+        nextAvailable: new Date(), // Set to now so user can restart immediately after completion
         status: "active",
       });
 
@@ -296,33 +293,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/mining/watch-ad', requireAuth, validateCSRF, async (req, res) => {
+  // Auto-completion endpoint (processes expired mining sessions)
+  app.post('/api/mining/process-rewards', requireAuth, validateCSRF, async (req, res) => {
     try {
-      const userId = req.authUser!.id;
-      const session = await storage.getCurrentMiningSession(userId);
-
-      if (!session || session.status !== "active") {
-        return res.status(400).json({ message: "No active mining session" });
-      }
-
-      if (session.adBoostCount >= 5) {
-        return res.status(400).json({ message: "Maximum ad boosts reached" });
-      }
-
-      const newAdBoostCount = session.adBoostCount + 1;
-      const newBoostPercentage = newAdBoostCount * 10;
-      const newFinalReward = session.baseReward + Math.floor((session.baseReward * newBoostPercentage) / 100);
-
-      await storage.updateMiningSession(session.id, {
-        adBoostCount: newAdBoostCount,
-        boostPercentage: newBoostPercentage,
-        finalReward: newFinalReward,
-      });
-
-      res.json({ success: true, boost: newBoostPercentage });
+      await storage.processMiningRewards();
+      res.json({ success: true, message: "Mining rewards processed successfully" });
     } catch (error) {
-      console.error("Error watching ad:", error);
-      res.status(500).json({ message: "Failed to watch ad" });
+      console.error("Error processing mining rewards:", error);
+      res.status(500).json({ message: "Failed to process mining rewards" });
     }
   });
 
