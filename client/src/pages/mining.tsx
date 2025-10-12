@@ -8,9 +8,19 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Pickaxe, Zap, Clock, TrendingUp, Video } from "lucide-react";
 import type { MiningSession } from "@shared/schema";
-import { isUnauthorizedError } from "@/lib/authUtils";
+import { isUnauthorizedError, handleUnauthorized } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/use-confetti";
+
+// Ad system constants
+const AD_MAX = 5;
+const AD_STEP = 10; // percent per ad
+
+// Response type for stop mining mutation
+type StopMiningResponse = {
+  xpReward: number;
+  xnrtReward?: number;
+};
 
 export default function Mining() {
   const { toast } = useToast();
@@ -39,14 +49,7 @@ export default function Mining() {
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
+        handleUnauthorized(toast);
         return;
       }
       toast({
@@ -58,10 +61,11 @@ export default function Mining() {
   });
 
   const stopMiningMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/mining/stop", {});
+    mutationFn: async (): Promise<StopMiningResponse> => {
+      const res = await apiRequest("POST", "/api/mining/stop", {});
+      return await res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: StopMiningResponse) => {
       // Calculate level before and after XP gain for level-up detection
       const previousXP = user?.xp ?? 0;
       const newXP = previousXP + (data.xpReward || 0);
@@ -69,9 +73,13 @@ export default function Mining() {
       const newLevel = Math.floor(newXP / 1000) + 1;
       const leveledUp = newLevel > previousLevel;
       
+      // Safe null check on xnrtReward
+      const xnrt = data.xnrtReward;
+      const xnrtText = typeof xnrt === 'number' ? ` and ${xnrt.toFixed(1)} XNRT` : '';
+      
       toast({
         title: "Mining Complete!",
-        description: `You earned ${data.xpReward} XP and ${data.xnrtReward?.toFixed(1)} XNRT!`,
+        description: `You earned ${data.xpReward} XP${xnrtText}!`,
       });
       
       // Trigger confetti for level-ups
@@ -86,14 +94,7 @@ export default function Mining() {
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
+        handleUnauthorized(toast);
         return;
       }
       toast({
@@ -112,20 +113,13 @@ export default function Mining() {
       const newBoostCount = (currentSession?.adBoostCount || 0) + 1;
       toast({
         title: "Ad Watched!",
-        description: `+10% boost added! Total: ${newBoostCount * 10}%`,
+        description: `+${AD_STEP}% boost added! Total: ${newBoostCount * AD_STEP}%`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
+        handleUnauthorized(toast);
         return;
       }
       toast({
@@ -159,7 +153,7 @@ export default function Mining() {
       // If session is active, show time remaining until endTime
       if (currentSession.status === "active" && currentSession.endTime) {
         const end = new Date(currentSession.endTime).getTime();
-        const diff = end - now;
+        const diff = Math.max(0, end - now); // Prevent negative time if clock skews
 
         if (diff <= 0) {
           setTimeLeft("Complete!");
@@ -176,7 +170,7 @@ export default function Mining() {
       // Otherwise show cooldown to next available session
       else if (currentSession.nextAvailable) {
         const next = new Date(currentSession.nextAvailable).getTime();
-        const diff = next - now;
+        const diff = Math.max(0, next - now); // Prevent negative time if clock skews
 
         if (diff <= 0) {
           setTimeLeft("Ready!");
@@ -197,9 +191,14 @@ export default function Mining() {
   }, [currentSession]);
 
   const isSessionActive = currentSession?.status === "active";
-  const canStartMining = !currentSession || (currentSession.nextAvailable && new Date(currentSession.nextAvailable) <= new Date());
+  const nextAt = currentSession?.nextAvailable ? new Date(currentSession.nextAvailable) : null;
+  const canStartMining = !isSessionActive && (!currentSession || (nextAt && nextAt <= new Date()));
   const boostPercentage = currentSession?.boostPercentage || 0;
-  const estimatedReward = (currentSession?.baseReward || 10) + (currentSession?.baseReward || 10) * (boostPercentage / 100);
+  const baseReward = currentSession?.baseReward || 10;
+  const estimatedReward = Math.round(baseReward * (1 + boostPercentage / 100));
+  
+  // Disable start/stop buttons during mutations to prevent double-clicks
+  const startOrStopDisabled = startMiningMutation.isPending || stopMiningMutation.isPending;
 
   const isCoolingDown = !isSessionActive && !canStartMining;
   const isReady = !isSessionActive && canStartMining;
@@ -265,24 +264,28 @@ export default function Mining() {
               <div className="relative">
                 <div
                   className={`w-40 h-40 rounded-full flex items-center justify-center cursor-pointer transition-all ${
-                    isSessionActive
+                    startOrStopDisabled
+                      ? "bg-muted cursor-not-allowed opacity-50"
+                      : isSessionActive
                       ? "bg-gradient-to-br from-chart-2 to-chart-3 hover:scale-105 active:scale-95"
                       : isReady
                       ? "bg-gradient-to-br from-primary to-secondary hover:scale-105 active:scale-95 animate-pulse"
                       : "bg-muted cursor-not-allowed opacity-50"
                   }`}
                   onClick={() => {
+                    if (startOrStopDisabled) return;
                     if (isSessionActive) {
                       stopMiningMutation.mutate();
                     } else if (isReady) {
                       startMiningMutation.mutate();
                     }
                   }}
+                  aria-label={isSessionActive ? "Stop mining" : "Start mining"}
                   data-testid="button-mining-toggle"
                 >
                   <div className="text-center">
                     <Pickaxe className="h-16 w-16 text-white mx-auto mb-2" />
-                    <p className="text-white font-bold">
+                    <p className="text-white font-bold" aria-label={isSessionActive ? "Stop mining" : "Start mining"}>
                       {isSessionActive ? "STOP" : "START"}
                     </p>
                   </div>
@@ -339,31 +342,32 @@ export default function Mining() {
         <Card>
           <CardHeader>
             <CardTitle>Ad Boost System</CardTitle>
-            <CardDescription>Watch up to 5 ads for +10% each (max +50%)</CardDescription>
+            <CardDescription>Watch up to {AD_MAX} ads for +{AD_STEP}% each (max +{AD_MAX * AD_STEP}%)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Ads Watched:</span>
               <span className="text-2xl font-bold font-mono" data-testid="text-ad-count">
-                {currentSession?.adBoostCount || 0}/5
+                {currentSession?.adBoostCount || 0}/{AD_MAX}
               </span>
             </div>
 
-            <Progress value={((currentSession?.adBoostCount || 0) / 5) * 100} />
+            <Progress value={((currentSession?.adBoostCount || 0) / AD_MAX) * 100} />
 
             <Button
               className="w-full"
               size="lg"
-              disabled={!isSessionActive || (currentSession?.adBoostCount || 0) >= 5 || watchAdMutation.isPending}
+              disabled={!isSessionActive || (currentSession?.adBoostCount || 0) >= AD_MAX || watchAdMutation.isPending}
               onClick={() => watchAdMutation.mutate()}
+              aria-label={`Watch rewarded ad to add ${AD_STEP} percent mining boost`}
               data-testid="button-watch-ad"
             >
               <Video className="mr-2 h-5 w-5" />
-              {watchAdMutation.isPending ? "Loading Ad..." : "Watch Ad (+10%)"}
+              {watchAdMutation.isPending ? "Loading Ad..." : `Watch Ad (+${AD_STEP}%)`}
             </Button>
 
             <div className="grid grid-cols-5 gap-2">
-              {Array.from({ length: 5 }).map((_, i) => (
+              {Array.from({ length: AD_MAX }).map((_, i) => (
                 <div
                   key={i}
                   className={`h-2 rounded-full ${

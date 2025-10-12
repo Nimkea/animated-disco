@@ -6,9 +6,9 @@ export type CelebrationType = 'achievement' | 'streak' | 'levelup' | 'default';
 
 export function useConfetti() {
   const celebrate = useCallback((type: CelebrationType = 'default') => {
-    // Check if animations feature flag is enabled
-    // If disabled, gracefully skip confetti without errors
-    if (!featureFlags.ux.animations) {
+    // Check if animations feature flag is enabled with safe optional chaining
+    // If disabled or undefined, gracefully skip confetti without errors
+    if (!featureFlags?.ux?.animations) {
       return;
     }
 
@@ -30,12 +30,12 @@ export function useConfetti() {
         shapes: ['circle'],
       },
       
-      // Level up: Rainbow confetti with stars
+      // Level up: Rainbow confetti with supported shapes only (square, circle)
       levelup: {
         particleCount: 200,
         spread: 120,
         colors: ['#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899'],
-        shapes: ['star', 'circle'],
+        shapes: ['square', 'circle'],
       },
       
       // Default: Golden amber confetti
@@ -47,8 +47,13 @@ export function useConfetti() {
     };
 
     // Trigger confetti with the selected pattern
-    const pattern = patterns[type];
-    confetti(pattern);
+    // Wrapped in try/catch to prevent UI crashes from confetti errors
+    try {
+      const pattern = patterns[type];
+      confetti(pattern);
+    } catch {
+      // Silently fail - confetti should never crash the page
+    }
   }, []);
 
   return { celebrate };
