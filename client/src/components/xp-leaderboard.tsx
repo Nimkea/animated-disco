@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trophy, Medal, Award, Star } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
 
 interface LeaderboardEntry {
   displayName: string;
@@ -22,6 +23,8 @@ interface LeaderboardResponse {
 }
 
 export function XPLeaderboard() {
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin || false;
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'all-time'>('all-time');
   const [category, setCategory] = useState<'overall' | 'mining' | 'staking' | 'referrals'>('overall');
 
@@ -123,6 +126,12 @@ export function XPLeaderboard() {
                           <span>{entry.xp} Total XP</span>
                         </>
                       )}
+                      {isAdmin && entry.userId && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono text-[10px]" title={entry.email}>ID: {entry.userId.substring(0, 8)}...</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   {entry.rank <= 3 && (
@@ -151,6 +160,12 @@ export function XPLeaderboard() {
                         <>
                           <span>•</span>
                           <span>{data.userPosition.xp} Total XP</span>
+                        </>
+                      )}
+                      {isAdmin && data.userPosition.userId && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono text-[10px]" title={data.userPosition.email}>ID: {data.userPosition.userId.substring(0, 8)}...</span>
                         </>
                       )}
                     </div>

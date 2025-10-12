@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trophy, Medal, Award, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
 
 interface LeaderboardEntry {
   displayName: string;
@@ -25,6 +26,8 @@ interface LeaderboardResponse {
 }
 
 export function ReferralLeaderboard() {
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin || false;
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'all-time'>('all-time');
 
   const { data, isLoading } = useQuery<LeaderboardResponse>({
@@ -90,6 +93,12 @@ export function ReferralLeaderboard() {
                       <span>{entry.totalReferrals} referrals</span>
                       <span>•</span>
                       <span>{parseFloat(entry.totalCommission).toLocaleString()} XNRT</span>
+                      {isAdmin && entry.userId && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono text-[10px]" title={entry.email}>ID: {entry.userId.substring(0, 8)}...</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   {entry.rank <= 3 && (
@@ -114,6 +123,12 @@ export function ReferralLeaderboard() {
                       <span>{data.userPosition.totalReferrals} referrals</span>
                       <span>•</span>
                       <span>{parseFloat(data.userPosition.totalCommission).toLocaleString()} XNRT</span>
+                      {isAdmin && data.userPosition.userId && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono text-[10px]" title={data.userPosition.email}>ID: {data.userPosition.userId.substring(0, 8)}...</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
