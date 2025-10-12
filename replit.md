@@ -70,3 +70,24 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Animations**: canvas-confetti
 - **Monitoring**: Sentry (optional), web-vitals
 - **Security**: helmet
+
+## Recent Updates (Oct 12, 2025)
+### Mining System Robustness Improvements ✅
+- **Confetti Safety**: Replaced unsupported 'star' shape with 'square'/'circle' in canvas-confetti, added try/catch error handling to prevent UI crashes, and optional chaining for feature flags
+- **Robust 401 Detection**: Enhanced `isUnauthorizedError()` with `ApiError` type that checks status/code fields instead of fragile regex matching for more reliable authentication error handling
+- **DRY Authentication Handling**: Extracted `handleUnauthorized()` helper to eliminate code duplication across all three mining mutations (start/stop/watch-ad)
+- **Type Safety**: Added `StopMiningResponse` type with proper JSON parsing for end-to-end type enforcement in stop mining mutation
+- **Race Condition Prevention**: Implemented `startOrStopDisabled` flag using `isPending` to prevent double-click button spam during mutations
+- **Constants Extraction**: Converted magic numbers to named constants (`AD_MAX = 5`, `AD_STEP = 10`) for maintainable ad boost system configuration
+- **Countdown Safety**: Added `Math.max(0, diff)` to prevent negative countdown display if server/client clock skews
+- **Accessibility**: Added `aria-label` attributes to start/stop and watch-ad buttons for screen reader support
+- **Null Safety**: Implemented safe type checking on `xnrtReward` before calling `toFixed()` in toast messages
+- **Improved Reward Calculation**: Refactored estimated reward formula to use constants and proper percentage math
+
+### Referral Link URL Parameter Fix ✅
+- **Auto-Capture Implementation**: Added useEffect hooks to both `/auth` and `/register` pages to automatically parse `?ref=` URL parameter on component mount
+- **Seamless Signup Flow**: When users access referral links (e.g., `https://xnrt.org/?ref=REFNEXT2447`), the referral code is automatically extracted and populated in the registration form
+- **User Feedback**: Toast notification displays when referral code is applied, showing the captured code to the user
+- **Smart Tab Switching**: On `/auth` page, automatically switches to "register" tab when ref parameter is detected for optimal UX
+- **Security**: React safely renders toast content, preventing XSS attacks from malicious referral codes
+- **Browser Standard**: Uses native URLSearchParams API for reliable cross-browser URL parameter parsing
