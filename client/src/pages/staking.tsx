@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Gem, TrendingUp, Clock, AlertCircle, Sparkles, Wallet, ArrowUpRight, History, BarChart3, ArrowUpDown } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { type StakingTier, type Stake, type Balance } from "@shared/schema";
+import { STAKING_TIERS, type StakingTier, type Stake, type Balance } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
@@ -92,10 +92,6 @@ export default function Staking() {
     queryKey: ["/api/stakes"],
   });
 
-  const { data: stakingTiers } = useQuery<StakingTier[]>({
-    queryKey: ["/api/staking-tiers"],
-  });
-
   const processRewardsMutation = useMutation({
     mutationFn: async () => {
       return await apiRequest("POST", "/api/stakes/process-rewards", {});
@@ -111,7 +107,7 @@ export default function Staking() {
   }, []);
 
   const createStakeMutation = useMutation({
-    mutationFn: async (data: { tierId: string; amount: string }) => {
+    mutationFn: async (data: { tier: StakingTier; amount: string }) => {
       return await apiRequest("POST", "/api/stakes", data);
     },
     onSuccess: () => {
@@ -176,23 +172,22 @@ export default function Staking() {
   const handleStake = () => {
     if (!selectedTier || !amount) return;
 
+    const tierConfig = STAKING_TIERS[selectedTier];
     const stakeAmount = parseFloat(amount);
-    const minAmount = typeof selectedTier.minAmount === 'string' ? parseFloat(selectedTier.minAmount) : selectedTier.minAmount;
-    const maxAmount = selectedTier.maxAmount ? (typeof selectedTier.maxAmount === 'string' ? parseFloat(selectedTier.maxAmount) : selectedTier.maxAmount) : Infinity;
 
-    if (stakeAmount < minAmount) {
+    if (stakeAmount < tierConfig.minAmount) {
       toast({
         title: "Amount Too Low",
-        description: `Minimum stake for ${selectedTier.name} is ${minAmount.toLocaleString()} XNRT`,
+        description: `Minimum stake for ${tierConfig.name} is ${tierConfig.minAmount.toLocaleString()} XNRT`,
         variant: "destructive",
       });
       return;
     }
 
-    if (maxAmount !== Infinity && stakeAmount > maxAmount) {
+    if (stakeAmount > tierConfig.maxAmount) {
       toast({
         title: "Amount Too High",
-        description: `Maximum stake for ${selectedTier.name} is ${maxAmount.toLocaleString()} XNRT`,
+        description: `Maximum stake for ${tierConfig.name} is ${tierConfig.maxAmount.toLocaleString()} XNRT`,
         variant: "destructive",
       });
       return;
@@ -208,16 +203,15 @@ export default function Staking() {
       return;
     }
 
-    createStakeMutation.mutate({ tierId: selectedTier.id, amount });
+    createStakeMutation.mutate({ tier: selectedTier, amount });
   };
 
   const calculateProfit = () => {
     if (!selectedTier || !amount) return { daily: 0, total: 0 };
+    const tierConfig = STAKING_TIERS[selectedTier];
     const stakeAmount = parseFloat(amount);
-    const apy = typeof selectedTier.apy === 'string' ? parseFloat(selectedTier.apy) : selectedTier.apy;
-    const dailyRate = apy / 365;
-    const dailyProfit = stakeAmount * (dailyRate / 100);
-    const totalProfit = dailyProfit * selectedTier.duration;
+    const dailyProfit = (stakeAmount * tierConfig.dailyRate) / 100;
+    const totalProfit = dailyProfit * tierConfig.duration;
     return { daily: dailyProfit, total: totalProfit };
   };
 
@@ -257,12 +251,10 @@ export default function Staking() {
 
   // Generate daily profit chart data for active stakes
   const profitChartData = useMemo(() => {
-    if (!activeStakes.length || !stakingTiers) return [];
+    if (!activeStakes.length) return [];
     
     const stake = activeStakes[0]; // Show chart for first active stake
-    const tierConfig = stakingTiers.find(t => t.name === stake.tier);
-    if (!tierConfig) return [];
-    
+    const tierConfig = STAKING_TIERS[stake.tier as StakingTier];
     const dailyProfit = (parseFloat(stake.amount) * parseFloat(stake.dailyRate)) / 100;
     
     const data = [];
@@ -275,17 +267,16 @@ export default function Staking() {
     }
     
     return data;
-  }, [activeStakes, stakingTiers]);
+  }, [activeStakes]);
 
   // Tier performance data
   const tierPerformanceData = useMemo(() => {
-    if (!stakingTiers) return [];
     const tierStats: Record<string, { tier: string; totalProfit: number; count: number }> = {};
     
     withdrawnStakes.forEach(stake => {
       if (!tierStats[stake.tier]) {
         tierStats[stake.tier] = {
-          tier: stake.tier,
+          tier: STAKING_TIERS[stake.tier as StakingTier].name,
           totalProfit: 0,
           count: 0,
         };
@@ -295,7 +286,7 @@ export default function Staking() {
     });
     
     return Object.values(tierStats);
-  }, [withdrawnStakes, stakingTiers]);
+  }, [withdrawnStakes]);
 
   return (
     <div className="space-y-6">
@@ -343,57 +334,44 @@ export default function Staking() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {!stakingTiers || stakingTiers.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-muted-foreground">
-            Loading staking tiers...
-          </div>
-        ) : (
-          stakingTiers.map((tier) => {
-            const apy = typeof tier.apy === 'string' ? parseFloat(tier.apy) : tier.apy;
-            const dailyRate = (apy / 365).toFixed(2);
-            const minAmount = typeof tier.minAmount === 'string' ? parseFloat(tier.minAmount) : tier.minAmount;
-            const maxAmount = tier.maxAmount ? (typeof tier.maxAmount === 'string' ? parseFloat(tier.maxAmount) : tier.maxAmount) : null;
-            
-            return (
-              <Card
-                key={tier.id}
-                className={`cursor-pointer transition-all hover-elevate ${
-                  selectedTier?.id === tier.id ? "border-primary ring-2 ring-primary/20" : ""
-                }`}
-                onClick={() => {
-                  setSelectedTier(tier);
-                  setShowCreateDialog(true);
-                }}
-                data-testid={`tier-${tier.id}`}
-              >
-                <CardHeader>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-3xl">💎</span>
-                    <div>
-                      <CardTitle className="text-lg">{tier.name}</CardTitle>
-                      <CardDescription>{tier.duration} days</CardDescription>
-                    </div>
-                  </div>
-                  <div className="text-3xl font-bold bg-gradient-to-r from-amber-500 to-amber-600 bg-clip-text text-transparent">
-                    {apy}% APY
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Daily Rate:</span>
-                    <span className="font-semibold">{dailyRate}%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Min/Max:</span>
-                    <span className="font-semibold">
-                      {minAmount.toLocaleString()}/{maxAmount ? maxAmount.toLocaleString() : 'No limit'}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
+        {(Object.entries(STAKING_TIERS) as [StakingTier, typeof STAKING_TIERS[StakingTier]][]).map(([key, tier]) => (
+          <Card
+            key={key}
+            className={`cursor-pointer transition-all hover-elevate ${
+              selectedTier === key ? "border-primary ring-2 ring-primary/20" : ""
+            }`}
+            onClick={() => {
+              setSelectedTier(key);
+              setShowCreateDialog(true);
+            }}
+            data-testid={`tier-${key}`}
+          >
+            <CardHeader>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-3xl">{tierIcons[key]}</span>
+                <div>
+                  <CardTitle className="text-lg">{tier.name}</CardTitle>
+                  <CardDescription>{tier.duration} days</CardDescription>
+                </div>
+              </div>
+              <div className={`text-3xl font-bold bg-gradient-to-r ${tierGradients[key]} bg-clip-text text-transparent`}>
+                {tier.apy}% APY
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Daily Rate:</span>
+                <span className="font-semibold">{tier.dailyRate}%</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Min/Max:</span>
+                <span className="font-semibold">
+                  {tier.minAmount.toLocaleString()}/{tier.maxAmount.toLocaleString()}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Create Stake Modal */}
@@ -413,7 +391,7 @@ export default function Staking() {
             <>
               <DialogHeader>
                 <DialogTitle>
-                  Create Stake — {selectedTier.name}
+                  Create Stake — {STAKING_TIERS[selectedTier].name}
                 </DialogTitle>
                 <DialogDescription>
                   Enter the amount you want to stake
@@ -426,7 +404,7 @@ export default function Staking() {
                   <Input
                     id="amount"
                     type="number"
-                    placeholder={`Min: ${(typeof selectedTier.minAmount === 'string' ? parseFloat(selectedTier.minAmount) : selectedTier.minAmount).toLocaleString()}`}
+                    placeholder={`Min: ${STAKING_TIERS[selectedTier].minAmount.toLocaleString()}`}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     data-testid="input-stake-amount"
@@ -441,7 +419,7 @@ export default function Staking() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">
-                        Total Profit ({selectedTier.duration} days):
+                        Total Profit ({STAKING_TIERS[selectedTier].duration} days):
                       </span>
                       <span className="font-bold text-chart-2">+{profit.total.toLocaleString()} XNRT</span>
                     </div>
@@ -499,20 +477,19 @@ export default function Staking() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {activeStakes.map((stake) => {
-                  const tierConfig = stakingTiers?.find(t => t.name === stake.tier);
+                  const tierConfig = STAKING_TIERS[stake.tier as StakingTier];
                   const progress = ((new Date().getTime() - new Date(stake.startDate).getTime()) / 
                     (new Date(stake.endDate).getTime() - new Date(stake.startDate).getTime())) * 100;
                   const daysLeft = Math.ceil((new Date(stake.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                  const dailyRate = stake.dailyRate;
 
                   return (
                     <Card key={stake.id} className="hover-elevate" data-testid={`stake-${stake.id}`}>
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="text-2xl">💎</span>
+                            <span className="text-2xl">{tierIcons[stake.tier as StakingTier]}</span>
                             <div>
-                              <CardTitle className="text-base">{tierConfig?.name || stake.tier}</CardTitle>
+                              <CardTitle className="text-base">{tierConfig.name}</CardTitle>
                               <CardDescription>{parseFloat(stake.amount).toLocaleString()} XNRT</CardDescription>
                             </div>
                           </div>
@@ -533,7 +510,7 @@ export default function Staking() {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="text-muted-foreground">Daily Rate</p>
-                            <p className="font-semibold">{dailyRate}%</p>
+                            <p className="font-semibold">{tierConfig.dailyRate}%</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground flex items-center gap-1">
@@ -625,7 +602,7 @@ export default function Staking() {
           ) : (
             <div className="space-y-3">
               {withdrawnStakes.map((stake) => {
-                const tierConfig = stakingTiers?.find(t => t.name === stake.tier);
+                const tierConfig = STAKING_TIERS[stake.tier as StakingTier];
                 const roi = (parseFloat(stake.totalProfit) / parseFloat(stake.amount)) * 100;
                 const totalDays = Math.floor((new Date(stake.endDate).getTime() - new Date(stake.startDate).getTime()) / (1000 * 60 * 60 * 24));
 
@@ -634,10 +611,10 @@ export default function Staking() {
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">💎</span>
+                          <span className="text-2xl">{tierIcons[stake.tier as StakingTier]}</span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <p className="font-semibold">{tierConfig?.name || stake.tier}</p>
+                              <p className="font-semibold">{tierConfig.name}</p>
                               <Badge variant="secondary">Withdrawn</Badge>
                             </div>
                             <p className="text-sm text-muted-foreground">
@@ -733,7 +710,7 @@ export default function Staking() {
         title="Withdraw Stake"
         description={
           selectedStakeToWithdraw
-            ? `You are about to withdraw your ${stakingTiers?.find(t => t.name === selectedStakeToWithdraw.tier)?.name || selectedStakeToWithdraw.tier} stake. You will receive ${parseFloat(selectedStakeToWithdraw.amount).toLocaleString()} XNRT principal + ${parseFloat(selectedStakeToWithdraw.totalProfit).toLocaleString()} XNRT profit. Continue?`
+            ? `You are about to withdraw your ${STAKING_TIERS[selectedStakeToWithdraw.tier as StakingTier].name} stake. You will receive ${parseFloat(selectedStakeToWithdraw.amount).toLocaleString()} XNRT principal + ${parseFloat(selectedStakeToWithdraw.totalProfit).toLocaleString()} XNRT profit. Continue?`
             : "Are you sure you want to withdraw this stake?"
         }
         confirmText="Withdraw Stake"

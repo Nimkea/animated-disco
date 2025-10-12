@@ -64,22 +64,6 @@ model Balance {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model StakingTier {
-  id           String   @id @default(uuid())
-  name         String
-  duration     Int
-  apy          Decimal
-  minAmount    Decimal  @default(0)
-  maxAmount    Decimal?
-  description  String?
-  isActive     Boolean  @default(true)
-  displayOrder Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@map("staking_tiers")
-}
-
 model Stake {
   id             String    @id @default(uuid())
   userId         String
