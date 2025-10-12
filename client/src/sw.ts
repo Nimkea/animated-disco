@@ -8,8 +8,8 @@ import { ExpirationPlugin } from 'workbox-expiration';
 
 declare const self: ServiceWorkerGlobalScope;
 
-// Cache version - increment this to force cache invalidation
-const CACHE_VERSION = 'v2';
+// Cache version - increment this to force COMPLETE cache invalidation
+const CACHE_VERSION = 'v3';
 const CACHE_PREFIX = 'xnrt';
 
 // Take control immediately
@@ -17,28 +17,38 @@ clientsClaim();
 self.skipWaiting();
 
 // Precache all assets from the build
-precacheAndRoute(self.__WB_MANIFEST);
+// Note: Workbox manages its own cache names, but our activate handler will clean old versions
+precacheAndRoute(self.__WB_MANIFEST, {
+  ignoreURLParametersMatching: [/.*/]
+});
 
-// Cleanup old caches from Workbox
-cleanupOutdatedCaches();
-
-// Custom activate event to delete all old versioned caches
+// Custom activate event to AGGRESSIVELY delete ALL old caches
 self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
           .filter((cacheName) => {
-            // Delete caches that don't match current version
-            return cacheName.startsWith(CACHE_PREFIX) && !cacheName.includes(CACHE_VERSION);
+            // Delete ALL workbox precaches that don't match our version
+            if (cacheName.startsWith('workbox-precache') || cacheName.includes('precache')) {
+              if (!cacheName.includes(CACHE_VERSION)) {
+                console.log('[SW] Deleting old Workbox precache:', cacheName);
+                return true;
+              }
+            }
+            // Delete all our custom caches that don't match current version
+            if (cacheName.startsWith(CACHE_PREFIX) && !cacheName.includes(CACHE_VERSION)) {
+              console.log('[SW] Deleting old versioned cache:', cacheName);
+              return true;
+            }
+            return false;
           })
-          .map((cacheName) => {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          })
+          .map((cacheName) => caches.delete(cacheName))
       );
     }).then(() => {
-      console.log('[SW] Cache cleanup complete, version:', CACHE_VERSION);
+      console.log('[SW] Complete cache cleanup finished, version:', CACHE_VERSION);
+      // Force all clients to reload with fresh service worker
+      return self.clients.claim();
     })
   );
 });
