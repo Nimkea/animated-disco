@@ -127,3 +127,28 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     self.skipWaiting();
   }
 });
+
+// Push notification handler
+self.addEventListener('push', (event: PushEvent) => {
+  const data = event.data?.json() || {};
+  const { title, body, icon, badge, data: actionData } = data;
+  
+  event.waitUntil(
+    self.registration.showNotification(title || 'XNRT Notification', {
+      body: body || 'You have a new notification',
+      icon: icon || '/icon-192.png',
+      badge: badge || '/icon-192.png',
+      data: actionData,
+      tag: data.tag || 'xnrt-notification',
+    })
+  );
+});
+
+// Notification click handler
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
+  event.notification.close();
+  
+  event.waitUntil(
+    self.clients.openWindow(event.notification.data?.url || '/')
+  );
+});
