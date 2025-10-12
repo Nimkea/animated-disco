@@ -164,7 +164,7 @@ export default function Auth() {
                 </TabsTrigger>
               </TabsList>
 
-              <AnimatePresence>
+              <>
                 <TabsContent value="login" className="space-y-4" data-testid="content-login">
                   <motion.form
                     key="login-form"
@@ -331,7 +331,7 @@ export default function Auth() {
                     </motion.div>
                   </motion.form>
                 </TabsContent>
-              </AnimatePresence>
+              </>
             </Tabs>
 
             <div className="mt-6 text-center">
