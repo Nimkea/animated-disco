@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 import { STAKING_TIERS, type StakingTier } from "@shared/schema";
 import { PrismaClient } from "@prisma/client";
+import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
 
@@ -25,49 +26,6 @@ const pushSubscriptionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
-async function sendPushNotification(
-  userId: string, 
-  payload: { title: string; body: string; data?: any }
-): Promise<void> {
-  try {
-    const subscriptions = await storage.getUserPushSubscriptions(userId);
-    
-    if (subscriptions.length === 0) {
-      console.log(`No push subscriptions found for user ${userId}`);
-      return;
-    }
-
-    const pushPayload = JSON.stringify(payload);
-    
-    const sendPromises = subscriptions.map(async (subscription) => {
-      try {
-        const pushSubscription = {
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: subscription.p256dh,
-            auth: subscription.auth,
-          },
-        };
-
-        await webpush.sendNotification(pushSubscription, pushPayload);
-        console.log(`Push notification sent successfully to ${subscription.endpoint}`);
-      } catch (error: any) {
-        console.error(`Error sending push notification to ${subscription.endpoint}:`, error);
-        
-        if (error.statusCode === 404 || error.statusCode === 410) {
-          console.log(`Subscription expired/gone, disabling: ${subscription.endpoint}`);
-          await storage.disablePushSubscription(subscription.endpoint);
-        }
-      }
-    });
-
-    await Promise.allSettled(sendPromises);
-  } catch (error) {
-    console.error("Error in sendPushNotification:", error);
-    throw error;
-  }
-}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // CSP violation report endpoint
@@ -404,6 +362,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId,
         type: "mining_completed",
         description: `Completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`,
+      });
+
+      void notifyUser(userId, {
+        type: "mining_completed",
+        title: "⛏️ Mining Complete!",
+        message: `You earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT from your mining session`,
+        url: "/mining",
+        metadata: {
+          xpReward,
+          xnrtReward: xnrtReward.toString(),
+          sessionId: session.id,
+        },
+      }).catch(err => {
+        console.error('Error sending mining notification (non-blocking):', err);
       });
 
       // Check and unlock achievements
@@ -1215,6 +1187,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT approved`,
       });
 
+      void notifyUser(deposit.userId, {
+        type: "deposit_approved",
+        title: "💰 Deposit Approved!",
+        message: `Your deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT has been approved and credited to your account`,
+        url: "/wallet",
+        metadata: {
+          amount: deposit.amount,
+          transactionId: id,
+        },
+      }).catch(err => {
+        console.error('Error sending deposit notification (non-blocking):', err);
+      });
+
       res.json({ message: "Deposit approved successfully" });
     } catch (error) {
       console.error("Error approving deposit:", error);
@@ -1302,6 +1287,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             userId: deposit.userId,
             type: "deposit_approved",
             description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT approved${notes ? ` - ${notes}` : ''}`,
+          });
+
+          void notifyUser(deposit.userId, {
+            type: "deposit_approved",
+            title: "💰 Deposit Approved!",
+            message: `Your deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT has been approved and credited to your account`,
+            url: "/wallet",
+            metadata: {
+              amount: deposit.amount,
+              transactionId: id,
+            },
+          }).catch(err => {
+            console.error('Error sending bulk deposit notification (non-blocking):', err);
           });
 
           successful.push(id);

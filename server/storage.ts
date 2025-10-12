@@ -201,6 +201,12 @@ export interface IStorage {
   getUnreadNotificationCount(userId: string): Promise<number>;
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+  updateNotificationDelivery(id: string, updates: {
+    deliveredAt?: Date;
+    deliveryAttempts?: number;
+    pendingPush?: boolean;
+    pushError?: string;
+  }): Promise<Notification>;
   
   // Push Subscription operations
   getPushSubscription(userId: string, endpoint: string): Promise<PushSubscription | null>;
@@ -493,6 +499,21 @@ export class DatabaseStorage implements IStorage {
           description: `Earned ${profitToAdd.toFixed(2)} XNRT from staking (${creditedDays} day${creditedDays > 1 ? 's' : ''})`,
         });
 
+        const { notifyUser } = await import("./notifications");
+        void notifyUser(stake.userId, {
+          type: "staking_reward",
+          title: "💎 Staking Rewards!",
+          message: `You earned ${profitToAdd.toFixed(2)} XNRT from ${creditedDays} day${creditedDays > 1 ? 's' : ''} of staking`,
+          url: "/staking",
+          metadata: {
+            amount: profitToAdd.toString(),
+            days: creditedDays,
+            stakeId: stake.id,
+          },
+        }).catch(err => {
+          console.error('Error sending staking reward notification (non-blocking):', err);
+        });
+
         // Check and unlock achievements
         await this.checkAndUnlockAchievements(stake.userId);
       }
@@ -740,17 +761,19 @@ export class DatabaseStorage implements IStorage {
         description: `Earned ${commission.toFixed(2)} XNRT commission from level ${level} referral`,
       });
 
-      // Create notification for referrer
-      await this.createNotification({
-        userId: referrer.id,
+      const { notifyUser } = await import("./notifications");
+      void notifyUser(referrer.id, {
         type: "referral_commission",
-        title: "💰 Commission Earned!",
+        title: "💰 Referral Bonus!",
         message: `You earned ${commission.toFixed(2)} XNRT commission from a level ${level} referral`,
+        url: "/referrals",
         metadata: {
           amount: commission.toString(),
           level,
           referredUserId: userId,
         },
+      }).catch(err => {
+        console.error('Error sending referral commission notification (non-blocking):', err);
       });
       
       console.log(`[REFERRAL] Level ${level} commission complete for ${referrer.email}`);
@@ -1029,6 +1052,21 @@ export class DatabaseStorage implements IStorage {
           type: "achievement_unlocked",
           description: `Unlocked achievement: ${achievement.title} (+${achievement.xpReward} XP)`,
         });
+
+        const { notifyUser } = await import("./notifications");
+        void notifyUser(userId, {
+          type: "achievement_unlocked",
+          title: "🏆 Achievement Unlocked!",
+          message: `${achievement.title} - You earned ${achievement.xpReward} XP!`,
+          url: "/achievements",
+          metadata: {
+            achievementId: achievement.id,
+            achievementTitle: achievement.title,
+            xpReward: achievement.xpReward,
+          },
+        }).catch(err => {
+          console.error('Error sending achievement notification (non-blocking):', err);
+        });
       }
     }
 
@@ -1119,6 +1157,25 @@ export class DatabaseStorage implements IStorage {
       },
       data: { read: true },
     });
+  }
+
+  async updateNotificationDelivery(id: string, updates: {
+    deliveredAt?: Date;
+    deliveryAttempts?: number;
+    pendingPush?: boolean;
+    pushError?: string;
+  }): Promise<Notification> {
+    const data: any = {};
+    if (updates.deliveredAt !== undefined) data.deliveredAt = updates.deliveredAt;
+    if (updates.deliveryAttempts !== undefined) data.deliveryAttempts = updates.deliveryAttempts;
+    if (updates.pendingPush !== undefined) data.pendingPush = updates.pendingPush;
+    if (updates.pushError !== undefined) data.pushError = updates.pushError;
+
+    const notification = await prisma.notification.update({
+      where: { id },
+      data,
+    });
+    return convertPrismaNotification(notification);
   }
 
   // Push Subscription operations
