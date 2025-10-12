@@ -8,6 +8,10 @@ import { ExpirationPlugin } from 'workbox-expiration';
 
 declare const self: ServiceWorkerGlobalScope;
 
+// Cache version - increment this to force cache invalidation
+const CACHE_VERSION = 'v2';
+const CACHE_PREFIX = 'xnrt';
+
 // Take control immediately
 clientsClaim();
 self.skipWaiting();
@@ -15,8 +19,29 @@ self.skipWaiting();
 // Precache all assets from the build
 precacheAndRoute(self.__WB_MANIFEST);
 
-// Cleanup old caches
+// Cleanup old caches from Workbox
 cleanupOutdatedCaches();
+
+// Custom activate event to delete all old versioned caches
+self.addEventListener('activate', (event: ExtendableEvent) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((cacheName) => {
+            // Delete caches that don't match current version
+            return cacheName.startsWith(CACHE_PREFIX) && !cacheName.includes(CACHE_VERSION);
+          })
+          .map((cacheName) => {
+            console.log('[SW] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          })
+      );
+    }).then(() => {
+      console.log('[SW] Cache cleanup complete, version:', CACHE_VERSION);
+    })
+  );
+});
 
 // SPA Navigation - Allow ALL routes except APIs and static files
 registerRoute(
@@ -36,7 +61,7 @@ registerRoute(
 registerRoute(
   /^https:\/\/fonts\.googleapis\.com\/.*/i,
   new CacheFirst({
-    cacheName: 'google-fonts-cache',
+    cacheName: `${CACHE_PREFIX}-google-fonts-${CACHE_VERSION}`,
     plugins: [
       new ExpirationPlugin({
         maxEntries: 10,
@@ -53,7 +78,7 @@ registerRoute(
 registerRoute(
   /^https:\/\/fonts\.gstatic\.com\/.*/i,
   new CacheFirst({
-    cacheName: 'gstatic-fonts-cache',
+    cacheName: `${CACHE_PREFIX}-gstatic-fonts-${CACHE_VERSION}`,
     plugins: [
       new ExpirationPlugin({
         maxEntries: 10,
@@ -66,15 +91,18 @@ registerRoute(
   })
 );
 
-// JS/CSS Bundles - Cache First (versioned by filename)
+// JS/CSS Bundles - Stale While Revalidate (always check for updates while serving cached version)
 registerRoute(
   /\.(?:js|css)$/,
-  new CacheFirst({
-    cacheName: 'static-assets',
+  new StaleWhileRevalidate({
+    cacheName: `${CACHE_PREFIX}-static-assets-${CACHE_VERSION}`,
     plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200]
+      }),
       new ExpirationPlugin({
         maxEntries: 60,
-        maxAgeSeconds: 60 * 60 * 24 * 30  // 30 days
+        maxAgeSeconds: 60 * 60 * 24 * 7  // 7 days (shorter to force refresh)
       })
     ]
   })
@@ -84,7 +112,7 @@ registerRoute(
 registerRoute(
   /manifest\.webmanifest$/,
   new StaleWhileRevalidate({
-    cacheName: 'app-manifest'
+    cacheName: `${CACHE_PREFIX}-app-manifest-${CACHE_VERSION}`
   })
 );
 
@@ -92,7 +120,7 @@ registerRoute(
 registerRoute(
   /\.(?:ico|png|svg)$/,
   new StaleWhileRevalidate({
-    cacheName: 'app-icons',
+    cacheName: `${CACHE_PREFIX}-app-icons-${CACHE_VERSION}`,
     plugins: [
       new ExpirationPlugin({
         maxEntries: 50,
@@ -106,7 +134,7 @@ registerRoute(
 registerRoute(
   /\/api\/.*/,
   new NetworkFirst({
-    cacheName: 'api-cache',
+    cacheName: `${CACHE_PREFIX}-api-${CACHE_VERSION}`,
     networkTimeoutSeconds: 3,
     plugins: [
       new ExpirationPlugin({
