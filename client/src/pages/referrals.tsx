@@ -315,12 +315,14 @@ export default function Referrals() {
                   {parseFloat(referralStats?.totalCommission || "0").toLocaleString()} XNRT
                 </span>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Company Commissions:</span>
-                <span className="font-bold">
-                  {parseFloat(referralStats?.companyCommissions || "0").toLocaleString()} XNRT
-                </span>
-              </div>
+              {user?.isAdmin && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Company Commissions:</span>
+                  <span className="font-bold">
+                    {parseFloat(referralStats?.companyCommissions || "0").toLocaleString()} XNRT
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
