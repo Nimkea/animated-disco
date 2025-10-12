@@ -10,6 +10,7 @@ import {
   decimal,
   text,
   boolean,
+  unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -186,11 +187,33 @@ export const notifications = pgTable("notifications", {
   message: text("message").notNull(),
   metadata: jsonb("metadata"),
   read: boolean("read").default(false).notNull(),
+  deliveryAttempts: integer("delivery_attempts"),
+  deliveredAt: timestamp("delivered_at"),
+  pendingPush: boolean("pending_push").default(false).notNull(),
+  pushError: text("push_error"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("notifications_user_id_idx").on(table.userId),
   index("notifications_read_idx").on(table.read),
   index("notifications_created_at_idx").on(table.createdAt),
+  index("notifications_pending_push_idx").on(table.pendingPush),
+]);
+
+// Push Subscriptions
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  expirationTime: timestamp("expiration_time"),
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("push_subscriptions_user_id_idx").on(table.userId),
+  index("push_subscriptions_endpoint_idx").on(table.endpoint),
+  unique("push_subscriptions_user_endpoint_unique").on(table.userId, table.endpoint),
 ]);
 
 // Relations
@@ -208,6 +231,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   userAchievements: many(userAchievements),
   activities: many(activities),
   notifications: many(notifications),
+  pushSubscriptions: many(pushSubscriptions),
 }));
 
 export const balancesRelations = relations(balances, ({ one }) => ({
@@ -287,6 +311,13 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   }),
 }));
 
+export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [pushSubscriptions.userId],
+    references: [users.id],
+  }),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
@@ -326,6 +357,9 @@ export type InsertActivity = typeof activities.$inferInsert;
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
 
 // Staking tier configurations
 export const STAKING_TIERS = {
