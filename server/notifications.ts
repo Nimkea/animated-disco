@@ -105,11 +105,13 @@ export async function notifyUser(
         await storage.updateNotificationDelivery(createdNotification.id, {
           deliveredAt: new Date(),
           deliveryAttempts: currentAttempts + 1,
+          lastAttemptAt: new Date(),
           pendingPush: false,
         });
       } else if (ENABLE_PUSH_NOTIFICATIONS) {
         await storage.updateNotificationDelivery(createdNotification.id, {
           deliveryAttempts: currentAttempts + 1,
+          lastAttemptAt: new Date(),
           pendingPush: true,
           pushError: 'No active subscriptions or push failed',
         });
@@ -120,6 +122,7 @@ export async function notifyUser(
         const currentAttempts = createdNotification.deliveryAttempts || 0;
         await storage.updateNotificationDelivery(createdNotification.id, {
           deliveryAttempts: currentAttempts + 1,
+          lastAttemptAt: new Date(),
           pendingPush: true,
           pushError: pushError.message || 'Unknown push error',
         });

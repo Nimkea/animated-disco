@@ -228,20 +228,26 @@ model PasswordReset {
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  type      String
-  title     String
-  message   String
-  metadata  String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id               String    @id @default(uuid())
+  userId           String
+  type             String
+  title            String
+  message          String
+  metadata         String?
+  read             Boolean   @default(false)
+  deliveryAttempts Int?
+  deliveredAt      DateTime?
+  lastAttemptAt    DateTime?
+  pendingPush      Boolean   @default(false)
+  pushError        String?
+  createdAt        DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([read])
   @@index([createdAt])
+  @@index([pendingPush])
 }
 
 model PushSubscription {

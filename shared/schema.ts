@@ -189,6 +189,7 @@ export const notifications = pgTable("notifications", {
   read: boolean("read").default(false).notNull(),
   deliveryAttempts: integer("delivery_attempts"),
   deliveredAt: timestamp("delivered_at"),
+  lastAttemptAt: timestamp("last_attempt_at"),
   pendingPush: boolean("pending_push").default(false).notNull(),
   pushError: text("push_error"),
   createdAt: timestamp("created_at").defaultNow(),

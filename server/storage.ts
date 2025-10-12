@@ -201,9 +201,11 @@ export interface IStorage {
   getUnreadNotificationCount(userId: string): Promise<number>;
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+  getNotificationsPendingPush(limit: number): Promise<Notification[]>;
   updateNotificationDelivery(id: string, updates: {
     deliveredAt?: Date;
     deliveryAttempts?: number;
+    lastAttemptAt?: Date;
     pendingPush?: boolean;
     pushError?: string;
   }): Promise<Notification>;
@@ -1159,15 +1161,32 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async getNotificationsPendingPush(limit: number = 50): Promise<Notification[]> {
+    // @ts-ignore - pendingPush field exists in runtime but LSP cache issue
+    const notifications = await prisma.notification.findMany({
+      where: {
+        pendingPush: true,
+        deliveryAttempts: {
+          lt: 5,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    });
+    return notifications.map(convertPrismaNotification);
+  }
+
   async updateNotificationDelivery(id: string, updates: {
     deliveredAt?: Date;
     deliveryAttempts?: number;
+    lastAttemptAt?: Date;
     pendingPush?: boolean;
     pushError?: string;
   }): Promise<Notification> {
     const data: any = {};
     if (updates.deliveredAt !== undefined) data.deliveredAt = updates.deliveredAt;
     if (updates.deliveryAttempts !== undefined) data.deliveryAttempts = updates.deliveryAttempts;
+    if (updates.lastAttemptAt !== undefined) data.lastAttemptAt = updates.lastAttemptAt;
     if (updates.pendingPush !== undefined) data.pendingPush = updates.pendingPush;
     if (updates.pushError !== undefined) data.pushError = updates.pushError;
 

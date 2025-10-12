@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 
 const app = express();
 
@@ -105,5 +106,25 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    
+    startRetryWorker();
+  });
+
+  process.on('SIGTERM', () => {
+    log('SIGTERM received, shutting down gracefully');
+    stopRetryWorker();
+    server.close(() => {
+      log('Server closed');
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    log('SIGINT received, shutting down gracefully');
+    stopRetryWorker();
+    server.close(() => {
+      log('Server closed');
+      process.exit(0);
+    });
   });
 })();
