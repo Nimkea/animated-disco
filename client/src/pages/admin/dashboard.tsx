@@ -8,7 +8,8 @@ import {
   Settings,
   TrendingUp,
   ListChecks,
-  Award
+  Award,
+  Layers
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
@@ -21,6 +22,7 @@ import SettingsTab from "./tabs/settings";
 import StakesTab from "./tabs/stakes";
 import TasksTab from "./tabs/tasks";
 import AchievementsTab from "./tabs/achievements";
+import StakingTiersTab from "./tabs/staking-tiers";
 
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
@@ -30,7 +32,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements"].includes(tab)) {
+    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "staking-tiers", "tasks", "achievements"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -51,7 +53,7 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-10 lg:w-auto lg:inline-grid">
           <TabsTrigger value="overview" className="gap-2" data-testid="tab-overview">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -71,6 +73,10 @@ export default function AdminDashboard() {
           <TabsTrigger value="stakes" className="gap-2" data-testid="tab-stakes">
             <TrendingUp className="h-4 w-4" />
             <span className="hidden sm:inline">Stakes</span>
+          </TabsTrigger>
+          <TabsTrigger value="staking-tiers" className="gap-2" data-testid="tab-staking-tiers">
+            <Layers className="h-4 w-4" />
+            <span className="hidden sm:inline">Tiers</span>
           </TabsTrigger>
           <TabsTrigger value="tasks" className="gap-2" data-testid="tab-tasks">
             <ListChecks className="h-4 w-4" />
@@ -108,6 +114,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="stakes" className="space-y-6">
           <StakesTab />
+        </TabsContent>
+
+        <TabsContent value="staking-tiers" className="space-y-6">
+          <StakingTiersTab />
         </TabsContent>
 
         <TabsContent value="tasks" className="space-y-6">
