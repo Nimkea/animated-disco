@@ -1,0 +1,263 @@
+Great dump — here’s a tight, implementation-oriented review of what you have, what’s missing vs. your spec, and concrete fixes.
+
+# What’s in good shape
+
+* **UI feature coverage:** share/copy link, QR generation, social sharing, templates, 3-level explainer, recent referrals list, leaderboard shell. ✅
+* **Rates/levels surfaced consistently (6/3/1).** ✅
+* **Tree & leaderboard components are clean and scalable.** ✅
+
+# Gaps & risks (by file)
+
+## 1) `scripts/reconcile-commissions.ts`
+
+### Critical issues
+
+1. **Not idempotent (double-pays).**
+   Every run re-credits the same approved deposits. There’s no “processed” marker or unique ledger rows per deposit x level.
+
+2. **No atomicity.**
+   Per-deposit work isn’t wrapped in a DB transaction. If the process crashes, balances and referral rows can diverge.
+
+3. **Company commissions not auditable.**
+   You credit the admin’s balance but don’t write any commission record for the fallback. UI shows `companyCommissions`, but there’s no reliable source of truth.
+
+4. **Hard-coded admin email.**
+   `noahkeaneowen@hotmail.com` is brittle. Should be an env/config or a dedicated `Company` user row.
+
+5. **N+1 queries / slow reconciliation.**
+   You fetch each user/referrer/balance in sequence per level per deposit. This won’t scale.
+
+6. **“Referral” table used as an accumulator.**
+   You increment `referral.totalCommission` but don’t record *events* (source deposit, level). That blocks a true **history**, notifications, or refunds.
+
+### Must-do fixes
+
+* **Add a commission ledger table** (or reuse one if you have it):
+
+  ```
+  CommissionLedger(
+    id PK,
+    depositId FK Transaction.id,
+    payerUserId FK User.id,        // the depositor
+    beneficiaryUserId FK User.id,  // a referrer or company user
+    level int,                     // 1/2/3 or 0 for company
+    amount Decimal(36, 18),
+    currency 'XNRT',
+    kind 'referral',
+    createdAt, unique(depositId, level)  // prevents double-pays
+  )
+  ```
+
+* **Make reconciliation idempotent:**
+
+  * Process only deposits where `commissionsProcessedAt IS NULL` (or where no ledger records exist).
+  * In a single `prisma.$transaction([...])`:
+
+    1. Insert 3 (or fewer) `CommissionLedger` rows (one per level present).
+    2. Insert company row for each missing level.
+    3. Update beneficiary balances using **atomic increments**.
+    4. Update `deposit.commissionsProcessedAt = now()` (or set `hasReferredCommissions=true`).
+
+* **Use config for company account**: `COMPANY_USER_ID` (env). Guard at startup.
+
+* **Keep the `Referral` table but stop using it as the only counter.**
+  Either:
+
+  * A) derive totals from the ledger (recommended), or
+  * B) maintain `Referral` as a denormalized rollup updated from ledger events.
+
+* **Batch data** where possible:
+
+  * Preload balances in a map.
+  * Pre-resolve the 3-level chain per user with a single CTE on the DB (or cache).
+
+* **Rounding**: stick to `Prisma.Decimal` end-to-end; avoid `parseFloat` in the script. Round only for display.
+
+#### Safer reconciliation sketch
+
+```ts
+await prisma.$transaction(async (tx) => {
+  // 1) Load chain (up to 3 uplines)
+  const chain = await getUplineChain(tx, deposit.userId, 3); // returns [u1,u2,u3] | nulls
+
+  // 2) Build ledger rows (beneficiary or company)
+  const rows = [
+    { level:1, rate:0.06, beneficiaryId: chain[0]?.id ?? COMPANY_ID },
+    { level:2, rate:0.03, beneficiaryId: chain[1]?.id ?? COMPANY_ID },
+    { level:3, rate:0.01, beneficiaryId: chain[2]?.id ?? COMPANY_ID },
+  ].map(r => ({
+    depositId: deposit.id,
+    payerUserId: deposit.userId,
+    beneficiaryUserId: r.beneficiaryId,
+    level: r.beneficiaryId === COMPANY_ID ? 0 : r.level,
+    amount: new Prisma.Decimal(deposit.amount).mul(r.rate),
+    currency: 'XNRT',
+    kind: 'referral',
+  }));
+
+  // 3) Upsert ledger rows (unique on depositId+level); skip if exist
+  // 4) Atomic increments to balances for each beneficiary
+  // 5) Mark deposit processed
+});
+```
+
+## 2) `client/src/pages/referrals.tsx`
+
+### Observations
+
+* **API dependencies:** `/api/referrals/stats`, `/api/referrals/tree`. Good separation.
+* **SSR safety:** `window.location.origin` is used directly. If this renders SSR anywhere, guard with `typeof window === 'undefined' ? '' : ...`.
+* **Terminology mismatch:** “**Direct Commissions**” label displays `totalCommission` (likely **all** levels). Rename to “**Total Commissions**” or wire a specific “direct” total.
+* **Formatting:** uses `parseFloat(...).toLocaleString()` — fine for display.
+* **Company bucket shown** via `companyCommissions` — but backend doesn’t persist this beyond balances. Needs to be derived from ledger.
+
+### Quick wins
+
+* Rename the stat label or return both **directTotal** and **overallTotal** from `/api/referrals/stats`.
+* Add a **“Copy Referral Code”** success state (you already have `copied`, but it’s not used visually).
+* Consider adding **“Share via Email”** and **“Copy Image with QR”** later.
+
+## 3) `client/src/components/referral-tree.tsx`
+
+* **Data model assumption:** `Referral.totalCommission` is a string (Decimal). You properly `parseFloat`.
+* **UX:** Only shows “Referral #n” + total earned. You might later use the ledger to show **last activity date** or **count of deposits** per referral.
+* **Perf:** You slice to 8 nodes per level; good. Add “View All” action that links to a list page if you expect many.
+
+## 4) `client/src/components/referral-leaderboard.tsx`
+
+* **API dependency:** `/api/leaderboard/referrals?period=...` exists server-side?
+* **Admin view:** nice to conditionally show user ids/emails.
+* **Period controls:** daily/weekly/monthly/all-time; server should define periods on **UTC** or a fixed TZ.
+
+### Backend to support it
+
+* Build leaderboard from **CommissionLedger(kind='referral') GROUP BY beneficiaryUserId** for the selected time window, sorting by **totalReferrals** (distinct payers) and **sum(amount)**.
+
+---
+
+# What’s missing vs. your spec (and how to add it)
+
+| Spec item                                     | Current status           | What to add                                                                                                               |
+| --------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| **Real-time commission notifications**        | Not present              | Emit an event after ledger insert (e.g., WebSocket/SSE). Client subscribes to “commission:credited”.                      |
+| **Commission history with source details**    | Not present              | UI page fed by `CommissionLedger` (depositId, payer info, level, amount, timestamp).                                      |
+| **Company fallback tracking**                 | Partial (balance only)   | Write **ledger rows** with `beneficiaryUserId=COMPANY_ID`, `level=0`. Expose `companyCommissions` from a query on ledger. |
+| **Anti-fraud** (self/circular referrals)      | Not visible              | Enforce DB constraint: cannot set `referredBy` if it creates a cycle; block self-referral.                                |
+| **Admin configurability**                     | Not visible              | Admin settings for rates (6/3/1) and company user. Cache them.                                                            |
+| **Idempotent processing**                     | ❌                        | Use `unique(depositId, level)` in ledger + `commissionsProcessedAt` on deposits.                                          |
+| **Gamification milestones/badges**            | UI planned (leaderboard) | Add `Achievements` table; award based on total referrals and earnings; show badges in leaderboard rows.                   |
+| **Analytics (performance trends)**            | Not visible              | Aggregate ledger by day/week; serve simple series for Charts.                                                             |
+| **Deposit bonuses also generate commissions** | Not visible              | Ensure the reconciliation (and real-time path) handles `type IN ('deposit','deposit_bonus')`.                             |
+
+---
+
+# API contracts to implement (minimal)
+
+### `GET /api/referrals/stats`
+
+Returns exactly what your page expects (add “directTotal” if you want to fix the label).
+
+```ts
+{
+  level1Count: number,
+  level2Count: number,
+  level3Count: number,
+  level1Commission: string, // XNRT
+  level2Commission: string,
+  level3Commission: string,
+  totalCommission: string,  // sum of all 3 levels for this user
+  actualBalance: string,    // withdrawable referral balance
+  companyCommissions: string // amount credited to company due to this user's downline (optional/global? decide)
+}
+```
+
+**Computation source:** `CommissionLedger WHERE beneficiaryUserId = currentUser.id` grouped by level; `actualBalance` from `Balance.referralBalance`. If `companyCommissions` is meant to be **global**, gate it behind admin and compute `beneficiaryUserId=COMPANY_ID`.
+
+### `GET /api/referrals/tree`
+
+Return the **referrals the current user benefits from**, with cumulative totals:
+
+```ts
+type Referral = {
+  id: string;
+  level: 1|2|3;
+  createdAt: string;
+  totalCommission: string; // SUM(ledger.amount) for that payer at that level to current user
+}
+```
+
+**Source:** join your referral edge table with ledger sums, grouped by payer.
+
+### `GET /api/leaderboard/referrals?period=daily|weekly|monthly|all-time`
+
+Return:
+
+```ts
+{
+  leaderboard: Array<{
+    displayName: string;
+    totalReferrals: number;           // DISTINCT payers in ledger
+    totalCommission: string;          // SUM(ledger)
+    level1Count: number;
+    level2Count: number;
+    level3Count: number;
+    rank: number;
+    userId?: string; username?: string; email?: string;
+  }>;
+  userPosition: {...} | null
+}
+```
+
+---
+
+# Concrete code edits you should make now
+
+### A) Add schema elements
+
+* **CommissionLedger** (as above) with unique `(depositId, level)`.
+* **Transaction**: add `commissionsProcessedAt` (nullable datetime).
+* **User (company)**: ensure a single **company user id**; store in env `COMPANY_USER_ID`.
+
+### B) Make reconciliation safe (summary)
+
+* Query only deposits where `status='approved' AND commissionsProcessedAt IS NULL`.
+* Wrap per-deposit logic in `prisma.$transaction`.
+* Insert ledger rows with `createMany({ skipDuplicates: true })`.
+* Use `update` with `{ referralBalance: { increment: amount }, totalEarned: { increment: amount } }`.
+* Set `commissionsProcessedAt` at the end.
+
+### C) Fix the “Direct Commissions” label
+
+* Either change the label to **“Total Commissions”**, or have `/api/referrals/stats` return `directCommission` separately and bind it there.
+
+### D) SSR safety for the link (future-proof)
+
+```ts
+const origin = typeof window !== 'undefined' ? window.location.origin : '';
+const referralLink = origin ? `${origin}/?ref=${referralCode}` : '';
+```
+
+### E) Company commissions on the UI
+
+* If you want to show **user-specific** “company fallback caused by your chain”, compute it from ledger where `beneficiaryUserId=COMPANY_ID` and `payer in your downline`. Otherwise, make it **admin-only global**.
+
+---
+
+# Quick test scenarios (to prevent regressions)
+
+1. **A→B→C→D; D deposits 10,000** → ledger rows:
+
+   * (L1,C,600), (L2,B,300), (L3,A,100) — no company row.
+     Re-run reconciliation → **no new rows**.
+2. **A→B→C; C deposits 50,000** → (L1,B,3,000), (L2,A,1,500), (Company,500).
+3. **A→B; B deposits 20,000** → (L1,A,1,200), (Company,600), (Company,200).
+4. **D no referrer; D deposits 10,000** → (Company,1,000).
+5. **Change referral chain after signup** → **should be forbidden** (immutability).
+
+---
+
+If you want, I can draft:
+
+* Prisma schema diffs for `CommissionLedger` + migrations
+* An idempotent `reconcileCommissions` using `$transaction` and `createMany(skipDuplicates)`
+* SQL views for `stats`, `tree`, and `leaderboard` to make your API handlers tiny.
