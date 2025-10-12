@@ -1,6 +1,6 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, generateAnonymizedHandle } from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 import { STAKING_TIERS, type StakingTier } from "@shared/schema";
@@ -593,6 +593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const period = (req.query.period as string) || 'all-time';
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const currentUserId = req.authUser!.id;
+      const isAdmin = req.authUser!.role === 'admin';
       
       // Calculate date filter based on period
       let dateFilter: string | null = null;
@@ -659,24 +660,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userPosition = leaderboard.findIndex(item => item.userId === currentUserId);
 
       res.json({
-        leaderboard: leaderboard.map((item, index) => ({
-          ...item,
-          totalReferrals: parseInt(item.totalReferrals),
-          totalCommission: item.totalCommission.toString(),
-          level1Count: parseInt(item.level1Count),
-          level2Count: parseInt(item.level2Count),
-          level3Count: parseInt(item.level3Count),
-          rank: index + 1,
-        })),
-        userPosition: userPosition === -1 && userStats.length > 0 ? {
-          ...userStats[0],
-          totalReferrals: parseInt(userStats[0].totalReferrals),
-          totalCommission: userStats[0].totalCommission.toString(),
-          level1Count: parseInt(userStats[0].level1Count),
-          level2Count: parseInt(userStats[0].level2Count),
-          level3Count: parseInt(userStats[0].level3Count),
-          rank: userPosition + 1,
-        } : null,
+        leaderboard: leaderboard.map((item, index) => {
+          const baseData = {
+            totalReferrals: parseInt(item.totalReferrals),
+            totalCommission: item.totalCommission.toString(),
+            level1Count: parseInt(item.level1Count),
+            level2Count: parseInt(item.level2Count),
+            level3Count: parseInt(item.level3Count),
+            rank: index + 1,
+          };
+          
+          if (isAdmin) {
+            return {
+              ...baseData,
+              userId: item.userId,
+              username: item.username,
+              email: item.email,
+              displayName: item.username || item.email,
+            };
+          } else {
+            return {
+              ...baseData,
+              displayName: generateAnonymizedHandle(item.userId),
+            };
+          }
+        }),
+        userPosition: userPosition === -1 && userStats.length > 0 ? (() => {
+          const baseData = {
+            totalReferrals: parseInt(userStats[0].totalReferrals),
+            totalCommission: userStats[0].totalCommission.toString(),
+            level1Count: parseInt(userStats[0].level1Count),
+            level2Count: parseInt(userStats[0].level2Count),
+            level3Count: parseInt(userStats[0].level3Count),
+            rank: userPosition + 1,
+          };
+          
+          if (isAdmin) {
+            return {
+              ...baseData,
+              userId: userStats[0].userId,
+              username: userStats[0].username,
+              email: userStats[0].email,
+              displayName: userStats[0].username || userStats[0].email,
+            };
+          } else {
+            return {
+              ...baseData,
+              displayName: 'You',
+            };
+          }
+        })() : null,
       });
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
@@ -689,8 +722,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const period = (req.query.period as string) || 'all-time';
       const category = (req.query.category as string) || 'overall';
       const currentUserId = req.authUser!.id;
+      const isAdmin = req.authUser!.role === 'admin';
 
-      const result = await storage.getXPLeaderboard(currentUserId, period, category);
+      const result = await storage.getXPLeaderboard(currentUserId, period, category, isAdmin);
       res.json(result);
     } catch (error) {
       console.error("Error fetching XP leaderboard:", error);

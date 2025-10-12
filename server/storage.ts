@@ -1,5 +1,6 @@
 // Prisma-based storage implementation
 import { PrismaClient, Prisma } from "@prisma/client";
+import crypto from "crypto";
 import { 
   type User,
   type UpsertUser,
@@ -33,6 +34,11 @@ const prisma = new PrismaClient();
 
 function generateReferralCode(): string {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
+}
+
+export function generateAnonymizedHandle(userId: string): string {
+  const hash = crypto.createHash('sha256').update(userId).digest('hex');
+  return `Player-${hash.substring(0, 4).toUpperCase()}`;
 }
 
 // Helper to convert Prisma Decimal to string
@@ -218,7 +224,7 @@ export interface IStorage {
   disablePushSubscription(endpoint: string): Promise<void>;
   
   // XP Leaderboard operations
-  getXPLeaderboard(currentUserId: string, period: string, category: string): Promise<any>;
+  getXPLeaderboard(currentUserId: string, period: string, category: string, isAdmin: boolean): Promise<any>;
   
   // Raw query support
   raw(query: string, params?: any[]): Promise<any[]>;
@@ -1278,7 +1284,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // XP Leaderboard operations
-  async getXPLeaderboard(currentUserId: string, period: string, category: string): Promise<any> {
+  async getXPLeaderboard(currentUserId: string, period: string, category: string, isAdmin: boolean = false): Promise<any> {
     // Calculate date range based on period
     const now = new Date();
     let startDate: Date | null = null;
@@ -1314,14 +1320,28 @@ export class DatabaseStorage implements IStorage {
         take: 100, // Get top 100 to find current user
       });
 
-      const leaderboard = users.slice(0, 10).map((user, index) => ({
-        userId: user.id,
-        username: user.username,
-        email: user.email,
-        xp: user.xp,
-        categoryXp: user.xp,
-        rank: index + 1,
-      }));
+      const leaderboard = users.slice(0, 10).map((user, index) => {
+        const baseData = {
+          xp: user.xp,
+          categoryXp: user.xp,
+          rank: index + 1,
+        };
+        
+        if (isAdmin) {
+          return {
+            ...baseData,
+            userId: user.id,
+            username: user.username,
+            email: user.email,
+            displayName: user.username || user.email,
+          };
+        } else {
+          return {
+            ...baseData,
+            displayName: generateAnonymizedHandle(user.id),
+          };
+        }
+      });
 
       // Find current user position
       const currentUserRank = users.findIndex(u => u.id === currentUserId);
@@ -1329,14 +1349,26 @@ export class DatabaseStorage implements IStorage {
 
       if (currentUserRank > 9) {
         const currentUser = users[currentUserRank];
-        userPosition = {
-          userId: currentUser.id,
-          username: currentUser.username,
-          email: currentUser.email,
+        const baseData = {
           xp: currentUser.xp,
           categoryXp: currentUser.xp,
           rank: currentUserRank + 1,
         };
+        
+        if (isAdmin) {
+          userPosition = {
+            ...baseData,
+            userId: currentUser.id,
+            username: currentUser.username,
+            email: currentUser.email,
+            displayName: currentUser.username || currentUser.email,
+          };
+        } else {
+          userPosition = {
+            ...baseData,
+            displayName: 'You',
+          };
+        }
       }
 
       return { leaderboard, userPosition };
@@ -1392,10 +1424,28 @@ export class DatabaseStorage implements IStorage {
       // Sort by category XP
       userXPData.sort((a, b) => b.categoryXp - a.categoryXp);
 
-      const leaderboard = userXPData.slice(0, 10).map((user, index) => ({
-        ...user,
-        rank: index + 1,
-      }));
+      const leaderboard = userXPData.slice(0, 10).map((user, index) => {
+        const baseData = {
+          xp: user.xp,
+          categoryXp: user.categoryXp,
+          rank: index + 1,
+        };
+        
+        if (isAdmin) {
+          return {
+            ...baseData,
+            userId: user.userId,
+            username: user.username,
+            email: user.email,
+            displayName: user.username || user.email,
+          };
+        } else {
+          return {
+            ...baseData,
+            displayName: generateAnonymizedHandle(user.userId),
+          };
+        }
+      });
 
       // Find current user position
       const currentUserRank = userXPData.findIndex(u => u.userId === currentUserId);
@@ -1403,10 +1453,26 @@ export class DatabaseStorage implements IStorage {
 
       if (currentUserRank > 9) {
         const currentUser = userXPData[currentUserRank];
-        userPosition = {
-          ...currentUser,
+        const baseData = {
+          xp: currentUser.xp,
+          categoryXp: currentUser.categoryXp,
           rank: currentUserRank + 1,
         };
+        
+        if (isAdmin) {
+          userPosition = {
+            ...baseData,
+            userId: currentUser.userId,
+            username: currentUser.username,
+            email: currentUser.email,
+            displayName: currentUser.username || currentUser.email,
+          };
+        } else {
+          userPosition = {
+            ...baseData,
+            displayName: 'You',
+          };
+        }
       }
 
       return { leaderboard, userPosition };
