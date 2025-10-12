@@ -19,9 +19,11 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Balance } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfetti } from "@/hooks/use-confetti";
 
 export default function Home() {
   const { toast } = useToast();
+  const { celebrate } = useConfetti();
   
   // Single source of truth for current user
   const { user, isLoading: userLoading } = useAuth();
@@ -45,10 +47,32 @@ export default function Home() {
       return await res.json();
     },
     onSuccess: (data: any) => {
+      // Check if streak reached a milestone (7, 14, 30, 60, 90, 180, 365)
+      const streakMilestones = [7, 14, 30, 60, 90, 180, 365];
+      const isStreakMilestone = streakMilestones.includes(data.streak);
+      
+      // Calculate level before and after XP gain for level-up detection
+      const previousXP = user?.xp ?? 0;
+      const newXP = previousXP + (data.xpReward || 0);
+      const previousLevel = Math.floor(previousXP / 1000) + 1;
+      const newLevel = Math.floor(newXP / 1000) + 1;
+      const leveledUp = newLevel > previousLevel;
+      
       toast({
         title: "Check-in Successful!",
         description: `Day ${data.streak} streak! Earned ${data.xnrtReward} XNRT and ${data.xpReward} XP`,
       });
+      
+      // Trigger confetti for streak milestones
+      if (isStreakMilestone) {
+        celebrate('streak');
+      }
+      
+      // Trigger confetti for level-ups
+      if (leveledUp) {
+        celebrate('levelup');
+      }
+      
       // Refresh the user that useAuth reads
       queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });

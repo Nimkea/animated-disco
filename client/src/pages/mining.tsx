@@ -9,9 +9,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Pickaxe, Zap, Clock, TrendingUp, Video } from "lucide-react";
 import type { MiningSession } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { useAuth } from "@/hooks/useAuth";
+import { useConfetti } from "@/hooks/use-confetti";
 
 export default function Mining() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { celebrate } = useConfetti();
 
   const { data: currentSession } = useQuery<MiningSession>({
     queryKey: ["/api/mining/current"],
@@ -58,10 +62,23 @@ export default function Mining() {
       return await apiRequest("POST", "/api/mining/stop", {});
     },
     onSuccess: (data: any) => {
+      // Calculate level before and after XP gain for level-up detection
+      const previousXP = user?.xp ?? 0;
+      const newXP = previousXP + (data.xpReward || 0);
+      const previousLevel = Math.floor(previousXP / 1000) + 1;
+      const newLevel = Math.floor(newXP / 1000) + 1;
+      const leveledUp = newLevel > previousLevel;
+      
       toast({
         title: "Mining Complete!",
         description: `You earned ${data.xpReward} XP and ${data.xnrtReward?.toFixed(1)} XNRT!`,
       });
+      
+      // Trigger confetti for level-ups
+      if (leveledUp) {
+        celebrate('levelup');
+      }
+      
       queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
       queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
       queryClient.invalidateQueries({ queryKey: ["/auth/me"] });

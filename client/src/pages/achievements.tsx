@@ -4,11 +4,21 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Trophy, Lock, CheckCircle2, TrendingUp, Users, Flame, Pickaxe } from "lucide-react";
 import type { Achievement, UserAchievement } from "@shared/schema";
+import { useConfetti } from "@/hooks/use-confetti";
 
 export default function Achievements() {
+  const { celebrate } = useConfetti();
+  
   const { data: achievements } = useQuery<(Achievement & { unlocked?: boolean; unlockedAt?: string })[]>({
     queryKey: ["/api/achievements"],
   });
+  
+  // Trigger confetti when clicking on unlocked achievement
+  const handleAchievementClick = (achievement: Achievement & { unlocked?: boolean }) => {
+    if (achievement.unlocked) {
+      celebrate('achievement');
+    }
+  };
 
   const categories = {
     earnings: { label: "Earnings", icon: TrendingUp, color: "text-chart-2" },
@@ -78,9 +88,10 @@ export default function Achievements() {
               {categoryAchievements.map((achievement) => (
                 <div
                   key={achievement.id}
-                  className={`p-4 border rounded-md ${
+                  onClick={() => handleAchievementClick(achievement)}
+                  className={`p-4 border rounded-md transition-all ${
                     achievement.unlocked 
-                      ? "border-chart-2/30 bg-chart-2/5" 
+                      ? "border-chart-2/30 bg-chart-2/5 cursor-pointer hover:bg-chart-2/10 hover:border-chart-2/50" 
                       : "border-border bg-muted/50"
                   }`}
                   data-testid={`achievement-${achievement.id}`}

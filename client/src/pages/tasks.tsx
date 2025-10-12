@@ -8,9 +8,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ListChecks, CheckCircle2, Sparkles, Calendar, Star } from "lucide-react";
 import type { Task, UserTask } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { useAuth } from "@/hooks/useAuth";
+import { useConfetti } from "@/hooks/use-confetti";
 
 export default function Tasks() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { celebrate } = useConfetti();
 
   const { data: userTasks } = useQuery<UserTask[]>({
     queryKey: ["/api/tasks/user"],
@@ -21,10 +25,23 @@ export default function Tasks() {
       return await apiRequest("POST", `/api/tasks/${taskId}/complete`, {});
     },
     onSuccess: (data: any) => {
+      // Calculate level before and after XP gain for level-up detection
+      const previousXP = user?.xp ?? 0;
+      const newXP = previousXP + (data.xpReward || 0);
+      const previousLevel = Math.floor(previousXP / 1000) + 1;
+      const newLevel = Math.floor(newXP / 1000) + 1;
+      const leveledUp = newLevel > previousLevel;
+      
       toast({
         title: "Task Completed!",
         description: `You earned ${data.xpReward} XP and ${data.xnrtReward} XNRT!`,
       });
+      
+      // Trigger confetti for level-ups
+      if (leveledUp) {
+        celebrate('levelup');
+      }
+      
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/user"] });
       queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });

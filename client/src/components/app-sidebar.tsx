@@ -12,6 +12,7 @@ import {
   Gift,
   LogOut,
   Shield,
+  TrendingUp,
 } from "lucide-react";
 
 import {
@@ -40,6 +41,7 @@ const menuItems = [
   { title: "Staking", url: "/staking", icon: Gem, testId: "nav-staking" },
   { title: "Mining", url: "/mining", icon: Pickaxe, testId: "nav-mining" },
   { title: "Referrals", url: "/referrals", icon: Users, testId: "nav-referrals" },
+  { title: "Leaderboard", url: "/leaderboard", icon: TrendingUp, testId: "nav-leaderboard" },
   { title: "Profile", url: "/profile", icon: User, testId: "nav-profile" },
   { title: "Tasks", url: "/tasks", icon: ListChecks, testId: "nav-tasks" },
   { title: "Achievements", url: "/achievements", icon: Trophy, testId: "nav-achievements" },

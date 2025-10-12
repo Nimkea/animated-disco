@@ -193,6 +193,9 @@ export interface IStorage {
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
   
+  // XP Leaderboard operations
+  getXPLeaderboard(currentUserId: string, period: string, category: string): Promise<any>;
+  
   // Raw query support
   raw(query: string, params?: any[]): Promise<any[]>;
 }
@@ -1100,6 +1103,142 @@ export class DatabaseStorage implements IStorage {
       },
       data: { read: true },
     });
+  }
+
+  // XP Leaderboard operations
+  async getXPLeaderboard(currentUserId: string, period: string, category: string): Promise<any> {
+    // Calculate date range based on period
+    const now = new Date();
+    let startDate: Date | null = null;
+    
+    switch (period) {
+      case 'daily':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'weekly':
+        const dayOfWeek = now.getDay();
+        startDate = new Date(now.getTime() - dayOfWeek * 24 * 60 * 60 * 1000);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case 'monthly':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'all-time':
+      default:
+        startDate = null;
+        break;
+    }
+
+    if (category === 'overall') {
+      // Overall: Rank by total user XP
+      const users = await prisma.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          xp: true,
+        },
+        orderBy: { xp: 'desc' },
+        take: 100, // Get top 100 to find current user
+      });
+
+      const leaderboard = users.slice(0, 10).map((user, index) => ({
+        userId: user.id,
+        username: user.username,
+        email: user.email,
+        xp: user.xp,
+        categoryXp: user.xp,
+        rank: index + 1,
+      }));
+
+      // Find current user position
+      const currentUserRank = users.findIndex(u => u.id === currentUserId);
+      let userPosition = null;
+
+      if (currentUserRank > 9) {
+        const currentUser = users[currentUserRank];
+        userPosition = {
+          userId: currentUser.id,
+          username: currentUser.username,
+          email: currentUser.email,
+          xp: currentUser.xp,
+          categoryXp: currentUser.xp,
+          rank: currentUserRank + 1,
+        };
+      }
+
+      return { leaderboard, userPosition };
+    } else {
+      // Category-specific: Calculate from activities
+      const typeFilter = category === 'mining' ? 'mining' : category === 'staking' ? 'stak' : 'referral';
+      
+      // Get all users
+      const users = await prisma.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          xp: true,
+        },
+      });
+
+      // Calculate category XP for each user
+      const userXPData = await Promise.all(
+        users.map(async (user) => {
+          const whereClause: any = {
+            userId: user.id,
+            type: { contains: typeFilter },
+          };
+          
+          if (startDate) {
+            whereClause.createdAt = { gte: startDate };
+          }
+
+          const activities = await prisma.activity.findMany({
+            where: whereClause,
+          });
+
+          // Extract XP from activity descriptions
+          let categoryXp = 0;
+          activities.forEach(activity => {
+            const xpMatch = activity.description.match(/(\d+)\s*XP/i);
+            if (xpMatch) {
+              categoryXp += parseInt(xpMatch[1]);
+            }
+          });
+
+          return {
+            userId: user.id,
+            username: user.username,
+            email: user.email,
+            xp: user.xp,
+            categoryXp,
+          };
+        })
+      );
+
+      // Sort by category XP
+      userXPData.sort((a, b) => b.categoryXp - a.categoryXp);
+
+      const leaderboard = userXPData.slice(0, 10).map((user, index) => ({
+        ...user,
+        rank: index + 1,
+      }));
+
+      // Find current user position
+      const currentUserRank = userXPData.findIndex(u => u.userId === currentUserId);
+      let userPosition = null;
+
+      if (currentUserRank > 9) {
+        const currentUser = userXPData[currentUserRank];
+        userPosition = {
+          ...currentUser,
+          rank: currentUserRank + 1,
+        };
+      }
+
+      return { leaderboard, userPosition };
+    }
   }
 
   // Raw query support

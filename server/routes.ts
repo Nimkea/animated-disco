@@ -552,6 +552,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/leaderboard/xp', requireAuth, async (req, res) => {
+    try {
+      const period = (req.query.period as string) || 'all-time';
+      const category = (req.query.category as string) || 'overall';
+      const currentUserId = req.authUser!.id;
+
+      const result = await storage.getXPLeaderboard(currentUserId, period, category);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching XP leaderboard:", error);
+      res.status(500).json({ message: "Failed to fetch XP leaderboard" });
+    }
+  });
+
   // Transaction routes
   app.get('/api/transactions', requireAuth, async (req, res) => {
     try {
@@ -589,10 +603,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/transactions/deposit', requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const { usdtAmount, transactionHash } = req.body;
+      const { usdtAmount, transactionHash, proofImageUrl } = req.body;
 
       if (!usdtAmount || !transactionHash) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Validate proofImageUrl if provided (should be base64 data URL or valid URL)
+      if (proofImageUrl) {
+        const isBase64DataUrl = proofImageUrl.startsWith('data:image/');
+        const isValidUrl = proofImageUrl.startsWith('http://') || proofImageUrl.startsWith('https://');
+        
+        if (!isBase64DataUrl && !isValidUrl) {
+          return res.status(400).json({ message: "Invalid proof image URL format" });
+        }
       }
 
       const xnrtAmount = parseFloat(usdtAmount) * 100; // 1 USDT = 100 XNRT
@@ -603,6 +627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         amount: xnrtAmount.toString(),
         usdtAmount: usdtAmount.toString(),
         transactionHash,
+        ...(proofImageUrl && { proofImageUrl }),
         status: "pending",
       });
 
@@ -858,6 +883,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error during check-in:", error);
       res.status(500).json({ message: "Failed to check in" });
+    }
+  });
+
+  // Check-in history route
+  app.get('/api/checkin/history', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const { year, month } = req.query;
+      
+      // Default to current month if not specified
+      const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
+      const targetMonth = month ? parseInt(month as string) : new Date().getMonth();
+      
+      // Calculate start and end dates for the month
+      const startDate = new Date(targetYear, targetMonth, 1);
+      const endDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+      
+      // Query activities with type='daily_checkin' for the date range
+      const checkinActivities = await prisma.activity.findMany({
+        where: {
+          userId,
+          type: 'daily_checkin',
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
+      
+      // Extract dates from activities
+      const checkinDates = checkinActivities.map((activity: { createdAt: Date | null }) => 
+        new Date(activity.createdAt!).toISOString().split('T')[0]
+      );
+      
+      res.json({ 
+        dates: checkinDates,
+        year: targetYear,
+        month: targetMonth,
+      });
+    } catch (error) {
+      console.error("Error fetching check-in history:", error);
+      res.status(500).json({ message: "Failed to fetch check-in history" });
     }
   });
 

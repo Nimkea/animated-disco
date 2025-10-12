@@ -31,6 +31,7 @@ import Profile from "@/pages/profile";
 import Tasks from "@/pages/tasks";
 import Achievements from "@/pages/achievements";
 import Rewards from "@/pages/rewards";
+import Leaderboard from "@/pages/leaderboard";
 import AdminDashboard from "@/pages/admin/dashboard";
 
 function AuthenticatedApp() {
@@ -71,6 +72,7 @@ function AuthenticatedApp() {
                 <Route path="/tasks" component={Tasks} />
                 <Route path="/achievements" component={Achievements} />
                 <Route path="/rewards" component={Rewards} />
+                <Route path="/leaderboard" component={Leaderboard} />
                 <Route path="/admin" component={AdminDashboard} />
                 <Route component={NotFound} />
               </Switch>

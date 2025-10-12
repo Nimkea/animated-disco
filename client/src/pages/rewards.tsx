@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Gift, Sparkles, TrendingUp, Award } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import type { Balance } from "@shared/schema";
+import { CheckInCalendar } from "@/components/checkin-calendar";
 
 export default function Rewards() {
   const { user } = useAuth();
@@ -93,6 +94,8 @@ export default function Rewards() {
           </CardContent>
         </Card>
       </div>
+
+      <CheckInCalendar />
 
       <Card>
         <CardHeader>

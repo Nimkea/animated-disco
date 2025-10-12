@@ -4,13 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   CheckCircle, 
   XCircle, 
   ExternalLink, 
   Search,
   Filter,
-  Eye
+  Eye,
+  X
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -22,6 +24,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Transaction {
   id: string;
@@ -47,6 +57,12 @@ export default function DepositsTab() {
   const [adminNotes, setAdminNotes] = useState("");
   const [proofDialogOpen, setProofDialogOpen] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState("");
+  
+  // Bulk selection state
+  const [selectedDepositIds, setSelectedDepositIds] = useState<Set<string>>(new Set());
+  const [bulkConfirmDialogOpen, setBulkConfirmDialogOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [bulkAdminNotes, setBulkAdminNotes] = useState("");
 
   const { data: pendingDeposits, isLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/admin/deposits/pending"],
@@ -84,6 +100,75 @@ export default function DepositsTab() {
     },
   });
 
+  // Bulk mutations
+  const bulkApproveMutation = useMutation({
+    mutationFn: async ({ depositIds, notes }: { depositIds: string[]; notes?: string }) => {
+      return await apiRequest("POST", "/api/admin/deposits/bulk-approve", { depositIds, notes });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      setSelectedDepositIds(new Set());
+      setBulkConfirmDialogOpen(false);
+      setBulkAdminNotes("");
+      
+      const { approved, failed, errors } = data;
+      if (failed > 0) {
+        toast({
+          title: "Partial Success",
+          description: `${approved} deposits approved, ${failed} failed. ${errors.join(", ")}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `${approved} deposits approved successfully`,
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to process bulk approval",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkRejectMutation = useMutation({
+    mutationFn: async ({ depositIds, notes }: { depositIds: string[]; notes?: string }) => {
+      return await apiRequest("POST", "/api/admin/deposits/bulk-reject", { depositIds, notes });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      setSelectedDepositIds(new Set());
+      setBulkConfirmDialogOpen(false);
+      setBulkAdminNotes("");
+      
+      const { rejected, failed, errors } = data;
+      if (failed > 0) {
+        toast({
+          title: "Partial Success",
+          description: `${rejected} deposits rejected, ${failed} failed. ${errors.join(", ")}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `${rejected} deposits rejected successfully`,
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to process bulk rejection",
+        variant: "destructive",
+      });
+    },
+  });
+
   const filteredDeposits = pendingDeposits?.filter((deposit) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
@@ -99,6 +184,47 @@ export default function DepositsTab() {
     setSelectedProofUrl(url);
     setProofDialogOpen(true);
   };
+
+  // Selection handlers
+  const toggleDepositSelection = (depositId: string) => {
+    const newSelected = new Set(selectedDepositIds);
+    if (newSelected.has(depositId)) {
+      newSelected.delete(depositId);
+    } else {
+      newSelected.add(depositId);
+    }
+    setSelectedDepositIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDepositIds.size === filteredDeposits?.length) {
+      setSelectedDepositIds(new Set());
+    } else {
+      setSelectedDepositIds(new Set(filteredDeposits?.map(d => d.id) || []));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedDepositIds(new Set());
+  };
+
+  const handleBulkAction = (action: 'approve' | 'reject') => {
+    setBulkAction(action);
+    setBulkConfirmDialogOpen(true);
+  };
+
+  const confirmBulkAction = () => {
+    const depositIds = Array.from(selectedDepositIds);
+    if (bulkAction === 'approve') {
+      bulkApproveMutation.mutate({ depositIds, notes: bulkAdminNotes || undefined });
+    } else if (bulkAction === 'reject') {
+      bulkRejectMutation.mutate({ depositIds, notes: bulkAdminNotes || undefined });
+    }
+  };
+
+  // Calculate total XNRT for selected deposits
+  const selectedDeposits = filteredDeposits?.filter(d => selectedDepositIds.has(d.id)) || [];
+  const totalXNRT = selectedDeposits.reduce((sum, d) => sum + parseFloat(d.amount), 0);
 
   return (
     <div className="space-y-6">
@@ -118,12 +244,80 @@ export default function DepositsTab() {
         </Button>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedDepositIds.size > 0 && (
+        <Card className="border-primary bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="text-base px-3 py-1" data-testid="text-selected-count">
+                  {selectedDepositIds.size} deposit{selectedDepositIds.size !== 1 ? 's' : ''} selected
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Total: {totalXNRT.toLocaleString()} XNRT
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleBulkAction('approve')}
+                  disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
+                  className="gap-1"
+                  data-testid="button-bulk-approve"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Approve All
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleBulkAction('reject')}
+                  disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
+                  className="gap-1"
+                  data-testid="button-bulk-reject"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject All
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="gap-1"
+                  data-testid="button-clear-selection"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle>Pending Deposits</CardTitle>
-          <CardDescription>
-            Review and approve deposit requests • Company Wallet: 0x715C32deC9534d2fB34e0B567288AF8d895efB59 (BEP20)
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Pending Deposits</CardTitle>
+              <CardDescription>
+                Review and approve deposit requests • Company Wallet: 0x715C32deC9534d2fB34e0B567288AF8d895efB59 (BEP20)
+              </CardDescription>
+            </div>
+            {filteredDeposits && filteredDeposits.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={selectedDepositIds.size === filteredDeposits.length && filteredDeposits.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                  data-testid="checkbox-select-all"
+                />
+                <label className="text-sm font-medium cursor-pointer" onClick={toggleSelectAll}>
+                  Select All
+                </label>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -139,37 +333,61 @@ export default function DepositsTab() {
                   data-testid={`deposit-${deposit.id}`}
                 >
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-lg">
-                          {parseFloat(deposit.amount).toLocaleString()} XNRT
+                    <div className="flex items-start gap-3 flex-1">
+                      {/* Inline Thumbnail Preview */}
+                      {deposit.proofImageUrl && (
+                        <button
+                          onClick={() => viewProof(deposit.proofImageUrl!)}
+                          className="group relative w-20 h-20 flex-shrink-0 rounded-lg border-2 border-border overflow-hidden bg-muted hover:border-primary transition-all hover:scale-105 hidden sm:block"
+                          data-testid={`thumbnail-proof-${deposit.id}`}
+                        >
+                          <img
+                            src={deposit.proofImageUrl}
+                            alt="Proof thumbnail"
+                            className="w-full h-full object-cover transition-opacity group-hover:opacity-80"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999">No Image</text></svg>';
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                            <Eye className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </button>
+                      )}
+                      
+                      {/* Transaction Details */}
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-lg">
+                            {parseFloat(deposit.amount).toLocaleString()} XNRT
+                          </p>
+                          <Badge variant="outline">
+                            {deposit.usdtAmount} USDT
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          User: {deposit.user?.email || "Unknown"} (@{deposit.user?.username || "Unknown"})
                         </p>
-                        <Badge variant="outline">
-                          {deposit.usdtAmount} USDT
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        User: {deposit.user?.email || "Unknown"} (@{deposit.user?.username || "Unknown"})
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {deposit.transactionHash?.slice(0, 20)}...{deposit.transactionHash?.slice(-10)}
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {deposit.transactionHash?.slice(0, 20)}...{deposit.transactionHash?.slice(-10)}
+                          </p>
+                          {deposit.transactionHash && (
+                            <a
+                              href={`https://bscscan.com/tx/${deposit.transactionHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                              data-testid={`link-verify-tx-${deposit.id}`}
+                            >
+                              Verify <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(deposit.createdAt).toLocaleString()}
                         </p>
-                        {deposit.transactionHash && (
-                          <a
-                            href={`https://bscscan.com/tx/${deposit.transactionHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                            data-testid={`link-verify-tx-${deposit.id}`}
-                          >
-                            Verify <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(deposit.createdAt).toLocaleString()}
-                      </p>
                     </div>
 
                     <div className="flex flex-col items-end gap-2">

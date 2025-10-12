@@ -8,24 +8,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info } from "lucide-react";
+import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info, Upload, X } from "lucide-react";
 import type { Transaction } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
 
 const COMPANY_WALLET = "0x715C32deC9534d2fB34e0B567288AF8d895efB59";
 const USDT_TO_XNRT_RATE = 100;
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export default function Deposit() {
   const { toast } = useToast();
   const [usdtAmount, setUsdtAmount] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
+  const [proofImageUrl, setProofImageUrl] = useState("");
+  const [proofImageFile, setProofImageFile] = useState<File | null>(null);
 
   const { data: deposits } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions/deposits"],
   });
 
   const depositMutation = useMutation({
-    mutationFn: async (data: { usdtAmount: string; transactionHash: string }) => {
+    mutationFn: async (data: { usdtAmount: string; transactionHash: string; proofImageUrl?: string }) => {
       return await apiRequest("POST", "/api/transactions/deposit", data);
     },
     onSuccess: () => {
@@ -36,6 +39,8 @@ export default function Deposit() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/deposits"] });
       setUsdtAmount("");
       setTransactionHash("");
+      setProofImageUrl("");
+      setProofImageFile(null);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -65,6 +70,56 @@ export default function Deposit() {
     });
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload an image file (PNG, JPEG, or JPG)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        title: "File Too Large",
+        description: "Image size must be less than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setProofImageUrl(base64String);
+      setProofImageFile(file);
+      toast({
+        title: "Image Uploaded",
+        description: "Proof of payment image ready to submit",
+      });
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Upload Failed",
+        description: "Failed to process the image. Please try again.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setProofImageUrl("");
+    setProofImageFile(null);
+  };
+
   const handleSubmit = () => {
     if (!usdtAmount || !transactionHash) {
       toast({
@@ -84,7 +139,11 @@ export default function Deposit() {
       return;
     }
 
-    depositMutation.mutate({ usdtAmount, transactionHash });
+    depositMutation.mutate({ 
+      usdtAmount, 
+      transactionHash,
+      ...(proofImageUrl && { proofImageUrl })
+    });
   };
 
   const xnrtAmount = usdtAmount ? parseFloat(usdtAmount) * USDT_TO_XNRT_RATE : 0;
@@ -236,6 +295,68 @@ export default function Deposit() {
                 className="font-mono text-sm"
                 data-testid="input-tx-hash"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="proofImage">Proof of Payment (Optional)</Label>
+              <div className="space-y-3">
+                {!proofImageUrl ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="proofImage"
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      data-testid="input-proof-image"
+                    />
+                    <label htmlFor="proofImage" className="flex-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => document.getElementById("proofImage")?.click()}
+                        data-testid="button-upload-proof"
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Screenshot
+                      </Button>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="relative border-2 border-dashed border-primary/30 rounded-lg p-3 bg-muted/30">
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={proofImageUrl}
+                        alt="Proof of payment"
+                        className="w-24 h-24 object-cover rounded-md border border-border"
+                        data-testid="img-proof-preview"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">
+                          {proofImageFile?.name || "Proof image"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {proofImageFile ? `${(proofImageFile.size / 1024).toFixed(1)} KB` : "Ready to submit"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={clearImage}
+                        className="flex-shrink-0"
+                        data-testid="button-clear-proof"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Upload a screenshot of your transaction (PNG, JPEG, JPG • Max 5MB)
+                </p>
+              </div>
             </div>
 
             <Button
