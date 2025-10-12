@@ -89,6 +89,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Retry Worker**: Background worker runs every 5 minutes, exponential backoff (5/15/30/60 min delays based on lastAttemptAt), max 5 retry attempts, auto-disables expired subscriptions (404/410 errors), comprehensive logging.
 
 ### Technical Improvements
+- **Service Worker Cache Fix**: Implemented cache versioning system (CACHE_VERSION v2) with custom activate handler to delete old caches, preventing stale bundle issues. Changed JS/CSS bundles from CacheFirst to StaleWhileRevalidate strategy - serves cached content immediately while refreshing in background, eliminating "React is null" errors from outdated cached bundles while maintaining offline functionality. All cache names now include version prefix for proper invalidation.
 - **Race Condition Fix**: Changed bulk deposit approval from parallel (Promise.allSettled) to sequential processing (for-of loop), preventing balance corruption when multiple deposits for same user.
 - **Type Safety**: All TypeScript errors resolved, 100% type-safe implementation across push notification system.
 - **Production Ready**: Deployment configuration verified (autoscale), all workflows running without errors.
