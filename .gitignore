@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+prisma/dev.db
+
+# Generated files
+project-tree.txt
+project-structure.txt
+tree-output.txt
+
+# Logs
+logs/
+*.log
+/tmp/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Replit
+.config/
+.cache/
+.upm/
+.breakpoints
+
+# PWA
+sw.js
+workbox-*.js
+*.map
