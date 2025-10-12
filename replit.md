@@ -40,7 +40,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Deposit System**: USDT to XNRT conversion with admin approval, proof of payment upload, and transaction tracking.
 - **Withdrawal System**: XNRT to USDT conversion with a 2% fee, multi-source support, and admin approval.
 - **Staking System**: Four-tiered system with varying APY and duration, real-time countdowns, and automated daily reward distribution.
-- **Mining System**: 24-hour sessions with ad boosts, XP to XNRT conversion, and automated reward distribution.
+- **Mining System**: Fully automated 24-hour sessions with auto-completion, XP to XNRT conversion (10 XP + 5 XNRT per session), no cooldown for immediate restart, and automatic reward deposit.
 - **Referral System**: 3-level commission chain, network visualization, real-time notifications, leaderboard, and social sharing.
 - **Daily Check-in System**: Atomic check-ins with streak rewards, calendar view, and anti-exploit measures.
 - **Achievement System**: Auto-unlocks achievements with XP rewards and confetti celebrations.
@@ -72,6 +72,16 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Security**: helmet
 
 ## Recent Updates (Oct 12, 2025)
+### Mining System Simplification ✅
+- **No Cooldown**: Removed 24-hour cooldown restriction - users can start a new mining session immediately after previous one completes
+- **Auto-Completion**: Implemented automated 24-hour timer that auto-stops mining and deposits rewards without manual intervention
+- **Ad Boost Removed**: Disabled ad boost system for cleaner, simpler earning experience (may re-enable in future)
+- **Simplified UI**: Removed stop button and ad boost components - users only see countdown timer and estimated rewards
+- **Auto-Processing**: Frontend triggers reward processing every 30 seconds to detect and complete expired sessions
+- **Immediate Restart**: Set nextAvailable to current time so users can restart mining instantly after completion
+- **Secure Implementation**: Maintained CSRF protection and authentication on all endpoints including auto-processing
+- **Updated Messaging**: All success messages and UI text reflect automatic completion and deposit flow
+
 ### Mining System Robustness Improvements ✅
 - **Confetti Safety**: Replaced unsupported 'star' shape with 'square'/'circle' in canvas-confetti, added try/catch error handling to prevent UI crashes, and optional chaining for feature flags
 - **Robust 401 Detection**: Enhanced `isUnauthorizedError()` with `ApiError` type that checks status/code fields instead of fragile regex matching for more reliable authentication error handling
