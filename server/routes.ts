@@ -72,6 +72,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Staking Tiers routes (public for authenticated users)
+  app.get('/api/staking-tiers', requireAuth, async (req, res) => {
+    try {
+      const tiers = await prisma.stakingTier.findMany({
+        where: { isActive: true },
+        orderBy: { apy: 'asc' },
+      });
+      res.json(tiers);
+    } catch (error) {
+      console.error("Error fetching staking tiers:", error);
+      res.status(500).json({ message: "Failed to fetch staking tiers" });
+    }
+  });
+
   // Staking routes
   app.get('/api/stakes', requireAuth, async (req, res) => {
     try {
@@ -111,7 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const startDate = new Date();
       const endDate = new Date(startDate.getTime() + tierConfig.duration * 24 * 60 * 60 * 1000);
-      const dailyRate = (parseFloat(tierConfig.apy.toString()) / 365) / 100 + 1;
+      const dailyRate = parseFloat(tierConfig.apy.toString()) / 365;
 
       const stake = await storage.createStake({
         userId,
