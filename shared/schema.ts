@@ -59,22 +59,7 @@ export const balances = pgTable("balances", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Staking tier options (admin-managed)
-export const stakingTiers = pgTable("staking_tiers", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name").notNull(),
-  duration: integer("duration").notNull(), // days
-  apy: decimal("apy", { precision: 8, scale: 2 }).notNull(), // annual percentage yield
-  minAmount: decimal("min_amount", { precision: 18, scale: 2 }).default("0").notNull(),
-  maxAmount: decimal("max_amount", { precision: 18, scale: 2 }),
-  description: text("description"),
-  isActive: boolean("is_active").default(true).notNull(),
-  displayOrder: integer("display_order").default(0).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// User stakes
+// Staking tiers
 export const stakes = pgTable("stakes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -341,10 +326,6 @@ export type UpsertUser = typeof users.$inferInsert;
 export type Balance = typeof balances.$inferSelect;
 export type InsertBalance = typeof balances.$inferInsert;
 
-export type StakingTier = typeof stakingTiers.$inferSelect;
-export const insertStakingTierSchema = createInsertSchema(stakingTiers).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertStakingTier = z.infer<typeof insertStakingTierSchema>;
-
 export type Stake = typeof stakes.$inferSelect;
 export const insertStakeSchema = createInsertSchema(stakes).omit({ id: true, createdAt: true });
 export type InsertStake = z.infer<typeof insertStakeSchema>;
@@ -380,3 +361,41 @@ export type InsertNotification = typeof notifications.$inferInsert;
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+// Staking tier configurations
+export const STAKING_TIERS = {
+  royal_sapphire: {
+    name: "Royal Sapphire",
+    duration: 15,
+    minAmount: 50000,
+    maxAmount: 1000000,
+    dailyRate: 1.1,
+    apy: 402,
+  },
+  legendary_emerald: {
+    name: "Legendary Emerald",
+    duration: 30,
+    minAmount: 10000,
+    maxAmount: 10000000,
+    dailyRate: 1.4,
+    apy: 511,
+  },
+  imperial_platinum: {
+    name: "Imperial Platinum",
+    duration: 45,
+    minAmount: 5000,
+    maxAmount: 10000000,
+    dailyRate: 1.5,
+    apy: 547,
+  },
+  mythic_diamond: {
+    name: "Mythic Diamond",
+    duration: 90,
+    minAmount: 100,
+    maxAmount: 10000000,
+    dailyRate: 2.0,
+    apy: 730,
+  },
+} as const;
+
+export type StakingTier = keyof typeof STAKING_TIERS;
