@@ -25,6 +25,9 @@ const pushSubscriptionLimiter = rateLimit({
   message: { message: "Too many subscription requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    return process.env.NODE_ENV === 'development';
+  },
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {

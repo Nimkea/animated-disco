@@ -42,6 +42,9 @@ const forgotPasswordRateLimiter = rateLimit({
   message: 'Too many password reset attempts, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    return process.env.NODE_ENV === 'development';
+  },
 });
 
 // POST /auth/register
