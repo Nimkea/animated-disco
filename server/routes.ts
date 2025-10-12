@@ -3,7 +3,6 @@ import { createServer, type Server } from "http";
 import { storage, generateAnonymizedHandle } from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
-import { STAKING_TIERS, type StakingTier } from "@shared/schema";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
@@ -88,17 +87,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/stakes', requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const { tier, amount } = req.body;
+      const { tierId, amount } = req.body;
 
-      if (!STAKING_TIERS[tier as StakingTier]) {
+      const tierConfig = await prisma.stakingTier.findUnique({ where: { id: tierId } });
+      if (!tierConfig || !tierConfig.isActive) {
         return res.status(400).json({ message: "Invalid staking tier" });
       }
 
-      const tierConfig = STAKING_TIERS[tier as StakingTier];
       const stakeAmount = parseFloat(amount);
 
-      if (stakeAmount < tierConfig.minAmount || stakeAmount > tierConfig.maxAmount) {
-        return res.status(400).json({ message: `Stake amount must be between ${tierConfig.minAmount} and ${tierConfig.maxAmount} XNRT` });
+      if (stakeAmount < parseFloat(tierConfig.minAmount.toString())) {
+        return res.status(400).json({ message: `Stake amount must be at least ${tierConfig.minAmount} XNRT` });
+      }
+
+      if (tierConfig.maxAmount && stakeAmount > parseFloat(tierConfig.maxAmount.toString())) {
+        return res.status(400).json({ message: `Stake amount must not exceed ${tierConfig.maxAmount} XNRT` });
       }
 
       const balance = await storage.getBalance(userId);
@@ -108,12 +111,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const startDate = new Date();
       const endDate = new Date(startDate.getTime() + tierConfig.duration * 24 * 60 * 60 * 1000);
+      const dailyRate = (parseFloat(tierConfig.apy.toString()) / 365) / 100 + 1;
 
       const stake = await storage.createStake({
         userId,
-        tier,
+        tier: tierConfig.name,
         amount: amount.toString(),
-        dailyRate: tierConfig.dailyRate.toString(),
+        dailyRate: dailyRate.toString(),
         duration: tierConfig.duration,
         startDate,
         endDate,
@@ -122,13 +126,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "active",
       });
 
-      // Deduct from balance
       await storage.updateBalance(userId, {
         xnrtBalance: (parseFloat(balance.xnrtBalance) - stakeAmount).toString(),
         stakingBalance: (parseFloat(balance.stakingBalance) + stakeAmount).toString(),
       });
 
-      // Log activity
       await storage.createActivity({
         userId,
         type: "stake_created",
@@ -211,11 +213,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Log activity
-      const tierConfig = STAKING_TIERS[stake.tier as StakingTier];
       await storage.createActivity({
         userId,
         type: "stake_withdrawn",
-        description: `Withdrew ${stakeAmount.toLocaleString()} XNRT + ${totalProfit.toLocaleString()} profit from ${tierConfig.name}`,
+        description: `Withdrew ${stakeAmount.toLocaleString()} XNRT + ${totalProfit.toLocaleString()} profit from ${stake.tier}`,
       });
 
       res.json({ success: true, totalAmount: totalWithdrawalAmount, profit: totalProfit });
@@ -2247,6 +2248,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting achievement:", error);
       res.status(500).json({ message: "Failed to delete achievement" });
+    }
+  });
+
+  // ===== ADMIN CRUD: STAKING TIERS =====
+  app.get('/api/admin/staking-tiers', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const tiers = await prisma.stakingTier.findMany({
+        orderBy: { displayOrder: 'asc' }
+      });
+      res.json(tiers);
+    } catch (error) {
+      console.error("Error fetching staking tiers:", error);
+      res.status(500).json({ message: "Failed to fetch staking tiers" });
+    }
+  });
+
+  app.post('/api/admin/staking-tiers', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { name, duration, apy, minAmount, maxAmount, description, isActive, displayOrder } = req.body;
+
+      if (!name || !duration || apy === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const parsedDuration = typeof duration === 'string' ? parseInt(duration, 10) : duration;
+      const parsedApy = typeof apy === 'string' ? parseFloat(apy) : apy;
+      const parsedMinAmount = minAmount ? (typeof minAmount === 'string' ? parseFloat(minAmount) : minAmount) : 0;
+      const parsedMaxAmount = maxAmount ? (typeof maxAmount === 'string' ? parseFloat(maxAmount) : maxAmount) : null;
+      const parsedDisplayOrder = displayOrder ? (typeof displayOrder === 'string' ? parseInt(displayOrder, 10) : displayOrder) : 0;
+
+      const tier = await prisma.stakingTier.create({
+        data: {
+          name,
+          duration: parsedDuration,
+          apy: new Prisma.Decimal(parsedApy),
+          minAmount: new Prisma.Decimal(parsedMinAmount),
+          maxAmount: parsedMaxAmount ? new Prisma.Decimal(parsedMaxAmount) : null,
+          description: description || null,
+          isActive: isActive !== undefined ? isActive : true,
+          displayOrder: parsedDisplayOrder
+        }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_tier_created',
+        description: `Admin created staking tier: ${name} (${duration} days, ${apy}% APY)`
+      });
+
+      res.json(tier);
+    } catch (error) {
+      console.error("Error creating staking tier:", error);
+      res.status(500).json({ message: "Failed to create staking tier" });
+    }
+  });
+
+  app.put('/api/admin/staking-tiers/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, duration, apy, minAmount, maxAmount, description, isActive, displayOrder } = req.body;
+
+      const data: any = {};
+      if (name !== undefined) data.name = name;
+      if (duration !== undefined) {
+        data.duration = typeof duration === 'string' ? parseInt(duration, 10) : duration;
+      }
+      if (apy !== undefined) {
+        const parsed = typeof apy === 'string' ? parseFloat(apy) : apy;
+        data.apy = new Prisma.Decimal(parsed);
+      }
+      if (minAmount !== undefined) {
+        const parsed = typeof minAmount === 'string' ? parseFloat(minAmount) : minAmount;
+        data.minAmount = new Prisma.Decimal(parsed);
+      }
+      if (maxAmount !== undefined) {
+        if (maxAmount === null || maxAmount === '') {
+          data.maxAmount = null;
+        } else {
+          const parsed = typeof maxAmount === 'string' ? parseFloat(maxAmount) : maxAmount;
+          data.maxAmount = new Prisma.Decimal(parsed);
+        }
+      }
+      if (description !== undefined) data.description = description;
+      if (isActive !== undefined) data.isActive = isActive;
+      if (displayOrder !== undefined) {
+        data.displayOrder = typeof displayOrder === 'string' ? parseInt(displayOrder, 10) : displayOrder;
+      }
+      data.updatedAt = new Date();
+
+      const tier = await prisma.stakingTier.update({
+        where: { id },
+        data
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_tier_updated',
+        description: `Admin updated staking tier: ${tier.name}`
+      });
+
+      res.json(tier);
+    } catch (error) {
+      console.error("Error updating staking tier:", error);
+      res.status(500).json({ message: "Failed to update staking tier" });
+    }
+  });
+
+  app.patch('/api/admin/staking-tiers/:id/toggle', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const tier = await prisma.stakingTier.findUnique({ where: { id } });
+      if (!tier) {
+        return res.status(404).json({ message: "Staking tier not found" });
+      }
+
+      const updatedTier = await prisma.stakingTier.update({
+        where: { id },
+        data: { 
+          isActive: !tier.isActive,
+          updatedAt: new Date()
+        }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_tier_toggled',
+        description: `Admin ${updatedTier.isActive ? 'activated' : 'deactivated'} staking tier: ${updatedTier.name}`
+      });
+
+      res.json(updatedTier);
+    } catch (error) {
+      console.error("Error toggling staking tier:", error);
+      res.status(500).json({ message: "Failed to toggle staking tier" });
+    }
+  });
+
+  app.delete('/api/admin/staking-tiers/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const tier = await prisma.stakingTier.findUnique({ where: { id } });
+      if (!tier) {
+        return res.status(404).json({ message: "Staking tier not found" });
+      }
+
+      await prisma.stakingTier.delete({ where: { id } });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_tier_deleted',
+        description: `Admin deleted staking tier: ${tier.name}`
+      });
+
+      res.json({ message: "Staking tier deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting staking tier:", error);
+      res.status(500).json({ message: "Failed to delete staking tier" });
+    }
+  });
+
+  // ===== PUBLIC: STAKING TIERS =====
+  app.get('/api/staking-tiers', requireAuth, async (req, res) => {
+    try {
+      const tiers = await prisma.stakingTier.findMany({
+        where: { isActive: true },
+        orderBy: { displayOrder: 'asc' }
+      });
+      res.json(tiers);
+    } catch (error) {
+      console.error("Error fetching staking tiers:", error);
+      res.status(500).json({ message: "Failed to fetch staking tiers" });
     }
   });
 
