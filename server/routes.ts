@@ -5,8 +5,69 @@ import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 import { STAKING_TIERS, type StakingTier } from "@shared/schema";
 import { PrismaClient } from "@prisma/client";
+import webpush from "web-push";
+import rateLimit from "express-rate-limit";
 
 const prisma = new PrismaClient();
+
+const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, '').replace(/"$/, '');
+const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, '').replace(/}$/, '').replace(/"$/, '');
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:support@xnrt.org";
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+const pushSubscriptionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { message: "Too many subscription requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+async function sendPushNotification(
+  userId: string, 
+  payload: { title: string; body: string; data?: any }
+): Promise<void> {
+  try {
+    const subscriptions = await storage.getUserPushSubscriptions(userId);
+    
+    if (subscriptions.length === 0) {
+      console.log(`No push subscriptions found for user ${userId}`);
+      return;
+    }
+
+    const pushPayload = JSON.stringify(payload);
+    
+    const sendPromises = subscriptions.map(async (subscription) => {
+      try {
+        const pushSubscription = {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        };
+
+        await webpush.sendNotification(pushSubscription, pushPayload);
+        console.log(`Push notification sent successfully to ${subscription.endpoint}`);
+      } catch (error: any) {
+        console.error(`Error sending push notification to ${subscription.endpoint}:`, error);
+        
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          console.log(`Subscription expired/gone, disabling: ${subscription.endpoint}`);
+          await storage.disablePushSubscription(subscription.endpoint);
+        }
+      }
+    });
+
+    await Promise.allSettled(sendPromises);
+  } catch (error) {
+    console.error("Error in sendPushNotification:", error);
+    throw error;
+  }
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // CSP violation report endpoint
@@ -452,6 +513,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
       res.status(500).json({ message: "Failed to mark all notifications as read" });
+    }
+  });
+
+  // Push Notification routes
+  app.get('/api/push/vapid-public-key', async (req, res) => {
+    try {
+      res.json({ publicKey: VAPID_PUBLIC_KEY });
+    } catch (error) {
+      console.error("Error getting VAPID public key:", error);
+      res.status(500).json({ message: "Failed to get VAPID public key" });
+    }
+  });
+
+  app.post('/api/push/subscribe', requireAuth, pushSubscriptionLimiter, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const { endpoint, keys, expirationTime } = req.body;
+
+      if (!endpoint || typeof endpoint !== 'string') {
+        return res.status(400).json({ message: "Invalid endpoint" });
+      }
+
+      if (!keys || typeof keys.p256dh !== 'string' || typeof keys.auth !== 'string') {
+        return res.status(400).json({ message: "Invalid subscription keys" });
+      }
+
+      if (!endpoint.startsWith('https://')) {
+        return res.status(400).json({ message: "Endpoint must be HTTPS URL" });
+      }
+
+      const base64Regex = /^[A-Za-z0-9+/=_-]+$/;
+      if (!base64Regex.test(keys.p256dh) || !base64Regex.test(keys.auth)) {
+        return res.status(400).json({ message: "Keys must be valid base64 strings" });
+      }
+
+      const subscription = await storage.createPushSubscription({
+        userId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        expirationTime: expirationTime || null,
+      });
+
+      res.json(subscription);
+    } catch (error) {
+      console.error("Error creating push subscription:", error);
+      res.status(500).json({ message: "Failed to create push subscription" });
+    }
+  });
+
+  app.delete('/api/push/unsubscribe', requireAuth, pushSubscriptionLimiter, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const { endpoint } = req.body;
+
+      if (!endpoint || typeof endpoint !== 'string') {
+        return res.status(400).json({ message: "Invalid endpoint" });
+      }
+
+      await storage.deletePushSubscription(userId, endpoint);
+      res.json({ message: "Successfully unsubscribed from push notifications" });
+    } catch (error) {
+      console.error("Error deleting push subscription:", error);
+      res.status(500).json({ message: "Failed to delete push subscription" });
+    }
+  });
+
+  app.get('/api/push/subscriptions', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const subscriptions = await storage.getUserPushSubscriptions(userId);
+      res.json(subscriptions);
+    } catch (error) {
+      console.error("Error getting push subscriptions:", error);
+      res.status(500).json({ message: "Failed to get push subscriptions" });
+    }
+  });
+
+  app.post('/api/admin/push/test', requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { userId, title, body } = req.body;
+
+      if (!userId || !title || !body) {
+        return res.status(400).json({ message: "userId, title, and body are required" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await sendPushNotification(userId, { title, body });
+      res.json({ message: "Test push notification sent successfully" });
+    } catch (error) {
+      console.error("Error sending test push notification:", error);
+      res.status(500).json({ message: "Failed to send test push notification" });
     }
   });
 

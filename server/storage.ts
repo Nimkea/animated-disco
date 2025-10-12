@@ -25,6 +25,8 @@ import {
   type InsertActivity,
   type Notification,
   type InsertNotification,
+  type PushSubscription,
+  type InsertPushSubscription,
 } from "@shared/schema";
 
 const prisma = new PrismaClient();
@@ -131,6 +133,13 @@ function convertPrismaNotification(notification: any): Notification {
   } as Notification;
 }
 
+function convertPrismaPushSubscription(subscription: any): PushSubscription {
+  return {
+    ...subscription,
+    expirationTime: subscription.expirationTime || undefined,
+  } as PushSubscription;
+}
+
 export interface IStorage {
   // User operations (IMPORTANT: mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
@@ -192,6 +201,13 @@ export interface IStorage {
   getUnreadNotificationCount(userId: string): Promise<number>;
   markNotificationAsRead(id: string): Promise<Notification>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+  
+  // Push Subscription operations
+  getPushSubscription(userId: string, endpoint: string): Promise<PushSubscription | null>;
+  createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription>;
+  deletePushSubscription(userId: string, endpoint: string): Promise<void>;
+  getUserPushSubscriptions(userId: string): Promise<PushSubscription[]>;
+  disablePushSubscription(endpoint: string): Promise<void>;
   
   // XP Leaderboard operations
   getXPLeaderboard(currentUserId: string, period: string, category: string): Promise<any>;
@@ -1103,6 +1119,86 @@ export class DatabaseStorage implements IStorage {
       },
       data: { read: true },
     });
+  }
+
+  // Push Subscription operations
+  async getPushSubscription(userId: string, endpoint: string): Promise<PushSubscription | null> {
+    try {
+      const subscription = await prisma.pushSubscription.findFirst({
+        where: { userId, endpoint },
+      });
+      return subscription ? convertPrismaPushSubscription(subscription) : null;
+    } catch (error) {
+      console.error("Error getting push subscription:", error);
+      return null;
+    }
+  }
+
+  async createPushSubscription(data: InsertPushSubscription): Promise<PushSubscription> {
+    try {
+      const subscription = await prisma.pushSubscription.upsert({
+        where: {
+          userId_endpoint: {
+            userId: data.userId,
+            endpoint: data.endpoint,
+          },
+        },
+        update: {
+          p256dh: data.p256dh,
+          auth: data.auth,
+          expirationTime: data.expirationTime || null,
+          enabled: true,
+          updatedAt: new Date(),
+        },
+        create: {
+          userId: data.userId,
+          endpoint: data.endpoint,
+          p256dh: data.p256dh,
+          auth: data.auth,
+          expirationTime: data.expirationTime || null,
+          enabled: true,
+        },
+      });
+      return convertPrismaPushSubscription(subscription);
+    } catch (error) {
+      console.error("Error creating push subscription:", error);
+      throw new Error("Failed to create push subscription");
+    }
+  }
+
+  async deletePushSubscription(userId: string, endpoint: string): Promise<void> {
+    try {
+      await prisma.pushSubscription.deleteMany({
+        where: { userId, endpoint },
+      });
+    } catch (error) {
+      console.error("Error deleting push subscription:", error);
+      throw new Error("Failed to delete push subscription");
+    }
+  }
+
+  async getUserPushSubscriptions(userId: string): Promise<PushSubscription[]> {
+    try {
+      const subscriptions = await prisma.pushSubscription.findMany({
+        where: { userId, enabled: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      return subscriptions.map(convertPrismaPushSubscription);
+    } catch (error) {
+      console.error("Error getting user push subscriptions:", error);
+      return [];
+    }
+  }
+
+  async disablePushSubscription(endpoint: string): Promise<void> {
+    try {
+      await prisma.pushSubscription.updateMany({
+        where: { endpoint },
+        data: { enabled: false, updatedAt: new Date() },
+      });
+    } catch (error) {
+      console.error("Error disabling push subscription:", error);
+    }
   }
 
   // XP Leaderboard operations
