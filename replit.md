@@ -36,10 +36,10 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Charts**: Recharts for data visualization.
 
 **Feature Specifications:**
-- **Admin Dashboard**: Comprehensive management system with 9 tabs (Overview, Deposits, Withdrawals, Users, Stakes, Tasks, Achievements, Analytics, Settings) including bulk deposit approval and full CRUD for stakes, tasks, and achievements.
+- **Admin Dashboard**: Comprehensive management system with 10 tabs (Overview, Deposits, Withdrawals, Users, Stakes, Tasks, Achievements, Analytics, Settings, Staking Tiers) including bulk deposit approval and full CRUD for stakes, tasks, achievements, and staking tiers.
 - **Deposit System**: USDT to XNRT conversion with admin approval, proof of payment upload, and transaction tracking.
 - **Withdrawal System**: XNRT to USDT conversion with a 2% fee, multi-source support, and admin approval.
-- **Staking System**: Four-tiered system with varying APY and duration, real-time countdowns, and automated daily reward distribution.
+- **Staking System**: Dynamic staking tier system where admins create/manage tiers via dashboard (GET/POST/PUT/DELETE /api/staking-tiers endpoints), users fetch active tiers from API, and staking rewards are calculated with correct daily rate formula (dailyRate = apy / 365, dailyProfit = stakeAmount * dailyRate / 100). Features real-time countdowns and automated daily reward distribution.
 - **Mining System**: 24-hour sessions with ad boosts, XP to XNRT conversion, and automated reward distribution.
 - **Referral System**: 3-level commission chain, network visualization, real-time notifications, leaderboard with privacy controls, and social sharing.
 - **Daily Check-in System**: Atomic check-ins with streak rewards, calendar view, and anti-exploit measures.
