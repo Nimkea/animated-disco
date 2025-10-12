@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,19 @@ export default function Register() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
+
+  // Auto-capture referral code from URL parameter on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      setReferralCode(refCode);
+      toast({
+        title: "Referral code applied!",
+        description: `You're signing up with referral code: ${refCode}`,
+      });
+    }
+  }, [toast]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
