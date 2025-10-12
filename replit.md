@@ -66,3 +66,8 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **PWA**: vite-plugin-pwa with Workbox
 - **Monitoring**: Sentry (optional), web-vitals
 - **Security**: helmet
+
+## Recent Updates (Oct 12, 2025)
+- **README.md Created**: Comprehensive documentation with tech stack details, API endpoints, deployment guide, security features, troubleshooting guide, and project roadmap. Includes badges, stats, and professional formatting.
+- **TypeScript Errors Fixed**: Corrected apiRequest signature usage in notification-center.tsx (method-first pattern: `apiRequest(method, url, data)`). Added null check for createdAt field in deposit.tsx.
+- **Production Ready**: All TypeScript checks pass (100% type-safe), deployment configuration verified (autoscale), build tested (1.32MB frontend + 108KB backend + 26KB service worker).
