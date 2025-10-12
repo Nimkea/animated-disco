@@ -283,7 +283,7 @@ export default function Deposit() {
                         {deposit.transactionHash?.substring(0, 16)}...
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(deposit.createdAt).toLocaleString()}
+                        {deposit.createdAt ? new Date(deposit.createdAt).toLocaleString() : 'N/A'}
                       </p>
                     </div>
                   </div>

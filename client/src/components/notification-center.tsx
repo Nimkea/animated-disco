@@ -30,9 +30,7 @@ export function NotificationCenter() {
   });
 
   const markAsReadMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/notifications/${id}/read`, {
-      method: 'PATCH',
-    }),
+    mutationFn: (id: string) => apiRequest('PATCH', `/api/notifications/${id}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
@@ -40,9 +38,7 @@ export function NotificationCenter() {
   });
 
   const markAllAsReadMutation = useMutation({
-    mutationFn: () => apiRequest('/api/notifications/mark-all-read', {
-      method: 'POST',
-    }),
+    mutationFn: () => apiRequest('POST', '/api/notifications/mark-all-read'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
