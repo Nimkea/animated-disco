@@ -101,3 +101,10 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Smart Tab Switching**: On `/auth` page, automatically switches to "register" tab when ref parameter is detected for optimal UX
 - **Security**: React safely renders toast content, preventing XSS attacks from malicious referral codes
 - **Browser Standard**: Uses native URLSearchParams API for reliable cross-browser URL parameter parsing
+
+### Referral Privacy Controls ✅
+- **Company Commission Privacy**: Hidden company fallback commission data from regular users for cleaner interface and business privacy
+- **Admin Transparency**: Company commissions remain fully visible to admin users for analytics and monitoring
+- **Conditional Rendering**: Implemented `user?.isAdmin` checks to filter company data in summary section and 4-card grid
+- **UX Benefits**: Regular users see simplified 3-level commission structure without internal business metrics
+- **Filter Implementation**: Used `.filter(stat => user?.isAdmin || stat.level > 0)` to conditionally show company card only to admins
