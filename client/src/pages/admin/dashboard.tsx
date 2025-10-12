@@ -5,7 +5,10 @@ import {
   ArrowUpCircle, 
   Users, 
   BarChart3, 
-  Settings 
+  Settings,
+  TrendingUp,
+  ListChecks,
+  Award
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
@@ -15,6 +18,9 @@ import WithdrawalsTab from "./tabs/withdrawals";
 import UsersTab from "./tabs/users";
 import AnalyticsTab from "./tabs/analytics";
 import SettingsTab from "./tabs/settings";
+import StakesTab from "./tabs/stakes";
+import TasksTab from "./tabs/tasks";
+import AchievementsTab from "./tabs/achievements";
 
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
@@ -24,7 +30,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings"].includes(tab)) {
+    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -45,7 +51,7 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-9 lg:w-auto lg:inline-grid">
           <TabsTrigger value="overview" className="gap-2" data-testid="tab-overview">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -61,6 +67,18 @@ export default function AdminDashboard() {
           <TabsTrigger value="users" className="gap-2" data-testid="tab-users">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Users</span>
+          </TabsTrigger>
+          <TabsTrigger value="stakes" className="gap-2" data-testid="tab-stakes">
+            <TrendingUp className="h-4 w-4" />
+            <span className="hidden sm:inline">Stakes</span>
+          </TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-2" data-testid="tab-tasks">
+            <ListChecks className="h-4 w-4" />
+            <span className="hidden sm:inline">Tasks</span>
+          </TabsTrigger>
+          <TabsTrigger value="achievements" className="gap-2" data-testid="tab-achievements">
+            <Award className="h-4 w-4" />
+            <span className="hidden sm:inline">Achievements</span>
           </TabsTrigger>
           <TabsTrigger value="analytics" className="gap-2" data-testid="tab-analytics">
             <BarChart3 className="h-4 w-4" />
@@ -86,6 +104,18 @@ export default function AdminDashboard() {
 
         <TabsContent value="users" className="space-y-6">
           <UsersTab />
+        </TabsContent>
+
+        <TabsContent value="stakes" className="space-y-6">
+          <StakesTab />
+        </TabsContent>
+
+        <TabsContent value="tasks" className="space-y-6">
+          <TasksTab />
+        </TabsContent>
+
+        <TabsContent value="achievements" className="space-y-6">
+          <AchievementsTab />
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-6">

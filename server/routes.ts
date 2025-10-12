@@ -4,7 +4,7 @@ import { storage, generateAnonymizedHandle } from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 import { STAKING_TIERS, type StakingTier } from "@shared/schema";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
@@ -1820,6 +1820,433 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching platform info:", error);
       res.status(500).json({ message: "Failed to fetch platform info" });
+    }
+  });
+
+  // ===== ADMIN CRUD: STAKES =====
+  app.get('/api/admin/stakes', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stakes = await prisma.stake.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(stakes);
+    } catch (error) {
+      console.error("Error fetching stakes:", error);
+      res.status(500).json({ message: "Failed to fetch stakes" });
+    }
+  });
+
+  app.post('/api/admin/stakes', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { userId, tier, amount, duration } = req.body;
+
+      if (!userId || !tier || !amount || !duration) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const dailyRates: Record<string, number> = {
+        'royal_sapphire': 1.1,
+        'legendary_emerald': 1.4,
+        'imperial_platinum': 1.5,
+        'mythic_diamond': 2.0
+      };
+
+      const dailyRate = dailyRates[tier] || 1.1;
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + parseInt(duration));
+
+      const stake = await prisma.stake.create({
+        data: {
+          userId,
+          tier,
+          amount: new Prisma.Decimal(amount),
+          dailyRate: new Prisma.Decimal(dailyRate),
+          duration: parseInt(duration),
+          startDate: new Date(),
+          endDate,
+          totalProfit: new Prisma.Decimal(0),
+          status: 'active'
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_stake_created',
+        description: `Admin created stake for ${stake.user.username}: ${amount} XNRT (${tier}, ${duration} days)`
+      });
+
+      res.json(stake);
+    } catch (error) {
+      console.error("Error creating stake:", error);
+      res.status(500).json({ message: "Failed to create stake" });
+    }
+  });
+
+  app.put('/api/admin/stakes/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, totalProfit } = req.body;
+
+      const data: any = {};
+      if (status !== undefined) data.status = status;
+      if (totalProfit !== undefined) {
+        const parsed = typeof totalProfit === 'string' ? parseFloat(totalProfit) : totalProfit;
+        data.totalProfit = new Prisma.Decimal(parsed);
+      }
+
+      const stake = await prisma.stake.update({
+        where: { id },
+        data,
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_stake_updated',
+        description: `Admin updated stake for ${stake.user.username}`
+      });
+
+      res.json(stake);
+    } catch (error) {
+      console.error("Error updating stake:", error);
+      res.status(500).json({ message: "Failed to update stake" });
+    }
+  });
+
+  app.delete('/api/admin/stakes/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const stake = await prisma.stake.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              username: true
+            }
+          }
+        }
+      });
+
+      if (!stake) {
+        return res.status(404).json({ message: "Stake not found" });
+      }
+
+      await prisma.stake.delete({
+        where: { id }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_stake_deleted',
+        description: `Admin deleted stake for ${stake.user.username}`
+      });
+
+      res.json({ message: "Stake deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting stake:", error);
+      res.status(500).json({ message: "Failed to delete stake" });
+    }
+  });
+
+  // ===== ADMIN CRUD: TASKS =====
+  app.get('/api/admin/tasks', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const tasks = await prisma.task.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const tasksWithStats = await Promise.all(
+        tasks.map(async (task) => {
+          const completionCount = await prisma.userTask.count({
+            where: {
+              taskId: task.id,
+              completed: true
+            }
+          });
+          return {
+            ...task,
+            completionCount
+          };
+        })
+      );
+
+      res.json(tasksWithStats);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  app.post('/api/admin/tasks', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { title, description, xpReward, xnrtReward, category, requirements, isActive } = req.body;
+
+      if (!title || !description || xpReward === undefined || !category) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const parsedXpReward = typeof xpReward === 'string' ? parseInt(xpReward, 10) : xpReward;
+      const parsedXnrtReward = xnrtReward ? (typeof xnrtReward === 'string' ? parseFloat(xnrtReward) : xnrtReward) : 0;
+
+      const task = await prisma.task.create({
+        data: {
+          title,
+          description,
+          xpReward: parsedXpReward,
+          xnrtReward: new Prisma.Decimal(parsedXnrtReward),
+          category,
+          requirements: requirements || null,
+          isActive: isActive !== undefined ? isActive : true
+        }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_task_created',
+        description: `Admin created task: ${title}`
+      });
+
+      res.json(task);
+    } catch (error) {
+      console.error("Error creating task:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+
+  app.put('/api/admin/tasks/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, xpReward, xnrtReward, category, requirements, isActive } = req.body;
+
+      const data: any = {};
+      if (title !== undefined) data.title = title;
+      if (description !== undefined) data.description = description;
+      if (xpReward !== undefined) {
+        data.xpReward = typeof xpReward === 'string' ? parseInt(xpReward, 10) : xpReward;
+      }
+      if (xnrtReward !== undefined) {
+        const parsed = typeof xnrtReward === 'string' ? parseFloat(xnrtReward) : xnrtReward;
+        data.xnrtReward = new Prisma.Decimal(parsed);
+      }
+      if (category !== undefined) data.category = category;
+      if (requirements !== undefined) data.requirements = requirements;
+      if (isActive !== undefined) data.isActive = isActive;
+
+      const task = await prisma.task.update({
+        where: { id },
+        data
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_task_updated',
+        description: `Admin updated task: ${task.title}`
+      });
+
+      res.json(task);
+    } catch (error) {
+      console.error("Error updating task:", error);
+      res.status(500).json({ message: "Failed to update task" });
+    }
+  });
+
+  app.patch('/api/admin/tasks/:id/toggle', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const task = await prisma.task.findUnique({ where: { id } });
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const updatedTask = await prisma.task.update({
+        where: { id },
+        data: { isActive: !task.isActive }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_task_toggled',
+        description: `Admin ${updatedTask.isActive ? 'activated' : 'deactivated'} task: ${updatedTask.title}`
+      });
+
+      res.json(updatedTask);
+    } catch (error) {
+      console.error("Error toggling task:", error);
+      res.status(500).json({ message: "Failed to toggle task" });
+    }
+  });
+
+  app.delete('/api/admin/tasks/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const task = await prisma.task.findUnique({ where: { id } });
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      await prisma.userTask.deleteMany({ where: { taskId: id } });
+      await prisma.task.delete({ where: { id } });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_task_deleted',
+        description: `Admin deleted task: ${task.title}`
+      });
+
+      res.json({ message: "Task deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // ===== ADMIN CRUD: ACHIEVEMENTS =====
+  app.get('/api/admin/achievements', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const achievements = await prisma.achievement.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const achievementsWithStats = await Promise.all(
+        achievements.map(async (achievement) => {
+          const unlockCount = await prisma.userAchievement.count({
+            where: { achievementId: achievement.id }
+          });
+          return {
+            ...achievement,
+            unlockCount
+          };
+        })
+      );
+
+      res.json(achievementsWithStats);
+    } catch (error) {
+      console.error("Error fetching achievements:", error);
+      res.status(500).json({ message: "Failed to fetch achievements" });
+    }
+  });
+
+  app.post('/api/admin/achievements', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { title, description, icon, category, requirement, xpReward } = req.body;
+
+      if (!title || !description || !icon || !category || requirement === undefined || xpReward === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const parsedRequirement = typeof requirement === 'string' ? parseInt(requirement, 10) : requirement;
+      const parsedXpReward = typeof xpReward === 'string' ? parseInt(xpReward, 10) : xpReward;
+
+      const achievement = await prisma.achievement.create({
+        data: {
+          title,
+          description,
+          icon,
+          category,
+          requirement: parsedRequirement,
+          xpReward: parsedXpReward
+        }
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_achievement_created',
+        description: `Admin created achievement: ${title}`
+      });
+
+      res.json(achievement);
+    } catch (error) {
+      console.error("Error creating achievement:", error);
+      res.status(500).json({ message: "Failed to create achievement" });
+    }
+  });
+
+  app.put('/api/admin/achievements/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, icon, category, requirement, xpReward } = req.body;
+
+      const data: any = {};
+      if (title !== undefined) data.title = title;
+      if (description !== undefined) data.description = description;
+      if (icon !== undefined) data.icon = icon;
+      if (category !== undefined) data.category = category;
+      if (requirement !== undefined) {
+        data.requirement = typeof requirement === 'string' ? parseInt(requirement, 10) : requirement;
+      }
+      if (xpReward !== undefined) {
+        data.xpReward = typeof xpReward === 'string' ? parseInt(xpReward, 10) : xpReward;
+      }
+
+      const achievement = await prisma.achievement.update({
+        where: { id },
+        data
+      });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_achievement_updated',
+        description: `Admin updated achievement: ${achievement.title}`
+      });
+
+      res.json(achievement);
+    } catch (error) {
+      console.error("Error updating achievement:", error);
+      res.status(500).json({ message: "Failed to update achievement" });
+    }
+  });
+
+  app.delete('/api/admin/achievements/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const achievement = await prisma.achievement.findUnique({ where: { id } });
+      if (!achievement) {
+        return res.status(404).json({ message: "Achievement not found" });
+      }
+
+      await prisma.userAchievement.deleteMany({ where: { achievementId: id } });
+      await prisma.achievement.delete({ where: { id } });
+
+      await storage.createActivity({
+        userId: req.authUser!.id,
+        type: 'admin_achievement_deleted',
+        description: `Admin deleted achievement: ${achievement.title}`
+      });
+
+      res.json({ message: "Achievement deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting achievement:", error);
+      res.status(500).json({ message: "Failed to delete achievement" });
     }
   });
 
