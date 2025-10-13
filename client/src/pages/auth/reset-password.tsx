@@ -18,7 +18,6 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [token, setToken] = useState<string>("");
-  const [hasExtractedToken, setHasExtractedToken] = useState(false);
 
   useEffect(() => {
     // Extract token from URL query params
@@ -28,27 +27,15 @@ export default function ResetPassword() {
     if (tokenParam) {
       setToken(tokenParam);
     }
-    
-    // Mark that we've attempted token extraction
-    setHasExtractedToken(true);
   }, []);
 
   useEffect(() => {
     const verifyToken = async () => {
-      // Wait until we've attempted token extraction
-      if (!hasExtractedToken) {
-        return;
-      }
-
-      // If no token after extraction, mark as invalid
       if (!token) {
         setIsVerifying(false);
         setIsValidToken(false);
         return;
       }
-
-      // Set verifying to true when we have a token to verify
-      setIsVerifying(true);
 
       try {
         const response = await fetch("/auth/verify-reset-token", {
@@ -82,7 +69,7 @@ export default function ResetPassword() {
     };
 
     verifyToken();
-  }, [token, hasExtractedToken, toast]);
+  }, [token, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

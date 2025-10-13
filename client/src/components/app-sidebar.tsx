@@ -63,8 +63,8 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar className="border-r border-border/50 bg-card/30 backdrop-blur-xl">
-      <SidebarHeader className="p-6 border-b border-border/50">
+    <Sidebar>
+      <SidebarHeader className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <img 
             src="/icon-192.png" 
