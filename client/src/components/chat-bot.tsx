@@ -284,6 +284,7 @@ export function ChatBot() {
               onClick={() => setIsOpen(false)}
               aria-label="Close chat"
               className="absolute right-2 top-2 p-2 rounded-full hover:bg-white/10"
+              data-testid="button-close-chat-mobile"
             >
               <X className="h-5 w-5 text-white/70" />
             </button>
