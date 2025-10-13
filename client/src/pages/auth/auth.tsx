@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PasswordStrength } from "@/components/ui/password-strength";
 import { useToast } from "@/hooks/use-toast";
 import { CosmicBackground } from "@/components/cosmic-background";
 import { Sparkles, Mail, Lock, User, Gift } from "lucide-react";
@@ -387,7 +388,7 @@ export default function Auth() {
                           data-testid="input-register-password"
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
+                      <PasswordStrength password={registerPassword} className="mt-2" />
                     </div>
 
                     <div className="space-y-2">

@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { CosmicBackground } from "@/components/cosmic-background";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
+import { ShineButton } from "@/components/ui/shine-button";
+import { TiltCard } from "@/components/ui/tilt-card";
 import { Sparkles } from "lucide-react";
 import { RotatingGlass } from "@/components/rotating-glass";
 
@@ -57,16 +58,15 @@ export default function Landing() {
 
         {/* CTA */}
         <div className="flex justify-center">
-          <Button
+          <ShineButton
             size="lg"
-            className="text-lg px-8 py-6 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold transition-all duration-200 shadow-lg hover:shadow-amber-500/40"
             onClick={() => setLocation("/auth")}
             data-testid="button-get-started"
             aria-label="Get started with XNRT"
           >
-            <Sparkles aria-hidden="true" className="mr-2 h-5 w-5" />
+            <Sparkles aria-hidden="true" className="h-5 w-5" />
             Get Started
-          </Button>
+          </ShineButton>
         </div>
 
         {/* Feature cards */}
@@ -80,10 +80,12 @@ export default function Landing() {
             { label: "Referrals", value: "3-Level System" },
             { label: "Tasks", value: "Daily Rewards" },
           ].map((card, i) => (
-            <div
+            <TiltCard
               key={card.label}
-              className="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg animate-in slide-in-from-bottom fade-in duration-500"
+              className="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md animate-in slide-in-from-bottom fade-in duration-500"
               style={{ animationDelay: `${150 * i}ms` }}
+              tiltIntensity={8}
+              glowIntensity={0.4}
             >
               {/* rotating sheen inside each card (clipped by rounded corners) */}
               <RotatingGlass speed={40} className="opacity-35" />
@@ -91,7 +93,7 @@ export default function Landing() {
                 {card.value}
               </div>
               <div className="text-sm text-white/55">{card.label}</div>
-            </div>
+            </TiltCard>
           ))}
         </section>
       </main>
