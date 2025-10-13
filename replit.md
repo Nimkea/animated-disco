@@ -1,7 +1,5 @@
-# XNRT - NextGen Gamification Earning Platform
-
 ## Overview
-XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It offers a secure, engaging environment with a functional authentication system, automated earning mechanisms, and an admin dashboard, aiming to provide a robust and inspiring earning experience.
+XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard.
 
 ## User Preferences
 - **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
@@ -17,14 +15,15 @@ XNRT is a React PWA off-chain gamification community earning platform where user
 XNRT utilizes a robust architecture designed for performance, scalability, and security.
 
 **UI/UX Decisions:**
-- **Design System**: Unified cosmic theme with black starfield backgrounds in both light and dark modes, and a luxurious golden color palette for the landing page.
-- **Authentication Experience**: Glassmorphic `/auth` page with `backdrop-blur` effects, tabbed Login/Register interface, and `framer-motion` animations.
-- **Error Handling**: An `ErrorBoundary` component provides graceful failure recovery.
-- **Loading States**: Content-aware skeleton screens are used.
+- **Design System**: Unified cosmic theme with black starfield backgrounds, a luxurious golden color palette, and glassmorphic elements.
+- **Authentication Experience**: Glassmorphic `/auth` page with `backdrop-blur` effects, tabbed Login/Register interface, and `framer-motion` animations. Includes FloatingLabelInput and PasswordStrength components.
+- **Error Handling**: `ErrorBoundary` for graceful failure recovery.
+- **Loading States**: Content-aware skeleton screens.
 - **Confirmation Flows**: Critical actions require user confirmation.
 - **Components**: Leverages Shadcn/ui with Radix UI primitives.
 - **Responsiveness**: Mobile-first approach.
-- **Animations**: `Framer-motion` for dynamic UI elements and transitions.
+- **Animations**: `Framer-motion` for dynamic UI, `ShineButton` and `TiltCard` for engaging interactions.
+- **Support**: Integrated FAQ ChatBot with smart keyword matching and email fallback.
 
 **Technical Implementations:**
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Wouter for routing, and TanStack Query for data management.
@@ -36,18 +35,17 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Charts**: Recharts for data visualization.
 
 **Feature Specifications:**
-- **Admin Dashboard**: Comprehensive management with tabs for Overview, Deposits, Withdrawals, Users, Analytics, and Settings, including bulk deposit approval.
-- **Deposit System**: USDT to XNRT conversion with admin approval, proof of payment upload, and transaction tracking.
-- **Withdrawal System**: XNRT to USDT conversion with a 2% fee, multi-source support, and admin approval.
-- **Staking System**: Four-tiered system with varying APY and duration, real-time countdowns, and automated daily reward distribution.
-- **Mining System**: Fully automated 24-hour sessions with auto-completion, XP to XNRT conversion (10 XP + 5 XNRT per session), no cooldown, and automatic reward deposit.
-- **Referral System**: 3-level commission chain, network visualization, real-time notifications, leaderboard, social sharing, and privacy controls for company commissions.
-- **Daily Check-in System**: Atomic check-ins with streak rewards, calendar view, and anti-exploit measures.
-- **Achievement System**: Auto-unlocks achievements with XP rewards and confetti celebrations.
-- **XP Leaderboard System**: Weekly/monthly rankings with category filters and privacy controls.
-- **Push Notification System**: Web Push notifications with VAPID authentication, subscription management, delivery tracking with exponential backoff, and event triggers.
-- **Password Reset System**: Secure recovery with time-limited tokens and rate limiting.
-- **Email Verification System**: Secure email verification with tokens, expiry, and rate-limited resend options.
+- **Admin Dashboard**: Comprehensive management for Deposits, Withdrawals, Users, Analytics, and Settings, including bulk deposit approval.
+- **Deposit/Withdrawal Systems**: USDT to XNRT conversion (deposits) and XNRT to USDT conversion (withdrawals), both with admin approval and tracking.
+- **Earning Systems**:
+    - **Staking**: Four-tiered system with varying APY, real-time countdowns, and automated daily reward distribution.
+    - **Mining**: Automated 24-hour sessions with XP to XNRT conversion and automatic reward deposit.
+    - **Referral**: 3-level commission chain, network visualization, leaderboard, and social sharing.
+    - **Daily Check-in**: Atomic check-ins with streak rewards and anti-exploit measures.
+    - **Achievement**: Auto-unlocks achievements with XP rewards.
+- **XP Leaderboard System**: Weekly/monthly rankings with category filters.
+- **Push Notification System**: Web Push notifications with VAPID authentication, subscription management, and event triggers.
+- **Security Features**: Secure password reset and email verification systems with time-limited tokens and rate limiting.
 
 **System Design Choices:**
 - **Automation**: All core earning mechanisms are fully automated.
@@ -55,114 +53,21 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Performance**: Optimized Prisma queries, reduced API polling, and Workbox caching.
 - **Progressive Enhancement**: Feature flags enable phased rollout.
 - **Code Quality**: Zero LSP/TypeScript errors, 100% type-safe, and E2E test coverage.
-- **Database Schema Alignment**: 100% schema alignment between Drizzle and Prisma for consistency and tool compatibility.
+- **Database Schema Alignment**: 100% schema alignment between Drizzle and Prisma.
 
 ## External Dependencies
 - **Database**: Neon (PostgreSQL)
 - **Authentication**: Replit OIDC
 - **Email Service**: Brevo SMTP (via Nodemailer)
-- **UI Components**: Shadcn/ui, Radix UI Primitives
-- **Icons**: Lucide React
+- **UI Components**: Shadcn/ui, Radix UI Primitives, Lucide React
 - **CSS Framework**: Tailwind CSS
 - **State Management**: TanStack Query
 - **Routing**: Wouter
 - **Charts**: Recharts
-- **QR Code Generation**: qrcode library
+- **QR Code Generation**: `qrcode` library
 - **PWA**: `vite-plugin-pwa` with Workbox
-- **Push Notifications**: web-push (VAPID authentication)
-- **Animations**: canvas-confetti, framer-motion
-- **Monitoring**: Sentry (optional), web-vitals
-- **Security**: helmet
-- **Unique ID Generation**: nanoid
-### Production Email URL Fix ✅
-- **Environment Variable Migration**: Updated email service from `REPLIT_DEV_DOMAIN` to `APP_URL` for production domain configuration
-- **URL Construction Update**: Both `sendVerificationEmail` and `sendPasswordResetEmail` now use `process.env.APP_URL || 'https://xnrt.org'`
-- **Production Secret**: Added `APP_URL=https://xnrt.org` to Deployment → App Secrets for production environment
-- **Dev Preview Issue Resolved**: Fixed verification emails pointing to `janeway.replit.dev` (dev preview that sleeps) instead of production domain
-- **Frontend API Fix**: Corrected `apiRequest` call signature in verify-email.tsx from `(url, options)` to `(method, url, data)` to fix TypeScript error
-- **Fallback Strategy**: Smart fallback to `https://xnrt.org` ensures links work even if APP_URL not set
-- **Security**: URL construction uses simple concatenation without user input, token is only dynamic component
-- **Architect Approval**: Verified production-ready implementation with secure URL construction and appropriate fallback strategy
-- **Next Steps**: Monitor production email deliverability and confirm correct domain rendering in sent emails
-
-### Password Reset Flow Complete ✅
-- **Frontend Route**: Registered `/reset-password` route using query params (`?token=...`) matching email link format
-- **Reset Password Page**: Built at `client/src/pages/auth/reset-password.tsx` with glassmorphic cosmic design
-- **Token Handling**: Extracts token from URL query params, verifies with backend before showing form
-- **UX Fix**: Resolved state management bug where valid tokens showed error state before verification completed
-- **Atomic Verification**: Single useEffect extracts token and verifies immediately while maintaining loading state
-- **Form Validation**: Password min 8 chars, confirmation match validation, inline error messages
-- **Success Flow**: Toast notification + 2-second auto-redirect to `/auth` login page after successful reset
-- **Error Handling**: Invalid/expired tokens show error state with "Request New Link" button
-- **Security**: Single-use tokens, 1-hour expiry, backend validation, no token exposure
-- **Backend Integration**: POST /auth/reset-password endpoint validates token + password, marks token as used
-- **Architect Approval**: Verified production-ready with proper state management, security, and UX flow
-- **Status**: Production-ready password reset system fully functional
-
-### Landing Page Design Refinements ✅
-- **Visual Enhancements**: Added dark gradient overlay (`from-black/60 via-black/45 to-black/70`) to improve content visibility against cosmic starfield
-- **Title Polish**: Refined XNRT title with golden drop-shadow glow effect, removed animate-pulse for cleaner aesthetic, adjusted mobile sizing (text-6xl)
-- **Layout Improvements**: Widened hero container from `max-w-4xl` to `max-w-5xl` for more spacious, modern feel
-- **Performance Optimization**: Removed heavy Tailwind animations (animate-in, fade-in, slide-in), simplified card stagger from 700ms to 150ms per card
-- **Button Refinement**: Faster transitions (duration-200), subtler hover shadow (40% opacity), added aria-label for accessibility
-- **Feature Cards**: Upgraded to `rounded-2xl` softer corners, refined border transparency (25%), better hover effects with explicit translate-y lift
-- **Accessibility**: Implemented semantic HTML (`<main>`, `<header>`, `<section>`), proper heading hierarchy (h1→h2), aria-labels for screen readers
-- **Architect Approval**: Confirmed improvements to readability, performance, and accessibility while maintaining cosmic luxury aesthetic
-- **Status**: Production-ready landing page with enhanced visual polish and better user experience
-
-### Rotating Glass Effect ✅
-- **Component Created**: Built `client/src/components/rotating-glass.tsx` with slow-spinning radial + conic gradient effect
-- **Visual Design**: Combines soft white radial gradient blob with subtle golden conic sweep matching brand colors
-- **Animation**: Configurable spin speed (60s default for smooth, hypnotic rotation) using Tailwind `animate-[spin_60s_linear_infinite]`
-- **Accessibility**: Respects `prefers-reduced-motion` with `motion-reduce:animate-none` to disable animation for users with motion sensitivity
-- **Hero Integration**: Positioned behind XNRT title with 30s spin (faster for dynamic movement) and 60% opacity for depth and luxury
-- **Card Enhancement**: Added contained rotating sheen to each feature card with 40s spin and 35% opacity, clipped by `overflow-hidden`
-- **Card Animations**: Re-added subtle `slide-in-from-bottom fade-in` animations with 500ms duration and staggered 150ms delays
-- **Icon Accessibility**: Added `aria-hidden="true"` to decorative Sparkles icon in CTA button for better screen reader experience
-- **Bug Fix**: Resolved visual bleeding issue where card sheens extended beyond boundaries by adding overflow-hidden to containers
-- **Architect Approval**: Confirmed proper containment, accessibility support, enhanced animations, and visual improvements without performance issues
-- **Status**: Production-ready rotating glass effect with optimized rotation speeds and polished entrance animations
-
-### Advanced UI/UX Components ✅
-- **FloatingLabelInput Component** (`client/src/components/ui/floating-input.tsx`):
-  - Animated label that floats up on focus or when input has value
-  - Smooth transitions with golden focus state styling matching brand colors
-  - Error message support with slide-in animation for validation feedback
-  - Accessibility-friendly with proper label association and ARIA attributes
-  - Event handler propagation fix: Now properly calls parent `onFocus`/`onBlur` handlers to preserve form validation hooks
-  
-- **PasswordStrength Component** (`client/src/components/ui/password-strength.tsx`):
-  - Real-time password strength evaluation (Weak, Fair, Good, Strong) with visual feedback
-  - Color-coded gradient progress bar: Red (Weak) → Orange (Fair) → Yellow (Good) → Golden gradient (Strong)
-  - Evaluates password length (8+ chars) and character variety (lowercase, uppercase, numbers, symbols)
-  - Only displays when password field has content to avoid clutter
-  - Bug fix: Properly applies colors based on strength score instead of hardcoded amber
-  
-- **ShineButton Component** (`client/src/components/ui/shine-button.tsx`):
-  - Gradient shine effect that sweeps across button on hover for premium feel
-  - Multiple variants (default, outline, ghost) and size options (sm, default, lg)
-  - GPU-accelerated animations for smooth performance
-  - Focus-visible ring for keyboard navigation accessibility
-  - Applied to landing page "Get Started" CTA for eye-catching interaction
-  
-- **TiltCard Component** (`client/src/components/ui/tilt-card.tsx`):
-  - 3D tilt effect that follows mouse movement with perspective transform
-  - Radial glow overlay that tracks cursor position for depth perception
-  - Configurable tilt intensity (default 8°) and glow strength
-  - Smooth transitions on hover with transform-gpu optimization
-  - Applied to all feature cards on landing page for engaging interaction
-  
-- **Landing Page Integration**:
-  - ShineButton replaces standard Button for "Get Started" CTA with gradient sweep animation
-  - TiltCard wraps all 4 feature cards (Staking, Mining, Referrals, Tasks) with 8° tilt intensity
-  - Maintains existing rotating glass effects and cosmic theme consistency
-  - Preserved all accessibility attributes and semantic HTML structure
-  
-- **Auth Page Integration**:
-  - PasswordStrength indicator added below password input in registration form
-  - Provides real-time visual feedback as user types password
-  - Maintains glassmorphic design with backdrop-blur effects
-  - Integrated with existing form validation system via react-hook-form
-  
-- **Architect Approval**: All components verified as production-ready with proper accessibility, performance optimization, and bug-free integration
-- **Status**: Advanced UI/UX component library complete with enhanced landing page and auth experience
+- **Push Notifications**: `web-push` (VAPID authentication)
+- **Animations**: `canvas-confetti`, `framer-motion`
+- **Monitoring**: Sentry (optional), `web-vitals`
+- **Security**: `helmet`
+- **Unique ID Generation**: `nanoid`
