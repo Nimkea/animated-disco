@@ -20,29 +20,25 @@ export default function ResetPassword() {
   const [token, setToken] = useState<string>("");
 
   useEffect(() => {
-    // Extract token from URL query params
-    const params = new URLSearchParams(window.location.search);
-    const tokenParam = params.get('token');
-    
-    if (tokenParam) {
-      setToken(tokenParam);
-    }
-  }, []);
-
-  useEffect(() => {
     const verifyToken = async () => {
-      if (!token) {
+      // Extract token from URL query params
+      const params = new URLSearchParams(window.location.search);
+      const tokenParam = params.get('token');
+      
+      if (!tokenParam) {
         setIsVerifying(false);
         setIsValidToken(false);
         return;
       }
+
+      setToken(tokenParam);
 
       try {
         const response = await fetch("/auth/verify-reset-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token: tokenParam }),
         });
 
         if (response.ok) {
@@ -69,7 +65,7 @@ export default function ResetPassword() {
     };
 
     verifyToken();
-  }, [token, toast]);
+  }, [toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
