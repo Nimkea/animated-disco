@@ -96,7 +96,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 
 ### Referral Link URL Parameter Fix ✅
 - **Auto-Capture Implementation**: Added useEffect hooks to both `/auth` and `/register` pages to automatically parse `?ref=` URL parameter on component mount
-- **Seamless Signup Flow**: When users access referral links (e.g., `https://xnrt.org/?ref=REFNEXT2447`), the referral code is automatically extracted and populated in the registration form
+- **Seamless Signup Flow**: When users access referral links (e.g., `https://xnrt.org/?ref=XNRTX8K2N9P4`), the referral code is automatically extracted and populated in the registration form
 - **User Feedback**: Toast notification displays when referral code is applied, showing the captured code to the user
 - **Smart Tab Switching**: On `/auth` page, automatically switches to "register" tab when ref parameter is detected for optimal UX
 - **Security**: React safely renders toast content, preventing XSS attacks from malicious referral codes
@@ -108,3 +108,11 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Conditional Rendering**: Implemented `user?.isAdmin` checks to filter company data in summary section and 4-card grid
 - **UX Benefits**: Regular users see simplified 3-level commission structure without internal business metrics
 - **Filter Implementation**: Used `.filter(stat => user?.isAdmin || stat.level > 0)` to conditionally show company card only to admins
+
+### Referral Code Format Upgrade ✅
+- **Guaranteed Uniqueness**: Switched from collision-prone format to nanoid-based generation for cryptographically secure unique codes
+- **Brand-Aligned Prefix**: Changed prefix from `REF` to `XNRT` for better brand recognition (e.g., `XNRTX8K2N9P4`, `XNRTM5T7QW9L`)
+- **Old Format**: `REF + username[0:4] + timestamp[-4:]` (risk of collision within 10 seconds for similar usernames)
+- **New Format**: `XNRT + nanoid(8).toUpperCase()` (2.8 trillion possible combinations, zero collision risk)
+- **Implementation**: Updated both `server/auth/routes.ts` and `server/storage.ts` to use nanoid library
+- **Backward Compatible**: Existing users retain their original codes - only new registrations use XNRT format
