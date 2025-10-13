@@ -122,3 +122,47 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Bug Fix**: Resolved visual bleeding issue where card sheens extended beyond boundaries by adding overflow-hidden to containers
 - **Architect Approval**: Confirmed proper containment, accessibility support, enhanced animations, and visual improvements without performance issues
 - **Status**: Production-ready rotating glass effect with optimized rotation speeds and polished entrance animations
+
+### Advanced UI/UX Components ✅
+- **FloatingLabelInput Component** (`client/src/components/ui/floating-input.tsx`):
+  - Animated label that floats up on focus or when input has value
+  - Smooth transitions with golden focus state styling matching brand colors
+  - Error message support with slide-in animation for validation feedback
+  - Accessibility-friendly with proper label association and ARIA attributes
+  - Event handler propagation fix: Now properly calls parent `onFocus`/`onBlur` handlers to preserve form validation hooks
+  
+- **PasswordStrength Component** (`client/src/components/ui/password-strength.tsx`):
+  - Real-time password strength evaluation (Weak, Fair, Good, Strong) with visual feedback
+  - Color-coded gradient progress bar: Red (Weak) → Orange (Fair) → Yellow (Good) → Golden gradient (Strong)
+  - Evaluates password length (8+ chars) and character variety (lowercase, uppercase, numbers, symbols)
+  - Only displays when password field has content to avoid clutter
+  - Bug fix: Properly applies colors based on strength score instead of hardcoded amber
+  
+- **ShineButton Component** (`client/src/components/ui/shine-button.tsx`):
+  - Gradient shine effect that sweeps across button on hover for premium feel
+  - Multiple variants (default, outline, ghost) and size options (sm, default, lg)
+  - GPU-accelerated animations for smooth performance
+  - Focus-visible ring for keyboard navigation accessibility
+  - Applied to landing page "Get Started" CTA for eye-catching interaction
+  
+- **TiltCard Component** (`client/src/components/ui/tilt-card.tsx`):
+  - 3D tilt effect that follows mouse movement with perspective transform
+  - Radial glow overlay that tracks cursor position for depth perception
+  - Configurable tilt intensity (default 8°) and glow strength
+  - Smooth transitions on hover with transform-gpu optimization
+  - Applied to all feature cards on landing page for engaging interaction
+  
+- **Landing Page Integration**:
+  - ShineButton replaces standard Button for "Get Started" CTA with gradient sweep animation
+  - TiltCard wraps all 4 feature cards (Staking, Mining, Referrals, Tasks) with 8° tilt intensity
+  - Maintains existing rotating glass effects and cosmic theme consistency
+  - Preserved all accessibility attributes and semantic HTML structure
+  
+- **Auth Page Integration**:
+  - PasswordStrength indicator added below password input in registration form
+  - Provides real-time visual feedback as user types password
+  - Maintains glassmorphic design with backdrop-blur effects
+  - Integrated with existing form validation system via react-hook-form
+  
+- **Architect Approval**: All components verified as production-ready with proper accessibility, performance optimization, and bug-free integration
+- **Status**: Advanced UI/UX component library complete with enhanced landing page and auth experience
