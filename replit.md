@@ -116,3 +116,11 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **New Format**: `XNRT + nanoid(8).toUpperCase()` (2.8 trillion possible combinations, zero collision risk)
 - **Implementation**: Updated both `server/auth/routes.ts` and `server/storage.ts` to use nanoid library
 - **Backward Compatible**: Existing users retain their original codes - only new registrations use XNRT format
+
+### Referral Link Auto-Redirect ✅
+- **Landing Page Detection**: Added useEffect to landing page (`/`) to detect `?ref=` URL parameter
+- **Automatic Redirect**: When referral links like `/?ref=XNRTX8K2N9P4` are clicked, users are automatically redirected to `/auth?ref=XNRTX8K2N9P4`
+- **Code Preservation**: Query parameter is preserved during redirect so existing capture logic on `/auth` page works seamlessly
+- **No History Pollution**: Uses `window.location.replace()` instead of `.href` to prevent back-button loops
+- **Implementation**: Landing page now redirects to auth with referral code before user can interact with page
+- **UX Flow**: User clicks referral link → Landing page briefly loads → Auto-redirects to auth → Code auto-fills and tab switches to register
