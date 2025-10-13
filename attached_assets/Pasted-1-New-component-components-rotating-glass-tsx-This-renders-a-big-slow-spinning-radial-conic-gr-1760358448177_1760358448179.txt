@@ -1,0 +1,131 @@
+1) New component: components/rotating-glass.tsx
+
+This renders a big, slow-spinning radial + conic gradient layer. It sits behind whatever you place it in, and respects prefers-reduced-motion.
+
+// client/src/components/rotating-glass.tsx
+import React from "react";
+
+type Props = {
+  /** Extra classes to control position/opacity if needed */
+  className?: string;
+  /** Spin speed in seconds (default 60) */
+  speed?: number;
+};
+
+export function RotatingGlass({ className = "", speed = 60 }: Props) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`pointer-events-none absolute -inset-[45%] -z-10 opacity-70 ${className}`}
+    >
+      {/* Uses Tailwind's built-in keyframes 'spin'; arbitrary animation value sets duration */}
+      <div
+        className={`h-full w-full rounded-[inherit] will-change-transform animate-[spin_${speed}s_linear_infinite] motion-reduce:animate-none`}
+        style={{
+          // soft light blob + subtle gold sweep, like your HTML ::before
+          background:
+            "radial-gradient(40% 40% at 50% 50%, rgba(255,255,255,0.08), transparent 60%), conic-gradient(from 0deg, rgba(245,158,11,0.10), transparent 30%, transparent 70%, rgba(245,158,11,0.10))",
+        }}
+      />
+    </div>
+  );
+}
+
+
+Tailwind note: the class animate-[spin_60s_linear_infinite] works in JIT mode (Tailwind v3+). If your build purges arbitrary values, add animate-[spin_60s_linear_infinite] to your safelist.
+
+2) Use it behind the hero in landing.tsx
+
+No logic changes—just visuals. We place it inside the hero container so it rotates behind the title, tagline, etc.
+
+// client/src/pages/landing.tsx
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { CosmicBackground } from "@/components/cosmic-background";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { Sparkles } from "lucide-react";
+import { RotatingGlass } from "@/components/rotating-glass"; // ⬅️ add
+
+export default function Landing() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get("ref");
+    if (refCode) window.location.replace(`/auth?ref=${refCode}`);
+  }, []);
+
+  return (
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      <CosmicBackground />
+      {/* keep the subtle dark overlay so text pops */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/70" />
+
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
+      {/* === HERO === */}
+      <main className="relative z-10 mx-auto max-w-5xl px-4 text-center">
+        {/* rotating glass layer (behind hero) */}
+        <div className="relative">
+          <RotatingGlass speed={60} className="opacity-60" />
+
+          <header className="mb-8">
+            <h1 className="text-6xl md:text-9xl font-bold tracking-wide font-serif mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(245,158,11,0.25)]">
+              XNRT
+            </h1>
+            <h2 className="text-xl md:text-2xl text-white/90 font-serif">
+              We Build the NextGen
+            </h2>
+            <p className="mt-1 text-sm md:text-base text-white/60">
+              A project of NextGen Rise Foundation
+            </p>
+          </header>
+        </div>
+
+        <p className="mx-auto mb-12 max-w-2xl text-lg md:text-xl text-white/70">
+          Join the ultimate off-chain gamification earning platform. Earn XNRT tokens
+          through staking, mining, referrals, and task completion.
+        </p>
+
+        <div className="flex justify-center">
+          <Button
+            size="lg"
+            className="text-lg px-8 py-6 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold transition-all duration-200 shadow-lg hover:shadow-amber-500/40"
+            onClick={() => setLocation("/auth")}
+            data-testid="button-get-started"
+            aria-label="Get started with XNRT"
+          >
+            <Sparkles className="mr-2 h-5 w-5" />
+            Get Started
+          </Button>
+        </div>
+
+        {/* feature cards */}
+        <section className="mt-16 grid grid-cols-1 gap-6 md:grid-cols-4" aria-label="Platform highlights">
+          {[
+            { label: "Staking", value: "Up to 730% APY" },
+            { label: "Mining", value: "24hr Sessions" },
+            { label: "Referrals", value: "3-Level System" },
+            { label: "Tasks", value: "Daily Rewards" },
+          ].map((card, i) => (
+            <div
+              key={card.label}
+              className="relative rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              style={{ animationDelay: `${150 * i}ms` }}
+            >
+              {/* optional: subtle rotating sheen per card */}
+              <RotatingGlass speed={50} className="opacity-35" />
+              <div className="mb-2 text-3xl font-bold bg-gradient-to-r from-amber-400 to-yellow-500 bg-clip-text text-transparent leading-tight">
+                {card.value}
+              </div>
+              <div className="text-sm text-white/55">{card.label}</div>
+            </div>
+          ))}
+        </section>
+      </main>
+    </div>
+  );
+}
