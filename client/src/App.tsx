@@ -10,6 +10,7 @@ import { PWAUpdateNotification } from "@/components/pwa-update-notification";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { CosmicBackground } from "@/components/cosmic-background";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotificationBadge } from "@/hooks/use-notification-badge";
 import { useEffect } from "react";
@@ -46,10 +47,11 @@ function AuthenticatedApp() {
 
   return (
     <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
-      <div className="flex h-screen w-full">
+      <CosmicBackground />
+      <div className="flex h-screen w-full relative z-10">
         <AppSidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between p-4 border-b border-border bg-background">
+          <header className="flex items-center justify-between p-4 border-b border-border/50 bg-card/30 backdrop-blur-md">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-4">
               <div className="text-sm text-muted-foreground">
@@ -59,7 +61,7 @@ function AuthenticatedApp() {
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-6 bg-background">
+          <main className="flex-1 overflow-auto p-6">
             <ErrorBoundary>
               <Switch>
                 <Route path="/" component={Home} />
