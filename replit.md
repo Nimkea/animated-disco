@@ -84,3 +84,17 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Security**: URL construction uses simple concatenation without user input, token is only dynamic component
 - **Architect Approval**: Verified production-ready implementation with secure URL construction and appropriate fallback strategy
 - **Next Steps**: Monitor production email deliverability and confirm correct domain rendering in sent emails
+
+### Password Reset Flow Complete ✅
+- **Frontend Route**: Registered `/reset-password` route using query params (`?token=...`) matching email link format
+- **Reset Password Page**: Built at `client/src/pages/auth/reset-password.tsx` with glassmorphic cosmic design
+- **Token Handling**: Extracts token from URL query params, verifies with backend before showing form
+- **UX Fix**: Resolved state management bug where valid tokens showed error state before verification completed
+- **Atomic Verification**: Single useEffect extracts token and verifies immediately while maintaining loading state
+- **Form Validation**: Password min 8 chars, confirmation match validation, inline error messages
+- **Success Flow**: Toast notification + 2-second auto-redirect to `/auth` login page after successful reset
+- **Error Handling**: Invalid/expired tokens show error state with "Request New Link" button
+- **Security**: Single-use tokens, 1-hour expiry, backend validation, no token exposure
+- **Backend Integration**: POST /auth/reset-password endpoint validates token + password, marks token as used
+- **Architect Approval**: Verified production-ready with proper state management, security, and UX flow
+- **Status**: Production-ready password reset system fully functional
