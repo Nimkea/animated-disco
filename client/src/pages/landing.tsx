@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { CosmicBackground } from "@/components/cosmic-background";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -6,6 +7,16 @@ import { Sparkles } from "lucide-react";
 
 export default function Landing() {
   const [, setLocation] = useLocation();
+
+  // Auto-redirect to /auth if referral code is present in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      // Redirect to /auth with referral code preserved
+      setLocation(`/auth?ref=${refCode}`);
+    }
+  }, [setLocation]);
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -37,8 +48,8 @@ export default function Landing() {
           <Button
             size="lg"
             className="text-lg px-8 py-6 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold transition-all duration-300 shadow-lg hover:shadow-amber-500/50"
-            onClick={() => setLocation("/login")}
-            data-testid="button-login"
+            onClick={() => setLocation("/auth")}
+            data-testid="button-get-started"
           >
             <Sparkles className="mr-2 h-5 w-5" />
             Get Started
