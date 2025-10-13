@@ -74,3 +74,13 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Monitoring**: Sentry (optional), web-vitals
 - **Security**: helmet
 - **Unique ID Generation**: nanoid
+### Production Email URL Fix ✅
+- **Environment Variable Migration**: Updated email service from `REPLIT_DEV_DOMAIN` to `APP_URL` for production domain configuration
+- **URL Construction Update**: Both `sendVerificationEmail` and `sendPasswordResetEmail` now use `process.env.APP_URL || 'https://xnrt.org'`
+- **Production Secret**: Added `APP_URL=https://xnrt.org` to Deployment → App Secrets for production environment
+- **Dev Preview Issue Resolved**: Fixed verification emails pointing to `janeway.replit.dev` (dev preview that sleeps) instead of production domain
+- **Frontend API Fix**: Corrected `apiRequest` call signature in verify-email.tsx from `(url, options)` to `(method, url, data)` to fix TypeScript error
+- **Fallback Strategy**: Smart fallback to `https://xnrt.org` ensures links work even if APP_URL not set
+- **Security**: URL construction uses simple concatenation without user input, token is only dynamic component
+- **Architect Approval**: Verified production-ready implementation with secure URL construction and appropriate fallback strategy
+- **Next Steps**: Monitor production email deliverability and confirm correct domain rendering in sent emails
