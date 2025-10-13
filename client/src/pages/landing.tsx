@@ -13,10 +13,10 @@ export default function Landing() {
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     if (refCode) {
-      // Redirect to /auth with referral code preserved
-      setLocation(`/auth?ref=${refCode}`);
+      // Redirect to /auth with referral code preserved (replace to avoid back-button loop)
+      window.location.replace(`/auth?ref=${refCode}`);
     }
-  }, [setLocation]);
+  }, []);
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
