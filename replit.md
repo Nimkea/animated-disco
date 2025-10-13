@@ -115,8 +115,10 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Visual Design**: Combines soft white radial gradient blob with subtle golden conic sweep matching brand colors
 - **Animation**: Configurable spin speed (60s default for smooth, hypnotic rotation) using Tailwind `animate-[spin_60s_linear_infinite]`
 - **Accessibility**: Respects `prefers-reduced-motion` with `motion-reduce:animate-none` to disable animation for users with motion sensitivity
-- **Hero Integration**: Positioned behind XNRT title with 60s spin and 60% opacity for depth and luxury
-- **Card Enhancement**: Added contained rotating sheen to each feature card with 50s spin and 35% opacity, clipped by `overflow-hidden`
+- **Hero Integration**: Positioned behind XNRT title with 30s spin (faster for dynamic movement) and 60% opacity for depth and luxury
+- **Card Enhancement**: Added contained rotating sheen to each feature card with 40s spin and 35% opacity, clipped by `overflow-hidden`
+- **Card Animations**: Re-added subtle `slide-in-from-bottom fade-in` animations with 500ms duration and staggered 150ms delays
+- **Icon Accessibility**: Added `aria-hidden="true"` to decorative Sparkles icon in CTA button for better screen reader experience
 - **Bug Fix**: Resolved visual bleeding issue where card sheens extended beyond boundaries by adding overflow-hidden to containers
-- **Architect Approval**: Confirmed proper containment, accessibility support, and visual enhancement without performance issues
-- **Status**: Production-ready rotating glass effect adding dynamic depth to cosmic theme
+- **Architect Approval**: Confirmed proper containment, accessibility support, enhanced animations, and visual improvements without performance issues
+- **Status**: Production-ready rotating glass effect with optimized rotation speeds and polished entrance animations
