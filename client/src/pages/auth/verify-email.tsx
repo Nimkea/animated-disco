@@ -14,10 +14,7 @@ export default function VerifyEmailPage() {
 
   const verifyEmailMutation = useMutation({
     mutationFn: async (verificationToken: string) => {
-      const res = await apiRequest('/auth/verify-email', {
-        method: 'POST',
-        body: JSON.stringify({ token: verificationToken }),
-      });
+      const res = await apiRequest('POST', '/auth/verify-email', { token: verificationToken });
       return res;
     },
     onSuccess: (data) => {
