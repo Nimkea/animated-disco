@@ -16,183 +16,201 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Session storage table - Mandatory for Replit Auth
-export const sessions = pgTable(
-  "sessions",
-  {
-    sid: varchar("sid").primaryKey(),
-    sess: jsonb("sess").notNull(),
-    expire: timestamp("expire").notNull(),
-  },
-  (table) => [index("IDX_session_expire").on(table.expire)],
-);
+// JWT Session table - for authentication
+export const sessions = pgTable("Session", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jwtId: varchar("jwtId").unique().notNull(),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+}, (table) => [
+  index("sessions_userId_idx").on(table.userId),
+  index("sessions_jwtId_idx").on(table.jwtId),
+]);
 
 // User storage table - Extended for XNRT platform
-export const users = pgTable("users", {
+export const users = pgTable("User", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
-  profileImageUrl: varchar("profile_image_url"),
-  username: varchar("username").unique(),
-  referralCode: varchar("referral_code").unique().notNull(),
-  referredBy: varchar("referred_by"),
-  isAdmin: boolean("is_admin").default(false).notNull(),
+  email: varchar("email").unique().notNull(),
+  username: varchar("username").unique().notNull(),
+  passwordHash: varchar("passwordHash").notNull(),
+  referralCode: varchar("referralCode").unique().notNull(),
+  referredBy: varchar("referredBy"),
+  isAdmin: boolean("isAdmin").default(false).notNull(),
   xp: integer("xp").default(0).notNull(),
   level: integer("level").default(1).notNull(),
   streak: integer("streak").default(0).notNull(),
-  lastCheckIn: timestamp("last_check_in"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  lastCheckIn: timestamp("lastCheckIn"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 // User balances
-export const balances = pgTable("balances", {
+export const balances = pgTable("Balance", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  xnrtBalance: decimal("xnrt_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  stakingBalance: decimal("staking_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  miningBalance: decimal("mining_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  referralBalance: decimal("referral_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  totalEarned: decimal("total_earned", { precision: 18, scale: 2 }).default("0").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  userId: varchar("userId").unique().notNull().references(() => users.id, { onDelete: "cascade" }),
+  xnrtBalance: decimal("xnrtBalance", { precision: 18, scale: 2 }).default("0").notNull(),
+  stakingBalance: decimal("stakingBalance", { precision: 18, scale: 2 }).default("0").notNull(),
+  miningBalance: decimal("miningBalance", { precision: 18, scale: 2 }).default("0").notNull(),
+  referralBalance: decimal("referralBalance", { precision: 18, scale: 2 }).default("0").notNull(),
+  totalEarned: decimal("totalEarned", { precision: 18, scale: 2 }).default("0").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 // Staking tiers
-export const stakes = pgTable("stakes", {
+export const stakes = pgTable("Stake", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   tier: varchar("tier").notNull(), // royal_sapphire, legendary_emerald, imperial_platinum, mythic_diamond
   amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
-  dailyRate: decimal("daily_rate", { precision: 5, scale: 3 }).notNull(), // 1.1, 1.4, 1.5, 2.0
+  dailyRate: decimal("dailyRate", { precision: 5, scale: 3 }).notNull(), // 1.1, 1.4, 1.5, 2.0
   duration: integer("duration").notNull(), // 15, 30, 45, 90 days
-  startDate: timestamp("start_date").defaultNow().notNull(),
-  endDate: timestamp("end_date").notNull(),
-  totalProfit: decimal("total_profit", { precision: 18, scale: 2 }).default("0").notNull(),
-  lastProfitDate: timestamp("last_profit_date"),
+  startDate: timestamp("startDate").defaultNow().notNull(),
+  endDate: timestamp("endDate").notNull(),
+  totalProfit: decimal("totalProfit", { precision: 18, scale: 2 }).default("0").notNull(),
+  lastProfitDate: timestamp("lastProfitDate"),
   status: varchar("status").default("active").notNull(), // active, completed, withdrawn
-  createdAt: timestamp("created_at").defaultNow(),
-});
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("stakes_userId_idx").on(table.userId),
+  index("stakes_status_idx").on(table.status),
+]);
 
 // Mining sessions
-export const miningSessions = pgTable("mining_sessions", {
+export const miningSessions = pgTable("MiningSession", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  baseReward: integer("base_reward").default(10).notNull(),
-  adBoostCount: integer("ad_boost_count").default(0).notNull(),
-  boostPercentage: integer("boost_percentage").default(0).notNull(),
-  finalReward: integer("final_reward").default(10).notNull(),
-  startTime: timestamp("start_time").defaultNow().notNull(),
-  endTime: timestamp("end_time"),
-  nextAvailable: timestamp("next_available").notNull(),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  baseReward: integer("baseReward").default(10).notNull(),
+  adBoostCount: integer("adBoostCount").default(0).notNull(),
+  boostPercentage: integer("boostPercentage").default(0).notNull(),
+  finalReward: integer("finalReward").default(10).notNull(),
+  startTime: timestamp("startTime").defaultNow().notNull(),
+  endTime: timestamp("endTime"),
+  nextAvailable: timestamp("nextAvailable").notNull(),
   status: varchar("status").default("active").notNull(), // active, completed
-  createdAt: timestamp("created_at").defaultNow(),
-});
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("mining_sessions_userId_idx").on(table.userId),
+  index("mining_sessions_status_idx").on(table.status),
+]);
 
 // Referrals
-export const referrals = pgTable("referrals", {
+export const referrals = pgTable("Referral", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  referrerId: varchar("referrer_id").notNull().references(() => users.id),
-  referredUserId: varchar("referred_user_id").notNull().references(() => users.id),
+  referrerId: varchar("referrerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  referredUserId: varchar("referredUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
   level: integer("level").notNull(), // 1, 2, 3
-  totalCommission: decimal("total_commission", { precision: 18, scale: 2 }).default("0").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+  totalCommission: decimal("totalCommission", { precision: 18, scale: 2 }).default("0").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("referrals_referrerId_idx").on(table.referrerId),
+  index("referrals_referredUserId_idx").on(table.referredUserId),
+]);
 
 // Transactions (deposits & withdrawals)
-export const transactions = pgTable("transactions", {
+export const transactions = pgTable("Transaction", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(), // deposit, withdrawal
   amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
-  usdtAmount: decimal("usdt_amount", { precision: 18, scale: 2 }),
+  usdtAmount: decimal("usdtAmount", { precision: 18, scale: 2 }),
   source: varchar("source"), // For withdrawals: main, referral
-  walletAddress: varchar("wallet_address"),
-  transactionHash: varchar("transaction_hash"),
-  proofImageUrl: varchar("proof_image_url"),
+  walletAddress: varchar("walletAddress"),
+  transactionHash: varchar("transactionHash"),
+  proofImageUrl: varchar("proofImageUrl"),
   status: varchar("status").default("pending").notNull(), // pending, approved, rejected, paid
-  adminNotes: text("admin_notes"),
+  adminNotes: text("adminNotes"),
   fee: decimal("fee", { precision: 18, scale: 2 }),
-  netAmount: decimal("net_amount", { precision: 18, scale: 2 }),
-  approvedBy: varchar("approved_by"),
-  approvedAt: timestamp("approved_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+  netAmount: decimal("netAmount", { precision: 18, scale: 2 }),
+  approvedBy: varchar("approvedBy"),
+  approvedAt: timestamp("approvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("transactions_userId_idx").on(table.userId),
+  index("transactions_type_idx").on(table.type),
+  index("transactions_status_idx").on(table.status),
+]);
 
 // Tasks
-export const tasks = pgTable("tasks", {
+export const tasks = pgTable("Task", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: varchar("title").notNull(),
   description: text("description").notNull(),
-  xpReward: integer("xp_reward").notNull(),
-  xnrtReward: decimal("xnrt_reward", { precision: 18, scale: 2 }).default("0").notNull(),
+  xpReward: integer("xpReward").notNull(),
+  xnrtReward: decimal("xnrtReward", { precision: 18, scale: 2 }).default("0").notNull(),
   category: varchar("category").notNull(), // daily, weekly, special
   requirements: text("requirements"),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 // User task completions
-export const userTasks = pgTable("user_tasks", {
+export const userTasks = pgTable("UserTask", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  taskId: varchar("task_id").notNull().references(() => tasks.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: varchar("taskId").notNull().references(() => tasks.id, { onDelete: "cascade" }),
   progress: integer("progress").default(0).notNull(),
-  maxProgress: integer("max_progress").default(1).notNull(),
+  maxProgress: integer("maxProgress").default(1).notNull(),
   completed: boolean("completed").default(false).notNull(),
-  completedAt: timestamp("completed_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("user_tasks_userId_idx").on(table.userId),
+  index("user_tasks_taskId_idx").on(table.taskId),
+]);
 
 // Achievements
-export const achievements = pgTable("achievements", {
+export const achievements = pgTable("Achievement", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: varchar("title").notNull(),
   description: text("description").notNull(),
   icon: varchar("icon").notNull(),
   category: varchar("category").notNull(), // earnings, referrals, streaks, mining
   requirement: integer("requirement").notNull(),
-  xpReward: integer("xp_reward").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  xpReward: integer("xpReward").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 // User achievements
-export const userAchievements = pgTable("user_achievements", {
+export const userAchievements = pgTable("UserAchievement", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  achievementId: varchar("achievement_id").notNull().references(() => achievements.id),
-  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
-});
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  achievementId: varchar("achievementId").notNull().references(() => achievements.id, { onDelete: "cascade" }),
+  unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
+}, (table) => [
+  index("user_achievements_userId_idx").on(table.userId),
+  index("user_achievements_achievementId_idx").on(table.achievementId),
+]);
 
 // Activity feed
-export const activities = pgTable("activities", {
+export const activities = pgTable("Activity", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(), // stake_created, mining_completed, referral_earned, task_completed, etc.
   description: text("description").notNull(),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at").defaultNow(),
+  metadata: varchar("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("activities_user_id_idx").on(table.userId),
   index("activities_created_at_idx").on(table.createdAt),
 ]);
 
 // Notifications
-export const notifications = pgTable("notifications", {
+export const notifications = pgTable("Notification", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(), // referral_commission, new_referral, achievement_unlocked, etc.
   title: varchar("title").notNull(),
   message: text("message").notNull(),
-  metadata: jsonb("metadata"),
+  metadata: varchar("metadata"),
   read: boolean("read").default(false).notNull(),
-  deliveryAttempts: integer("delivery_attempts"),
-  deliveredAt: timestamp("delivered_at"),
-  lastAttemptAt: timestamp("last_attempt_at"),
-  pendingPush: boolean("pending_push").default(false).notNull(),
-  pushError: text("push_error"),
-  createdAt: timestamp("created_at").defaultNow(),
+  deliveryAttempts: integer("deliveryAttempts"),
+  deliveredAt: timestamp("deliveredAt"),
+  lastAttemptAt: timestamp("lastAttemptAt"),
+  pendingPush: boolean("pendingPush").default(false).notNull(),
+  pushError: text("pushError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("notifications_user_id_idx").on(table.userId),
   index("notifications_read_idx").on(table.read),
@@ -201,20 +219,33 @@ export const notifications = pgTable("notifications", {
 ]);
 
 // Push Subscriptions
-export const pushSubscriptions = pgTable("push_subscriptions", {
+export const pushSubscriptions = pgTable("PushSubscription", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   endpoint: text("endpoint").notNull(),
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
-  expirationTime: timestamp("expiration_time"),
+  expirationTime: timestamp("expirationTime"),
   enabled: boolean("enabled").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, (table) => [
   index("push_subscriptions_user_id_idx").on(table.userId),
   index("push_subscriptions_endpoint_idx").on(table.endpoint),
   unique("push_subscriptions_user_endpoint_unique").on(table.userId, table.endpoint),
+]);
+
+// Password Reset
+export const passwordResets = pgTable("PasswordReset", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  token: varchar("token").unique().notNull(),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("password_resets_userId_idx").on(table.userId),
+  index("password_resets_token_idx").on(table.token),
 ]);
 
 // Relations
@@ -233,6 +264,8 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   activities: many(activities),
   notifications: many(notifications),
   pushSubscriptions: many(pushSubscriptions),
+  sessions: many(sessions),
+  passwordResets: many(passwordResets),
 }));
 
 export const balancesRelations = relations(balances, ({ one }) => ({
@@ -319,6 +352,20 @@ export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one })
   }),
 }));
 
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const passwordResetsRelations = relations(passwordResets, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResets.userId],
+    references: [users.id],
+  }),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
@@ -361,6 +408,12 @@ export type InsertNotification = typeof notifications.$inferInsert;
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+export type Session = typeof sessions.$inferSelect;
+export type InsertSession = typeof sessions.$inferInsert;
+
+export type PasswordReset = typeof passwordResets.$inferSelect;
+export type InsertPasswordReset = typeof passwordResets.$inferInsert;
 
 // Staking tier configurations
 export const STAKING_TIERS = {
