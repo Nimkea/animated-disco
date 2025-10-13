@@ -84,3 +84,17 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Security**: URL construction uses simple concatenation without user input, token is only dynamic component
 - **Architect Approval**: Verified production-ready implementation with secure URL construction and appropriate fallback strategy
 - **Next Steps**: Monitor production email deliverability and confirm correct domain rendering in sent emails
+
+### Password Reset Routing Fix ✅
+- **Problem**: Email links sent `https://xnrt.org/reset-password?token=XXX` (query param) but route expected `/reset-password/:token` (path param)
+- **Route Update**: Changed from `/reset-password/:token` to `/reset-password` in App.tsx to match email link format
+- **Token Extraction**: Updated reset-password.tsx to extract token from URL query params using `URLSearchParams`
+- **State Management Fix**: Added `hasExtractedToken` flag to properly sequence token extraction and verification
+  - Prevents premature "Invalid Reset Link" error during valid token verification
+  - Prevents infinite loading state when no token present in URL
+  - Shows loading state only during actual network verification
+- **UX Flow**: Valid token → "Verifying..." → Form shown | Invalid/missing token → "Verifying..." briefly → Error shown
+- **Redirect Update**: Changed all redirects from `/login` to `/auth` for consistency with app routing
+- **Auto-redirect**: Reduced timeout from 3s to 2s to match email verification page
+- **Architect Approval**: Verified all edge cases handled correctly (valid token, invalid token, missing token)
+- **Production Ready**: Complete forgot password → email → reset password → login flow now functional
