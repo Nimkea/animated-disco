@@ -20,6 +20,7 @@ import Register from "@/pages/auth/register";
 import Auth from "@/pages/auth/auth";
 import ForgotPassword from "@/pages/auth/forgot-password";
 import ResetPassword from "@/pages/auth/reset-password";
+import VerifyEmail from "@/pages/auth/verify-email";
 import Home from "@/pages/home";
 import Wallet from "@/pages/wallet";
 import Deposit from "@/pages/deposit";
@@ -93,6 +94,7 @@ function UnauthenticatedApp() {
       <Route path="/register" component={Register} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password/:token" component={ResetPassword} />
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route component={Landing} />
     </Switch>
   );

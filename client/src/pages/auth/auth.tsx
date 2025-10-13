@@ -26,6 +26,9 @@ export default function Auth() {
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerReferralCode, setRegisterReferralCode] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
+  
+  // Resend verification state
+  const [resendLoading, setResendLoading] = useState(false);
 
   // Auto-capture referral code from URL parameter on mount
   useEffect(() => {
@@ -56,6 +59,17 @@ export default function Auth() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Special handling for email not verified
+        if (response.status === 403 && data.emailVerified === false) {
+          toast({
+            title: "Email not verified",
+            description: data.message || "Please verify your email before logging in.",
+            variant: "destructive",
+          });
+          // Show resend verification option
+          setActiveTab("login"); // Stay on login tab
+          return;
+        }
         throw new Error(data.message || "Login failed");
       }
 
@@ -74,6 +88,48 @@ export default function Auth() {
       });
     } finally {
       setLoginLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!loginEmail) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address to resend verification",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setResendLoading(true);
+
+    try {
+      const response = await fetch("/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: loginEmail }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to resend verification email");
+      }
+
+      toast({
+        title: "Verification email sent!",
+        description: "Please check your inbox for the verification link",
+        duration: 5000,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to resend",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -102,11 +158,19 @@ export default function Auth() {
 
       toast({
         title: "Account created!",
-        description: "Welcome to XNRT",
+        description: data.message || "Please check your email to verify your account.",
+        duration: 6000,
       });
 
-      setLocation("/");
-      window.location.reload();
+      // Clear form
+      setRegisterEmail("");
+      setRegisterUsername("");
+      setRegisterPassword("");
+      setRegisterReferralCode("");
+      
+      // Switch to login tab and show message about email verification
+      setActiveTab("login");
+      setLoginEmail(registerEmail);
     } catch (error: any) {
       toast({
         title: "Registration failed",
@@ -246,6 +310,18 @@ export default function Auth() {
                         {loginLoading ? "Logging in..." : "Login"}
                       </Button>
                     </motion.div>
+                    
+                    <div className="text-center pt-2">
+                      <button
+                        type="button"
+                        onClick={handleResendVerification}
+                        disabled={resendLoading}
+                        className="text-xs text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid="link-resend-verification"
+                      >
+                        {resendLoading ? "Sending..." : "Resend verification email"}
+                      </button>
+                    </div>
                   </motion.form>
                 </TabsContent>
 
