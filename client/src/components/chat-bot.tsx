@@ -53,8 +53,24 @@ function findBestMatch(userMessage: string): FAQItem | null {
   return highestScore >= 2 ? bestMatch : null;
 }
 
-export function ChatBot() {
-  const [isOpen, setIsOpen] = useState(false);
+interface ChatBotProps {
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showLauncher?: boolean;
+}
+
+export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher = true }: ChatBotProps = {}) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  
+  // Use controlled state if provided, otherwise use internal state
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = (open: boolean) => {
+    if (onOpenChange) {
+      onOpenChange(open);
+    } else {
+      setInternalIsOpen(open);
+    }
+  };
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -246,8 +262,8 @@ export function ChatBot() {
 
   return (
     <>
-      {/* Floating Chat Button (bottom-right, safe-area + keyboard aware) */}
-      {!isOpen && (
+      {/* Floating Chat Button (bottom-right, safe-area + keyboard aware) - only show if showLauncher is true */}
+      {!isOpen && showLauncher && (
         <Button
           onClick={() => setIsOpen(true)}
           style={launcherStyle}

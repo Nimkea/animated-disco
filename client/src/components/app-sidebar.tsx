@@ -13,6 +13,7 @@ import {
   LogOut,
   Shield,
   TrendingUp,
+  MessageCircle,
 } from "lucide-react";
 
 import {
@@ -48,7 +49,11 @@ const menuItems = [
   { title: "Rewards", url: "/rewards", icon: Gift, testId: "nav-rewards" },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onChatOpen?: () => void;
+}
+
+export function AppSidebar({ onChatOpen }: AppSidebarProps = {}) {
   const [location] = useLocation();
   const { data: user } = useQuery<UserType>({
     queryKey: ["/auth/me"],
@@ -131,7 +136,22 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
+      <SidebarFooter className="p-4 border-t border-sidebar-border space-y-2">
+        {/* Chat Support Button */}
+        <Button
+          variant="ghost"
+          className="w-full justify-start hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={() => {
+            onChatOpen?.();
+            if (isMobile) setOpenMobile(false);
+          }}
+          data-testid="button-chat-support"
+        >
+          <MessageCircle className="h-5 w-5 mr-2" />
+          Chat Support
+        </Button>
+        
+        {/* Logout Button */}
         <Button
           variant="ghost"
           className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"

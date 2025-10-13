@@ -13,7 +13,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { ChatBot } from "@/components/chat-bot";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotificationBadge } from "@/hooks/use-notification-badge";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Login from "@/pages/auth/login";
@@ -44,11 +44,14 @@ function AuthenticatedApp() {
 
   // Enable notification badge on app icon
   useNotificationBadge();
+  
+  // Chat bot state
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   return (
     <SidebarProvider style={style as React.CSSProperties} defaultOpen={true}>
       <div className="flex h-screen w-full">
-        <AppSidebar />
+        <AppSidebar onChatOpen={() => setIsChatOpen(true)} />
         <div className="flex flex-col flex-1 overflow-hidden">
           <header className="flex items-center justify-between p-4 border-b border-border bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
@@ -82,7 +85,11 @@ function AuthenticatedApp() {
           </main>
         </div>
       </div>
-      <ChatBot />
+      <ChatBot 
+        isOpen={isChatOpen} 
+        onOpenChange={setIsChatOpen}
+        showLauncher={false}
+      />
     </SidebarProvider>
   );
 }
