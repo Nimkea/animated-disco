@@ -1,6 +1,7 @@
 // Prisma-based storage implementation
 import { PrismaClient, Prisma } from "@prisma/client";
 import crypto from "crypto";
+import { nanoid } from "nanoid";
 import { 
   type User,
   type UpsertUser,
@@ -33,7 +34,7 @@ import {
 const prisma = new PrismaClient();
 
 function generateReferralCode(): string {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
+  return `XNRT${nanoid(8).toUpperCase()}`;
 }
 
 export function generateAnonymizedHandle(userId: string): string {

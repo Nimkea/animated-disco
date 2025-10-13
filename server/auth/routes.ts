@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
+import { nanoid } from 'nanoid';
 import { hashPassword, comparePassword, generateResetToken } from './password';
 import { signToken } from './jwt';
 import { generateCSRFToken } from './csrf';
@@ -74,7 +75,7 @@ router.post('/register', async (req, res) => {
     const passwordHash = await hashPassword(data.password);
 
     // Generate unique referral code
-    const userReferralCode = `REF${data.username.substring(0, 4).toUpperCase()}${Date.now().toString().slice(-4)}`;
+    const userReferralCode = `XNRT${nanoid(8).toUpperCase()}`;
 
     // Handle referral if provided
     let referredBy: string | null = null;
