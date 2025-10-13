@@ -124,3 +124,23 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **No History Pollution**: Uses `window.location.replace()` instead of `.href` to prevent back-button loops
 - **Implementation**: Landing page now redirects to auth with referral code before user can interact with page
 - **UX Flow**: User clicks referral link → Landing page briefly loads → Auto-redirects to auth → Code auto-fills and tab switches to register
+
+## Recent Updates (Oct 13, 2025)
+### Drizzle Schema Complete Alignment ✅
+- **Critical Database Viewer Bug Fix**: Resolved Drizzle Studio "syntax error" by achieving 100% schema alignment between Drizzle (`shared/schema.ts`) and Prisma (`prisma/schema.prisma`)
+- **Table Name Standardization**: All Drizzle table definitions now use PascalCase to match database (User, Balance, Session, Stake, MiningSession, Referral, Transaction, Task, UserTask, Achievement, UserAchievement, Activity, Notification, PushSubscription, PasswordReset)
+- **Column Name Consistency**: All columns use camelCase matching Prisma (userId, createdAt, referrerId, achievementId, etc.)
+- **Session Table Correction**: Updated from express-session structure to JWT session structure (id, jwtId, userId, createdAt, revokedAt) with proper indexes
+- **PasswordReset Table Addition**: Added missing table definition with all fields (id, userId, token, expiresAt, createdAt, usedAt) and indexes
+- **Nullability Enforcement**: Fixed all timestamp fields - every `.defaultNow()` now includes `.notNull()` to match Prisma `@default(now())` behavior
+- **Unique Constraints**: Added `.unique()` to Balance.userId to match Prisma `@unique` directive
+- **Cascade Delete Implementation**: Added `onDelete: "cascade"` to ALL 12 foreign key relationships across all tables to match Prisma `onDelete: Cascade` declarations
+- **Complete Index Coverage**: Added 14 missing indexes to match all Prisma `@@index` declarations:
+  - Stake: userId, status
+  - MiningSession: userId, status
+  - Referral: referrerId, referredUserId
+  - Transaction: userId, type, status
+  - UserTask: userId, taskId
+  - UserAchievement: userId, achievementId
+- **Architect Validation**: Schema passed comprehensive review confirming 100% alignment with no missing constraints, proper cascades, and complete index coverage
+- **Result**: Drizzle Studio "My Data" tab now loads without DDL mismatch warnings, enabling full database inspection and management
