@@ -173,9 +173,7 @@ export function generatePasswordResetEmailHTML(username: string, resetLink: stri
 }
 
 export async function sendVerificationEmail(email: string, username: string, token: string): Promise<void> {
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
-    : 'http://localhost:5000';
+  const baseUrl = process.env.APP_URL || 'https://xnrt.org';
   
   const verificationLink = `${baseUrl}/verify-email?token=${token}`;
   
@@ -187,9 +185,7 @@ export async function sendVerificationEmail(email: string, username: string, tok
 }
 
 export async function sendPasswordResetEmail(email: string, username: string, token: string): Promise<void> {
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
-    : 'http://localhost:5000';
+  const baseUrl = process.env.APP_URL || 'https://xnrt.org';
   
   const resetLink = `${baseUrl}/reset-password?token=${token}`;
   
