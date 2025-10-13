@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient, initCSRFToken } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,6 +10,7 @@ import { PWAUpdateNotification } from "@/components/pwa-update-notification";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { ChatBot } from "@/components/chat-bot";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotificationBadge } from "@/hooks/use-notification-badge";
 import { useEffect } from "react";
@@ -81,22 +82,31 @@ function AuthenticatedApp() {
           </main>
         </div>
       </div>
+      <ChatBot />
     </SidebarProvider>
   );
 }
 
 function UnauthenticatedApp() {
+  const [location] = useLocation();
+  
+  // Show chatbot only on landing page, not on auth pages
+  const showChatBot = location === "/";
+  
   return (
-    <Switch>
-      <Route path="/" component={Landing} />
-      <Route path="/auth" component={Auth} />
-      <Route path="/login" component={Login} />
-      <Route path="/register" component={Register} />
-      <Route path="/forgot-password" component={ForgotPassword} />
-      <Route path="/reset-password" component={ResetPassword} />
-      <Route path="/verify-email" component={VerifyEmail} />
-      <Route component={Landing} />
-    </Switch>
+    <>
+      <Switch>
+        <Route path="/" component={Landing} />
+        <Route path="/auth" component={Auth} />
+        <Route path="/login" component={Login} />
+        <Route path="/register" component={Register} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
+        <Route path="/verify-email" component={VerifyEmail} />
+        <Route component={Landing} />
+      </Switch>
+      {showChatBot && <ChatBot />}
+    </>
   );
 }
 

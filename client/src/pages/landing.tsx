@@ -4,7 +4,7 @@ import { CosmicBackground } from "@/components/cosmic-background";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ShineButton } from "@/components/ui/shine-button";
 import { TiltCard } from "@/components/ui/tilt-card";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Mail } from "lucide-react";
 import { RotatingGlass } from "@/components/rotating-glass";
 
 export default function Landing() {
@@ -95,6 +95,27 @@ export default function Landing() {
               <div className="text-sm text-white/55">{card.label}</div>
             </TiltCard>
           ))}
+        </section>
+
+        {/* Contact Us Section */}
+        <section
+          aria-label="Contact information"
+          className="mt-20 pt-12 border-t border-amber-500/20"
+        >
+          <h3 className="text-2xl font-bold text-white mb-6">Contact Us</h3>
+          <div className="flex items-center justify-center gap-3">
+            <Mail className="h-5 w-5 text-amber-400" aria-hidden="true" />
+            <a
+              href="mailto:support@xnrt.org"
+              className="text-lg text-white/80 hover:text-amber-400 transition-colors duration-200 underline underline-offset-4 decoration-amber-400/40 hover:decoration-amber-400"
+              data-testid="link-contact-email"
+            >
+              support@xnrt.org
+            </a>
+          </div>
+          <p className="mt-3 text-sm text-white/50">
+            Our support team is here to help you 24/7
+          </p>
         </section>
       </main>
     </div>
