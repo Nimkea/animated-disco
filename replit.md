@@ -30,7 +30,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Wouter for routing, and TanStack Query for data management.
 - **Backend**: Express.js with TypeScript.
 - **Database**: PostgreSQL (Neon) using Drizzle ORM for schema and session management, and Prisma ORM for database operations.
-- **Authentication**: Hybrid system supporting Replit OIDC (Passport.js) and traditional email/password, with secure password reset and session management.
+- **Authentication**: Hybrid system supporting Replit OIDC (Passport.js) and traditional email/password, with secure password reset, email verification, and session management.
 - **PWA**: Full Progressive Web App capabilities via `vite-plugin-pwa` with a custom service worker for offline SPA routing, Workbox caching, and app shortcuts.
 - **Monitoring**: Optional Sentry integration for error tracking and Web Vitals monitoring.
 - **Charts**: Recharts for data visualization.
@@ -40,13 +40,14 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Deposit System**: USDT to XNRT conversion with admin approval, proof of payment upload, and transaction tracking.
 - **Withdrawal System**: XNRT to USDT conversion with a 2% fee, multi-source support, and admin approval.
 - **Staking System**: Four-tiered system with varying APY and duration, real-time countdowns, and automated daily reward distribution.
-- **Mining System**: Fully automated 24-hour sessions with auto-completion, XP to XNRT conversion (10 XP + 5 XNRT per session), no cooldown for immediate restart, and automatic reward deposit.
-- **Referral System**: 3-level commission chain, network visualization, real-time notifications, leaderboard, and social sharing.
+- **Mining System**: Fully automated 24-hour sessions with auto-completion, XP to XNRT conversion (10 XP + 5 XNRT per session), no cooldown, and automatic reward deposit.
+- **Referral System**: 3-level commission chain, network visualization, real-time notifications, leaderboard, social sharing, and privacy controls for company commissions.
 - **Daily Check-in System**: Atomic check-ins with streak rewards, calendar view, and anti-exploit measures.
 - **Achievement System**: Auto-unlocks achievements with XP rewards and confetti celebrations.
-- **XP Leaderboard System**: Weekly/monthly rankings with category filters and privacy controls (anonymized handles for non-admins).
+- **XP Leaderboard System**: Weekly/monthly rankings with category filters and privacy controls.
 - **Push Notification System**: Web Push notifications with VAPID authentication, subscription management, delivery tracking with exponential backoff, and event triggers.
 - **Password Reset System**: Secure recovery with time-limited tokens and rate limiting.
+- **Email Verification System**: Secure email verification with tokens, expiry, and rate-limited resend options.
 
 **System Design Choices:**
 - **Automation**: All core earning mechanisms are fully automated.
@@ -54,10 +55,12 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Performance**: Optimized Prisma queries, reduced API polling, and Workbox caching.
 - **Progressive Enhancement**: Feature flags enable phased rollout.
 - **Code Quality**: Zero LSP/TypeScript errors, 100% type-safe, and E2E test coverage.
+- **Database Schema Alignment**: 100% schema alignment between Drizzle and Prisma for consistency and tool compatibility.
 
 ## External Dependencies
 - **Database**: Neon (PostgreSQL)
 - **Authentication**: Replit OIDC
+- **Email Service**: Brevo SMTP (via Nodemailer)
 - **UI Components**: Shadcn/ui, Radix UI Primitives
 - **Icons**: Lucide React
 - **CSS Framework**: Tailwind CSS
@@ -67,80 +70,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **QR Code Generation**: qrcode library
 - **PWA**: `vite-plugin-pwa` with Workbox
 - **Push Notifications**: web-push (VAPID authentication)
-- **Animations**: canvas-confetti
+- **Animations**: canvas-confetti, framer-motion
 - **Monitoring**: Sentry (optional), web-vitals
 - **Security**: helmet
-
-## Recent Updates (Oct 12, 2025)
-### Mining System Simplification ✅
-- **No Cooldown**: Removed 24-hour cooldown restriction - users can start a new mining session immediately after previous one completes
-- **Auto-Completion**: Implemented automated 24-hour timer that auto-stops mining and deposits rewards without manual intervention
-- **Ad Boost Removed**: Disabled ad boost system for cleaner, simpler earning experience (may re-enable in future)
-- **Simplified UI**: Removed stop button and ad boost components - users only see countdown timer and estimated rewards
-- **Auto-Processing**: Frontend triggers reward processing every 30 seconds to detect and complete expired sessions
-- **Immediate Restart**: Set nextAvailable to current time so users can restart mining instantly after completion
-- **Secure Implementation**: Maintained CSRF protection and authentication on all endpoints including auto-processing
-- **Updated Messaging**: All success messages and UI text reflect automatic completion and deposit flow
-
-### Mining System Robustness Improvements ✅
-- **Confetti Safety**: Replaced unsupported 'star' shape with 'square'/'circle' in canvas-confetti, added try/catch error handling to prevent UI crashes, and optional chaining for feature flags
-- **Robust 401 Detection**: Enhanced `isUnauthorizedError()` with `ApiError` type that checks status/code fields instead of fragile regex matching for more reliable authentication error handling
-- **DRY Authentication Handling**: Extracted `handleUnauthorized()` helper to eliminate code duplication across all three mining mutations (start/stop/watch-ad)
-- **Type Safety**: Added `StopMiningResponse` type with proper JSON parsing for end-to-end type enforcement in stop mining mutation
-- **Race Condition Prevention**: Implemented `startOrStopDisabled` flag using `isPending` to prevent double-click button spam during mutations
-- **Constants Extraction**: Converted magic numbers to named constants (`AD_MAX = 5`, `AD_STEP = 10`) for maintainable ad boost system configuration
-- **Countdown Safety**: Added `Math.max(0, diff)` to prevent negative countdown display if server/client clock skews
-- **Accessibility**: Added `aria-label` attributes to start/stop and watch-ad buttons for screen reader support
-- **Null Safety**: Implemented safe type checking on `xnrtReward` before calling `toFixed()` in toast messages
-- **Improved Reward Calculation**: Refactored estimated reward formula to use constants and proper percentage math
-
-### Referral Link URL Parameter Fix ✅
-- **Auto-Capture Implementation**: Added useEffect hooks to both `/auth` and `/register` pages to automatically parse `?ref=` URL parameter on component mount
-- **Seamless Signup Flow**: When users access referral links (e.g., `https://xnrt.org/?ref=XNRTX8K2N9P4`), the referral code is automatically extracted and populated in the registration form
-- **User Feedback**: Toast notification displays when referral code is applied, showing the captured code to the user
-- **Smart Tab Switching**: On `/auth` page, automatically switches to "register" tab when ref parameter is detected for optimal UX
-- **Security**: React safely renders toast content, preventing XSS attacks from malicious referral codes
-- **Browser Standard**: Uses native URLSearchParams API for reliable cross-browser URL parameter parsing
-
-### Referral Privacy Controls ✅
-- **Company Commission Privacy**: Hidden company fallback commission data from regular users for cleaner interface and business privacy
-- **Admin Transparency**: Company commissions remain fully visible to admin users for analytics and monitoring
-- **Conditional Rendering**: Implemented `user?.isAdmin` checks to filter company data in summary section and 4-card grid
-- **UX Benefits**: Regular users see simplified 3-level commission structure without internal business metrics
-- **Filter Implementation**: Used `.filter(stat => user?.isAdmin || stat.level > 0)` to conditionally show company card only to admins
-
-### Referral Code Format Upgrade ✅
-- **Guaranteed Uniqueness**: Switched from collision-prone format to nanoid-based generation for cryptographically secure unique codes
-- **Brand-Aligned Prefix**: Changed prefix from `REF` to `XNRT` for better brand recognition (e.g., `XNRTX8K2N9P4`, `XNRTM5T7QW9L`)
-- **Old Format**: `REF + username[0:4] + timestamp[-4:]` (risk of collision within 10 seconds for similar usernames)
-- **New Format**: `XNRT + nanoid(8).toUpperCase()` (2.8 trillion possible combinations, zero collision risk)
-- **Implementation**: Updated both `server/auth/routes.ts` and `server/storage.ts` to use nanoid library
-- **Backward Compatible**: Existing users retain their original codes - only new registrations use XNRT format
-
-### Referral Link Auto-Redirect ✅
-- **Landing Page Detection**: Added useEffect to landing page (`/`) to detect `?ref=` URL parameter
-- **Automatic Redirect**: When referral links like `/?ref=XNRTX8K2N9P4` are clicked, users are automatically redirected to `/auth?ref=XNRTX8K2N9P4`
-- **Code Preservation**: Query parameter is preserved during redirect so existing capture logic on `/auth` page works seamlessly
-- **No History Pollution**: Uses `window.location.replace()` instead of `.href` to prevent back-button loops
-- **Implementation**: Landing page now redirects to auth with referral code before user can interact with page
-- **UX Flow**: User clicks referral link → Landing page briefly loads → Auto-redirects to auth → Code auto-fills and tab switches to register
-
-## Recent Updates (Oct 13, 2025)
-### Drizzle Schema Complete Alignment ✅
-- **Critical Database Viewer Bug Fix**: Resolved Drizzle Studio "syntax error" by achieving 100% schema alignment between Drizzle (`shared/schema.ts`) and Prisma (`prisma/schema.prisma`)
-- **Table Name Standardization**: All Drizzle table definitions now use PascalCase to match database (User, Balance, Session, Stake, MiningSession, Referral, Transaction, Task, UserTask, Achievement, UserAchievement, Activity, Notification, PushSubscription, PasswordReset)
-- **Column Name Consistency**: All columns use camelCase matching Prisma (userId, createdAt, referrerId, achievementId, etc.)
-- **Session Table Correction**: Updated from express-session structure to JWT session structure (id, jwtId, userId, createdAt, revokedAt) with proper indexes
-- **PasswordReset Table Addition**: Added missing table definition with all fields (id, userId, token, expiresAt, createdAt, usedAt) and indexes
-- **Nullability Enforcement**: Fixed all timestamp fields - every `.defaultNow()` now includes `.notNull()` to match Prisma `@default(now())` behavior
-- **Unique Constraints**: Added `.unique()` to Balance.userId to match Prisma `@unique` directive
-- **Cascade Delete Implementation**: Added `onDelete: "cascade"` to ALL 12 foreign key relationships across all tables to match Prisma `onDelete: Cascade` declarations
-- **Complete Index Coverage**: Added 14 missing indexes to match all Prisma `@@index` declarations:
-  - Stake: userId, status
-  - MiningSession: userId, status
-  - Referral: referrerId, referredUserId
-  - Transaction: userId, type, status
-  - UserTask: userId, taskId
-  - UserAchievement: userId, achievementId
-- **Architect Validation**: Schema passed comprehensive review confirming 100% alignment with no missing constraints, proper cascades, and complete index coverage
-- **Result**: Drizzle Studio "My Data" tab now loads without DDL mismatch warnings, enabling full database inspection and management
+- **Unique ID Generation**: nanoid
