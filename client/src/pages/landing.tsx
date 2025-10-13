@@ -4,6 +4,7 @@ import { CosmicBackground } from "@/components/cosmic-background";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
+import { RotatingGlass } from "@/components/rotating-glass";
 
 export default function Landing() {
   const [, setLocation] = useLocation();
@@ -32,16 +33,21 @@ export default function Landing() {
 
       {/* hero */}
       <main className="relative z-10 mx-auto max-w-5xl px-4 text-center">
-        {/* Title + Taglines */}
-        <header className="mb-8">
-          <h1 className="text-6xl md:text-9xl font-bold tracking-wide font-serif mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(245,158,11,0.25)]">
-            XNRT
-          </h1>
-          <h2 className="text-xl md:text-2xl text-white/90 font-serif">We Build the NextGen</h2>
-          <p className="mt-1 text-sm md:text-base text-white/60">
-            A project of NextGen Rise Foundation
-          </p>
-        </header>
+        {/* rotating glass layer (behind hero) */}
+        <div className="relative">
+          <RotatingGlass speed={60} className="opacity-60" />
+
+          {/* Title + Taglines */}
+          <header className="mb-8">
+            <h1 className="text-6xl md:text-9xl font-bold tracking-wide font-serif mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(245,158,11,0.25)]">
+              XNRT
+            </h1>
+            <h2 className="text-xl md:text-2xl text-white/90 font-serif">We Build the NextGen</h2>
+            <p className="mt-1 text-sm md:text-base text-white/60">
+              A project of NextGen Rise Foundation
+            </p>
+          </header>
+        </div>
 
         {/* Description */}
         <p className="mx-auto mb-12 max-w-2xl text-lg md:text-xl text-white/70">
@@ -76,9 +82,11 @@ export default function Landing() {
           ].map((card, i) => (
             <div
               key={card.label}
-              className="rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              className="relative rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden"
               style={{ animationDelay: `${150 * i}ms` }}
             >
+              {/* optional: subtle rotating sheen per card */}
+              <RotatingGlass speed={50} className="opacity-35" />
               <div className="mb-2 text-3xl font-bold bg-gradient-to-r from-amber-400 to-yellow-500 bg-clip-text text-transparent leading-tight">
                 {card.value}
               </div>
