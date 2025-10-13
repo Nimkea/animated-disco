@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useRoute } from "wouter";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,6 @@ import { Lock, CheckCircle } from "lucide-react";
 
 export default function ResetPassword() {
   const [, setLocation] = useLocation();
-  const [, params] = useRoute("/reset-password/:token");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
@@ -18,7 +17,17 @@ export default function ResetPassword() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
-  const token = params?.token || "";
+  const [token, setToken] = useState<string>("");
+
+  useEffect(() => {
+    // Extract token from URL query params
+    const params = new URLSearchParams(window.location.search);
+    const tokenParam = params.get('token');
+    
+    if (tokenParam) {
+      setToken(tokenParam);
+    }
+  }, []);
 
   useEffect(() => {
     const verifyToken = async () => {
@@ -106,8 +115,8 @@ export default function ResetPassword() {
       });
 
       setTimeout(() => {
-        setLocation("/login");
-      }, 3000);
+        setLocation("/auth");
+      }, 2000);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -155,7 +164,7 @@ export default function ResetPassword() {
             </Button>
             <div className="mt-4 text-center text-sm text-muted-foreground">
               <button
-                onClick={() => setLocation("/login")}
+                onClick={() => setLocation("/auth")}
                 className="text-primary hover:underline"
                 data-testid="link-to-login"
               >
@@ -239,7 +248,7 @@ export default function ResetPassword() {
                 Your password has been successfully updated. You will be redirected to the login page shortly.
               </p>
               <Button
-                onClick={() => setLocation("/login")}
+                onClick={() => setLocation("/auth")}
                 className="mt-4 w-full"
                 data-testid="button-go-to-login"
               >
