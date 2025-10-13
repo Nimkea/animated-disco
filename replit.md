@@ -1,6 +1,25 @@
 ## Overview
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard.
 
+## Recent Changes
+### ChatBot Repositioned to Sidebar (Latest)
+- **Problem**: Floating chat button was positioned in top-right corner, but user requested it be moved to bottom-left sidebar area above Logout button
+- **Solution**: Implemented controlled chatbot component with dual-mode operation:
+  - **Authenticated App**: Rectangular "Chat Support" button in sidebar footer (above Logout) with MessageCircle icon
+  - **Landing Page**: Retains floating circular button (backward compatible)
+- **Technical Implementation**:
+  - Modified ChatBot to accept optional props: `isOpen`, `onOpenChange`, `showLauncher`
+  - Added state management in AuthenticatedApp component
+  - Connected AppSidebar button to control chatbot open/close state
+  - Preserved all existing functionality: mobile bottom sheet, desktop card, FAQ system, keyboard handling
+- **UX Benefits**: 
+  - Better integration with navigation hierarchy
+  - No overlap with notification bell or theme toggle
+  - Consistent with sidebar design language
+  - Mobile sidebar auto-closes when chat opens
+- **Architect Approval**: Changes verified as production-ready with no regressions
+- **Status**: Chatbot now accessible via sidebar navigation for authenticated users, floating button for landing page visitors
+
 ## User Preferences
 - **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
 - Light mode: Black cosmic background with golden twinkling stars and golden UI accents
