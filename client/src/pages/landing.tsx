@@ -35,7 +35,7 @@ export default function Landing() {
       <main className="relative z-10 mx-auto max-w-5xl px-4 text-center">
         {/* rotating glass layer (behind hero) */}
         <div className="relative">
-          <RotatingGlass speed={60} className="opacity-60" />
+          <RotatingGlass speed={30} className="opacity-60" />
 
           {/* Title + Taglines */}
           <header className="mb-8">
@@ -64,7 +64,7 @@ export default function Landing() {
             data-testid="button-get-started"
             aria-label="Get started with XNRT"
           >
-            <Sparkles className="mr-2 h-5 w-5" />
+            <Sparkles aria-hidden="true" className="mr-2 h-5 w-5" />
             Get Started
           </Button>
         </div>
@@ -82,11 +82,11 @@ export default function Landing() {
           ].map((card, i) => (
             <div
               key={card.label}
-              className="relative rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden"
+              className="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg animate-in slide-in-from-bottom fade-in duration-500"
               style={{ animationDelay: `${150 * i}ms` }}
             >
-              {/* optional: subtle rotating sheen per card */}
-              <RotatingGlass speed={50} className="opacity-35" />
+              {/* rotating sheen inside each card (clipped by rounded corners) */}
+              <RotatingGlass speed={40} className="opacity-35" />
               <div className="mb-2 text-3xl font-bold bg-gradient-to-r from-amber-400 to-yellow-500 bg-clip-text text-transparent leading-tight">
                 {card.value}
               </div>
