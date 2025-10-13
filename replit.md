@@ -109,3 +109,14 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Accessibility**: Implemented semantic HTML (`<main>`, `<header>`, `<section>`), proper heading hierarchy (h1→h2), aria-labels for screen readers
 - **Architect Approval**: Confirmed improvements to readability, performance, and accessibility while maintaining cosmic luxury aesthetic
 - **Status**: Production-ready landing page with enhanced visual polish and better user experience
+
+### Rotating Glass Effect ✅
+- **Component Created**: Built `client/src/components/rotating-glass.tsx` with slow-spinning radial + conic gradient effect
+- **Visual Design**: Combines soft white radial gradient blob with subtle golden conic sweep matching brand colors
+- **Animation**: Configurable spin speed (60s default for smooth, hypnotic rotation) using Tailwind `animate-[spin_60s_linear_infinite]`
+- **Accessibility**: Respects `prefers-reduced-motion` with `motion-reduce:animate-none` to disable animation for users with motion sensitivity
+- **Hero Integration**: Positioned behind XNRT title with 60s spin and 60% opacity for depth and luxury
+- **Card Enhancement**: Added contained rotating sheen to each feature card with 50s spin and 35% opacity, clipped by `overflow-hidden`
+- **Bug Fix**: Resolved visual bleeding issue where card sheens extended beyond boundaries by adding overflow-hidden to containers
+- **Architect Approval**: Confirmed proper containment, accessibility support, and visual enhancement without performance issues
+- **Status**: Production-ready rotating glass effect adding dynamic depth to cosmic theme
