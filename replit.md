@@ -2,7 +2,23 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard.
 
 ## Recent Changes
-### Branding Update: "Company Wallet" → "XNRT Wallet" (Latest)
+### Blockchain Verification System for BSC USDT Deposits (Latest)
+- **Feature**: Added on-chain verification for USDT deposits on Binance Smart Chain
+- **Implementation**:
+  - Created `verifyBscUsdt.ts` service using ethers.js v6 to verify transactions on BSC
+  - Added verification endpoint: `POST /api/admin/deposits/:id/verify`
+  - Updated Prisma/Drizzle schemas with `verified`, `confirmations`, and `verificationData` fields
+  - Enhanced admin UI with "Verify on BSC" button and real-time status badges
+- **Security Features**:
+  - Validates transaction exists on blockchain (prevents fake hashes)
+  - Checks USDT was sent to correct XNRT Wallet address (0x715C32...)
+  - Verifies amount matches claimed deposit
+  - Requires 12 BSC confirmations before approval
+  - Displays verification status: ✅ Verified / ❌ Failed / ⏳ Pending confirmations
+- **Environment Variables**: RPC_BSC_URL, USDT_BSC_ADDRESS, BSC_CONFIRMATIONS, XNRT_WALLET
+- **Status**: Complete - production-ready blockchain verification system
+
+### Branding Update: "Company Wallet" → "XNRT Wallet"
 - **Change**: Renamed all instances of "Company Wallet" to "XNRT Wallet" for better branding consistency
 - **Locations Updated**:
   - Deposit page: "Send USDT to XNRT Wallet" and "XNRT Wallet Address" label
@@ -87,6 +103,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Database**: Neon (PostgreSQL)
 - **Authentication**: Replit OIDC
 - **Email Service**: Brevo SMTP (via Nodemailer)
+- **Blockchain**: ethers.js v6 (BSC/USDT verification)
 - **UI Components**: Shadcn/ui, Radix UI Primitives, Lucide React
 - **CSS Framework**: Tailwind CSS
 - **State Management**: TanStack Query
