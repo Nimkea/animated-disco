@@ -218,7 +218,7 @@ export default function SettingsTab() {
                 </div>
 
                 <div className="p-3 rounded-lg border">
-                  <div className="font-medium mb-2">Company Wallet</div>
+                  <div className="font-medium mb-2">XNRT Wallet</div>
                   <div className="text-sm font-mono text-muted-foreground break-all">
                     {platformInfo.configuration.companyWallet}
                   </div>
