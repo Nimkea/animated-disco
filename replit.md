@@ -2,7 +2,16 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard.
 
 ## Recent Changes
-### ChatBot Repositioned to Sidebar (Latest)
+### Branding Update: "Company Wallet" → "XNRT Wallet" (Latest)
+- **Change**: Renamed all instances of "Company Wallet" to "XNRT Wallet" for better branding consistency
+- **Locations Updated**:
+  - Deposit page: "Send USDT to XNRT Wallet" and "XNRT Wallet Address" label
+  - Admin deposits tab: "XNRT Wallet: 0x715C..." in description
+  - Admin settings: "XNRT Wallet" section title
+- **Benefit**: More branded, clearer purpose, and professional appearance throughout the platform
+- **Status**: Complete - all labels updated for consistent XNRT branding
+
+### ChatBot Repositioned to Sidebar
 - **Problem**: Floating chat button was positioned in top-right corner, but user requested it be moved to bottom-left sidebar area above Logout button
 - **Solution**: Implemented controlled chatbot component with dual-mode operation:
   - **Authenticated App**: Rectangular "Chat Support" button in sidebar footer (above Logout) with MessageCircle icon
