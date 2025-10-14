@@ -305,7 +305,7 @@ export default function DepositsTab() {
             <div>
               <CardTitle>Pending Deposits</CardTitle>
               <CardDescription>
-                Review and approve deposit requests • Company Wallet: 0x715C32deC9534d2fB34e0B567288AF8d895efB59 (BEP20)
+                Review and approve deposit requests • XNRT Wallet: 0x715C32deC9534d2fB34e0B567288AF8d895efB59 (BEP20)
               </CardDescription>
             </div>
             {filteredDeposits && filteredDeposits.length > 0 && (
