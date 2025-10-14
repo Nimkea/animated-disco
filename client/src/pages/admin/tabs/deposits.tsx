@@ -12,7 +12,10 @@ import {
   Search,
   Filter,
   Eye,
-  X
+  X,
+  ShieldCheck,
+  Clock,
+  AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -44,6 +47,9 @@ interface Transaction {
   status: string;
   adminNotes?: string;
   createdAt: string;
+  verified?: boolean;
+  confirmations?: number;
+  verificationData?: any;
   user?: {
     email: string;
     username: string;
@@ -164,6 +170,34 @@ export default function DepositsTab() {
       toast({
         title: "Error",
         description: "Failed to reject deposits",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest("POST", `/api/admin/deposits/${id}/verify`, {});
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
+      if (data.verified) {
+        toast({
+          title: "Verification Successful",
+          description: `Transaction verified on BSC with ${data.confirmations} confirmations`,
+        });
+      } else {
+        toast({
+          title: "Verification Failed",
+          description: data.error || "Could not verify transaction on blockchain",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to verify deposit",
         variant: "destructive",
       });
     },
@@ -405,7 +439,27 @@ export default function DepositsTab() {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      <Badge variant="outline" className="bg-yellow-500/10">Pending</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-yellow-500/10">Pending</Badge>
+                        {deposit.verified === true && (
+                          <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400">
+                            <ShieldCheck className="h-3 w-3 mr-1" />
+                            Verified
+                          </Badge>
+                        )}
+                        {deposit.verified === false && (
+                          <Badge variant="outline" className="bg-red-500/10 text-red-700 dark:text-red-400">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Failed
+                          </Badge>
+                        )}
+                      </div>
+                      {deposit.confirmations !== undefined && deposit.confirmations >= 0 && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {deposit.confirmations} / 12 confirmations
+                        </p>
+                      )}
                       {deposit.proofImageUrl && (
                         <Button
                           variant="ghost"
@@ -422,6 +476,19 @@ export default function DepositsTab() {
                   </div>
 
                   <div className="flex gap-2 pt-2 border-t border-border">
+                    {deposit.transactionHash && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => verifyMutation.mutate(deposit.id)}
+                        disabled={verifyMutation.isPending}
+                        className="gap-1"
+                        data-testid={`button-verify-deposit-${deposit.id}`}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        {verifyMutation.isPending ? "Verifying..." : "Verify on BSC"}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="default"

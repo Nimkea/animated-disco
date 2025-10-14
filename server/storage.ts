@@ -964,6 +964,15 @@ export class DatabaseStorage implements IStorage {
     if (updates.approvedAt !== undefined && updates.approvedAt !== null) {
       data.approvedAt = updates.approvedAt;
     }
+    if (updates.verified !== undefined) {
+      data.verified = updates.verified;
+    }
+    if (updates.confirmations !== undefined) {
+      data.confirmations = updates.confirmations;
+    }
+    if (updates.verificationData !== undefined && updates.verificationData !== null) {
+      data.verificationData = updates.verificationData;
+    }
 
     const transaction = await prisma.transaction.update({
       where: { id },

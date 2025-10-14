@@ -128,6 +128,9 @@ export const transactions = pgTable("Transaction", {
   netAmount: decimal("netAmount", { precision: 18, scale: 2 }),
   approvedBy: varchar("approvedBy"),
   approvedAt: timestamp("approvedAt"),
+  verified: boolean("verified").default(false).notNull(),
+  confirmations: integer("confirmations").default(0).notNull(),
+  verificationData: jsonb("verificationData"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("transactions_userId_idx").on(table.userId),

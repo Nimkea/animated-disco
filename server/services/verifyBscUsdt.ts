@@ -38,7 +38,7 @@ export async function verifyBscUsdtDeposit(params: {
       return { verified: false, confirmations: conf, reason: "Transaction failed" };
     }
 
-    let totalToExpected = 0n;
+    let totalToExpected = BigInt(0);
 
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== process.env.USDT_BSC_ADDRESS!.toLowerCase()) continue;
@@ -56,7 +56,7 @@ export async function verifyBscUsdtDeposit(params: {
     }
 
     const conf = (await provider.getBlockNumber()) - (receipt.blockNumber ?? 0);
-    if (totalToExpected === 0n) {
+    if (totalToExpected === BigInt(0)) {
       return { 
         verified: false, 
         confirmations: conf, 

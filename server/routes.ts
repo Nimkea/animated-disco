@@ -8,6 +8,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
+import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 
 const prisma = new PrismaClient();
 
@@ -1168,6 +1169,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching pending withdrawals:", error);
       res.status(500).json({ message: "Failed to fetch pending withdrawals" });
+    }
+  });
+
+  // Verify deposit on blockchain
+  app.post('/api/admin/deposits/:id/verify', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deposit = await storage.getTransactionById(id);
+
+      if (!deposit || deposit.type !== "deposit") {
+        return res.status(404).json({ message: "Deposit not found" });
+      }
+
+      if (!deposit.transactionHash) {
+        return res.status(400).json({ message: "No transaction hash provided" });
+      }
+
+      const result = await verifyBscUsdtDeposit({
+        txHash: deposit.transactionHash,
+        expectedTo: process.env.XNRT_WALLET!,
+        minAmount: deposit.usdtAmount ? parseFloat(deposit.usdtAmount) : undefined,
+        requiredConf: Number(process.env.BSC_CONFIRMATIONS ?? 12),
+      });
+
+      // Update transaction with verification results
+      await storage.updateTransaction(id, {
+        verified: result.verified,
+        confirmations: result.confirmations,
+        verificationData: result as any,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error verifying deposit:", error);
+      res.status(500).json({ message: "Failed to verify deposit" });
     }
   });
 
