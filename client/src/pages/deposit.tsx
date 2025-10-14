@@ -194,7 +194,7 @@ export default function Deposit() {
                   1
                 </div>
                 <div>
-                  <p className="font-semibold">Send USDT to Company Wallet</p>
+                  <p className="font-semibold">Send USDT to XNRT Wallet</p>
                   <p className="text-sm text-muted-foreground">Use BEP20 network</p>
                 </div>
               </div>
@@ -233,7 +233,7 @@ export default function Deposit() {
             <div className="p-4 bg-muted/50 rounded-md space-y-2">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Info className="h-4 w-4 text-primary" />
-                <span>Company Wallet Address</span>
+                <span>XNRT Wallet Address</span>
               </div>
               <div className="flex items-center gap-2">
                 <Input
