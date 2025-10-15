@@ -784,7 +784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = `Sign this message to link your wallet to XNRT.\n\nAddress: ${normalized}\nNonce: ${nonce}\nDomain: ${appDomain}`;
 
       // Store nonce temporarily in session or memory (expires in 10 min)
-      req.session.walletLinkNonce = { nonce, address: normalized, expiresAt: Date.now() + 10 * 60 * 1000 };
+      (req.session as any).walletLinkNonce = { nonce, address: normalized, expiresAt: Date.now() + 10 * 60 * 1000 };
       
       res.json({ message, nonce });
     } catch (error) {
@@ -803,7 +803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify nonce from session
-      const storedNonce = req.session.walletLinkNonce;
+      const storedNonce = (req.session as any).walletLinkNonce;
       if (!storedNonce || storedNonce.nonce !== nonce || storedNonce.address !== address.toLowerCase()) {
         return res.status(400).json({ message: "Invalid or expired nonce" });
       }
@@ -846,7 +846,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Clear nonce
-      delete req.session.walletLinkNonce;
+      delete (req.session as any).walletLinkNonce;
 
       res.json({ address: linked.address });
     } catch (error) {
