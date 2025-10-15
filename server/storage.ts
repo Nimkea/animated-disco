@@ -934,6 +934,15 @@ export class DatabaseStorage implements IStorage {
     if (transaction.approvedAt !== undefined && transaction.approvedAt !== null) {
       data.approvedAt = transaction.approvedAt;
     }
+    if (transaction.verified !== undefined) {
+      data.verified = transaction.verified;
+    }
+    if (transaction.confirmations !== undefined) {
+      data.confirmations = transaction.confirmations;
+    }
+    if (transaction.verificationData !== undefined && transaction.verificationData !== null) {
+      data.verificationData = transaction.verificationData;
+    }
 
     const newTransaction = await prisma.transaction.create({ data });
     return convertPrismaTransaction(newTransaction);
