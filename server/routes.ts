@@ -855,6 +855,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/wallet/report-deposit', requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      let { transactionHash, amount, description } = req.body;
+
+      if (!transactionHash || !amount) {
+        return res.status(400).json({ message: "Transaction hash and amount required" });
+      }
+
+      // Normalize transaction hash
+      transactionHash = String(transactionHash).trim().toLowerCase();
+
+      // Validate transaction hash format
+      if (!/^0x[a-f0-9]{64}$/.test(transactionHash)) {
+        return res.status(400).json({ message: "Invalid transaction hash format" });
+      }
+
+      // Check if report already exists
+      const existing = await prisma.depositReport.findFirst({
+        where: { transactionHash }
+      });
+
+      if (existing) {
+        return res.status(409).json({ message: "This deposit has already been reported" });
+      }
+
+      // Create deposit report
+      const report = await prisma.depositReport.create({
+        data: {
+          userId,
+          transactionHash,
+          amount: new Prisma.Decimal(amount),
+          description: description || null,
+          status: 'pending'
+        }
+      });
+
+      res.json({ 
+        message: "Report submitted successfully", 
+        reportId: report.id 
+      });
+    } catch (error) {
+      console.error("Error reporting deposit:", error);
+      res.status(500).json({ message: "Failed to submit report" });
+    }
+  });
+
   app.post('/api/transactions/deposit', requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;

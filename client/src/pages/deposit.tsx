@@ -12,6 +12,7 @@ import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info, Upload, X } f
 import type { Transaction } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { LinkWalletCard } from "@/components/link-wallet-card";
+import { ReportMissingDeposit } from "@/components/report-missing-deposit";
 
 const COMPANY_WALLET = "0x715C32deC9534d2fB34e0B567288AF8d895efB59";
 const USDT_TO_XNRT_RATE = 100;
@@ -369,6 +370,10 @@ export default function Deposit() {
               <ArrowDownToLine className="mr-2 h-5 w-5" />
               {depositMutation.isPending ? "Submitting..." : "Submit Deposit"}
             </Button>
+
+            <div className="pt-3 border-t border-border">
+              <ReportMissingDeposit />
+            </div>
           </CardContent>
         </Card>
       </div>
