@@ -1222,6 +1222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/admin/deposits/:id/approve', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
     try {
       const { id } = req.params;
+      const { notes } = req.body;
       const deposit = await storage.getTransactionById(id);
 
       if (!deposit || deposit.type !== "deposit") {
@@ -1232,17 +1233,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Deposit already processed" });
       }
 
-      // Update transaction status
-      await storage.updateTransaction(id, { status: "approved" });
-
-      // Add to user balance
-      const balance = await storage.getBalance(deposit.userId);
-      if (balance) {
-        await storage.updateBalance(deposit.userId, {
-          xnrtBalance: (parseFloat(balance.xnrtBalance) + parseFloat(deposit.amount)).toString(),
-          totalEarned: (parseFloat(balance.totalEarned) + parseFloat(deposit.amount)).toString(),
-        });
+      if (!deposit.verified) {
+        return res.status(400).json({ message: "Deposit not verified on-chain yet" });
       }
+
+      // Use atomic Prisma transaction for safe balance updates
+      await prisma.$transaction(async (tx) => {
+        // Credit safely using increment
+        await tx.balance.upsert({
+          where: { userId: deposit.userId },
+          create: {
+            userId: deposit.userId,
+            xnrtBalance: new Prisma.Decimal(deposit.amount),
+            totalEarned: new Prisma.Decimal(deposit.amount),
+          },
+          update: {
+            xnrtBalance: { increment: new Prisma.Decimal(deposit.amount) },
+            totalEarned: { increment: new Prisma.Decimal(deposit.amount) },
+          },
+        });
+
+        await tx.transaction.update({
+          where: { id },
+          data: {
+            status: "approved",
+            adminNotes: notes || deposit.adminNotes,
+            approvedBy: req.authUser!.id,
+            approvedAt: new Date(),
+          },
+        });
+      });
 
       // Distribute referral commissions on deposit
       await storage.distributeReferralCommissions(deposit.userId, parseFloat(deposit.amount));
