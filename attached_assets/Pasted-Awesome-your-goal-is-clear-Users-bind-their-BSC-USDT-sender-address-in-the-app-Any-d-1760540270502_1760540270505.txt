@@ -1,0 +1,339 @@
+Awesome — your goal is clear:
+
+* Users **bind** their BSC USDT sender address in the app.
+* Any deposit **from that bound address to your treasury** is **auto-approved** and **off-chain XNRT is credited** in DB.
+* **Withdrawals remain manual** (admin approval).
+* The old **TX-hash + upload proof** fields should be **removed from the normal flow** and kept only as a **“Report missing deposit”** path.
+
+Below is a tight, ready-to-paste set of changes (UI + API + schema) that fit what you want.
+
+---
+
+# 1) User Deposit page — new UX (simple, clear)
+
+## A) “Bind your wallet” card
+
+Drop this on the Deposit page (uses the signature endpoints we added):
+
+```tsx
+// components/LinkWalletCard.tsx
+import * as React from "react";
+
+export function LinkWalletCard() {
+  const [address, setAddress] = React.useState<string>("");
+  const [loading, setLoading] = React.useState(false);
+  const [linked, setLinked] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    // fetch my linked wallets
+    fetch("/api/wallet/me", { credentials: "include" })
+      .then(r => r.json()).then(setLinked).catch(()=>{});
+  }, []);
+
+  const link = async () => {
+    if (!(window as any).ethereum) return alert("MetaMask not detected");
+    setLoading(true);
+    try {
+      const accounts = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+      const acct = String(accounts?.[0] || "");
+      setAddress(acct);
+      const q = new URLSearchParams({ address: acct }).toString();
+      const ch = await fetch(`/api/wallet/link/challenge?${q}`, { credentials: "include" });
+      const { message, nonce } = await ch.json();
+      const sig = await (window as any).ethereum.request({ method: "personal_sign", params: [message, acct] });
+
+      const cf = await fetch(`/api/wallet/link/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": (window as any).CSRF_TOKEN },
+        credentials: "include",
+        body: JSON.stringify({ address: acct, signature: sig, nonce })
+      });
+      if (!cf.ok) throw new Error((await cf.json()).message || "Link failed");
+      const res = await cf.json();
+      alert(`Linked: ${res.address}`);
+      setLinked(prev => [res.address, ...prev]);
+    } catch (e:any) {
+      alert(e.message || "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl p-4 border">
+      <h3 className="font-semibold mb-2">Step 0: Link your BSC sender wallet</h3>
+      <p className="text-sm opacity-80 mb-3">Use MetaMask/Trust Wallet. Deposits from this wallet will auto-credit after confirmations.</p>
+      <button onClick={link} disabled={loading} className="px-4 py-2 rounded-xl border">
+        {loading ? "Linking…" : "Link with MetaMask"}
+      </button>
+      {linked?.length ? (
+        <div className="mt-3 text-sm">
+          <div className="opacity-70">Linked wallets:</div>
+          <ul className="list-disc pl-5">{linked.map((a, i) => <li key={i}>{a}</li>)}</ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+```
+
+## B) Treasury + instructions (replace tx-hash/upload UI)
+
+```tsx
+// components/DepositInstructions.tsx
+export function DepositInstructions() {
+  const TREASURY = "0x715C32deC9534d2fB34e0B567288AF8d895efB59"; // from env
+  return (
+    <div className="rounded-2xl p-4 border">
+      <h3 className="font-semibold mb-2">Step 1: Send USDT (BEP-20)</h3>
+      <div className="text-sm mb-2">Send to Treasury:</div>
+      <div className="font-mono text-sm p-2 rounded bg-neutral-100 dark:bg-neutral-900">{TREASURY}</div>
+      <ul className="mt-3 text-sm space-y-1">
+        <li>• Network: <b>BNB Smart Chain (BEP-20)</b></li>
+        <li>• Token: <b>USDT</b> (contract 0x55d398…97955, 18 decimals)</li>
+        <li>• Auto-credit after ~12 confirmations — no screenshot or tx-hash needed</li>
+        <li>• Deposits from exchanges (pooled addresses) may not auto-credit; use self-custody</li>
+      </ul>
+    </div>
+  );
+}
+```
+
+## C) “Report a missing deposit” (complaint instead of required proof)
+
+```tsx
+// components/ReportMissingDeposit.tsx
+import * as React from "react";
+
+export function ReportMissingDeposit() {
+  const [open, setOpen] = React.useState(false);
+  const [form, setForm] = React.useState({ fromAddress:"", amount:"", txHash:"", notes:"" });
+
+  const submit = async () => {
+    const r = await fetch("/api/deposits/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-csrf-token": (window as any).CSRF_TOKEN },
+      credentials: "include",
+      body: JSON.stringify(form),
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) return alert(j.message || "Failed");
+    alert("Submitted—our team will review.");
+    setOpen(false);
+  };
+
+  return (
+    <div className="rounded-2xl p-4 border">
+      <h3 className="font-semibold mb-2">Did a deposit not show up?</h3>
+      <p className="text-sm opacity-80 mb-3">Submit a report; we’ll resolve it quickly.</p>
+      {!open ? (
+        <button className="px-4 py-2 rounded-xl border" onClick={()=>setOpen(true)}>Report missing deposit</button>
+      ) : (
+        <div className="space-y-2">
+          <input className="w-full p-2 rounded border" placeholder="Sender address (0x…)" value={form.fromAddress} onChange={e=>setForm({...form, fromAddress:e.target.value})}/>
+          <input className="w-full p-2 rounded border" placeholder="Approx amount (USDT)" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})}/>
+          <input className="w-full p-2 rounded border" placeholder="(Optional) Tx hash 0x…" value={form.txHash} onChange={e=>setForm({...form, txHash:e.target.value})}/>
+          <textarea className="w-full p-2 rounded border" placeholder="Notes (optional)" value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})}/>
+          <div className="flex gap-2">
+            <button className="px-4 py-2 rounded-xl border" onClick={submit}>Submit</button>
+            <button className="px-4 py-2 rounded-xl border" onClick={()=>setOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+Then on the Deposit page:
+
+```tsx
+// app/deposit/page.tsx (or wherever)
+import { LinkWalletCard } from "@/components/LinkWalletCard";
+import { DepositInstructions } from "@/components/DepositInstructions";
+import { ReportMissingDeposit } from "@/components/ReportMissingDeposit";
+
+export default function DepositPage() {
+  return (
+    <div className="space-y-6">
+      <LinkWalletCard />
+      <DepositInstructions />
+      <ReportMissingDeposit />
+    </div>
+  );
+}
+```
+
+---
+
+# 2) Admin: make verification non-blocking + add “Unmatched & Reports”
+
+* Keep **Approve** active even if “Verify on BSC” fails (informational only).
+* New tabs:
+
+  * **Unmatched Deposits** (from `UnmatchedDeposit` table).
+  * **Deposit Reports** (from a lightweight report table).
+
+### Admin endpoints (server)
+
+We’ll keep the unmatched endpoints you already have, plus add a tiny “report” flow.
+
+**Schema (Drizzle) — add a report table**
+Add this to `shared/schema.ts`:
+
+```ts
+// Light support/complaint tickets for missing deposits
+export const depositReports = pgTable("DepositReport", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  fromAddress: varchar("fromAddress").notNull(),
+  amount: decimal("amount", { precision: 18, scale: 6 }),
+  txHash: varchar("txHash"),
+  notes: text("notes"),
+  status: varchar("status").notNull().default("open"), // open | resolved
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("depositReports_user_idx").on(table.userId),
+  index("depositReports_from_idx").on(table.fromAddress),
+  index("depositReports_status_idx").on(table.status),
+]);
+```
+
+**API routes**
+
+```ts
+// server/routes.ts (add near other routes)
+import { db } from "./db";
+import * as s from "@shared/schema";
+import { and, eq, desc, sql } from "drizzle-orm";
+
+// User submits a missing-deposit report
+app.post('/api/deposits/report', requireAuth, validateCSRF, async (req, res) => {
+  try {
+    const userId = req.authUser!.id;
+    const { fromAddress, amount, txHash, notes } = req.body || {};
+    if (!fromAddress) return res.status(400).json({ message: 'fromAddress required' });
+    await db.insert(s.depositReports).values({
+      userId, fromAddress: String(fromAddress).toLowerCase(),
+      amount: amount ? String(amount) : null,
+      txHash: txHash || null,
+      notes: notes || null,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('report error', e);
+    res.status(500).json({ message: 'Failed to submit report' });
+  }
+});
+
+// Admin views reports
+app.get('/api/admin/deposit-reports', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.select().from(s.depositReports).orderBy(desc(s.depositReports.createdAt)).limit(200);
+    res.json(rows);
+  } catch (e) {
+    console.error('list reports error', e);
+    res.status(500).json({ message: 'Failed to list reports' });
+  }
+});
+
+// Admin resolves a report (optionally credit)
+app.post('/api/admin/deposit-reports/:id/resolve', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+  try {
+    const { credit } = req.body || {};
+    const id = String(req.params.id);
+    const rpt = await db.query.depositReports.findFirst({ where: eq(s.depositReports.id, id) });
+    if (!rpt) return res.status(404).json({ message: 'Not found' });
+
+    if (credit && rpt.amount) {
+      // credit off-chain manually at current or policy rate
+      const rate = Number(process.env.XNRT_RATE_USDT ?? 100);
+      const xnrt = (Number(rpt.amount) * rate).toFixed(2);
+
+      // ensure balance exists
+      const bal = await db.query.balances.findFirst({ where: eq(s.balances.userId, rpt.userId) });
+      if (!bal) await db.insert(s.balances).values({ userId: rpt.userId });
+
+      await db.transaction(async (tx) => {
+        await tx.insert(s.transactions).values({
+          userId: rpt.userId, type: 'deposit', amount: xnrt, usdtAmount: String(rpt.amount),
+          transactionHash: rpt.txHash || `manual:${id}`,
+          status: 'approved', verified: false, confirmations: 999,
+          verificationData: { manualReport: true, sourceReportId: id } as any,
+        } as any);
+        await tx.execute(sql`
+          UPDATE "Balance"
+          SET "xnrtBalance" = ("xnrtBalance"::numeric + ${xnrt}::numeric),
+              "totalEarned" = ("totalEarned"::numeric + ${xnrt}::numeric),
+              "updatedAt" = now()
+          WHERE "userId" = ${rpt.userId}
+        `);
+        await tx.insert(s.tokenLedger).values({
+          userId: rpt.userId, kind: 'mint_deposit', amount: xnrt,
+          meta: { manualReportId: id, fromAddress: rpt.fromAddress, txHash: rpt.txHash } as any
+        } as any);
+      });
+    }
+
+    await db.update(s.depositReports).set({ status: 'resolved' }).where(eq(s.depositReports.id, id));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('resolve report error', e);
+    res.status(500).json({ message: 'Failed to resolve report' });
+  }
+});
+```
+
+*Admin UI*
+
+* Keep the **“Verify on BSC”** button but display it as **informational**. Approval is **not blocked**.
+* Add a tab/view for **Unmatched Deposits** (list from `/api/admin/unmatched-deposits`) with a **“Match & Credit”** button.
+* Add a tab/view for **Deposit Reports** with a **“Resolve (credit)”** button that calls `/api/admin/deposit-reports/:id/resolve`.
+
+---
+
+# 3) Remove TX-hash/proof from normal flow
+
+* **User side**: Remove the required fields. Only show the **Report Missing** card for exceptions.
+* **Server side**: If you had endpoints for “create pending deposit with screenshot/txHash”, keep them only for the report flow (or sunset entirely).
+
+---
+
+# 4) Env checklist (unchanged)
+
+```
+RPC_BSC_URL=https://bsc-dataseed.binance.org/
+USDT_BSC_ADDRESS=0x55d398326f99059fF775485246999027B3197955
+XNRT_WALLET=0x715C32deC9534d2fB34e0B567288AF8d895efB59
+BSC_CONFIRMATIONS=12
+AUTO_DEPOSIT=true
+XNRT_RATE_USDT=100
+APP_DOMAIN=<your domain>
+NONCE_TTL_MIN=10
+```
+
+---
+
+# 5) Quick test script (what success looks like)
+
+1. Link a MetaMask address (challenge → personal_sign → confirm).
+2. Send **USDT (BEP-20)** from that address → treasury.
+3. After ~12 confs:
+
+   * `Transaction`: `deposit|approved`, `verified=true`, `transactionHash=0x...`.
+   * `Balance`: `xnrtBalance += usdt * rate`.
+   * `TokenLedger`: `mint_deposit` with `meta.txHash`.
+4. If you send from an **unlinked** address:
+
+   * Row appears in `/api/admin/unmatched-deposits`.
+   * Link the address; click **Match & Credit** → credits, row removed.
+5. If the user had an issue, they submit **Report Missing**; admin resolves (with optional credit).
+
+---
+
+If you want, I can also generate a **tiny patch** that:
+
+* removes the tx-hash/proof widgets,
+* adds the three components above,
+* adds the `DepositReport` table + routes.
+  Say “make the deposit-page patch” and I’ll drop a ready-to-apply diff.
