@@ -1349,22 +1349,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             throw new Error(`Deposit ${id} already processed`);
           }
 
-          // Update transaction status with optional admin notes
-          await storage.updateTransaction(id, { 
-            status: "approved",
-            adminNotes: notes || deposit.adminNotes,
-            approvedBy: req.authUser!.id,
-            approvedAt: new Date(),
-          });
-
-          // Add to user balance
-          const balance = await storage.getBalance(deposit.userId);
-          if (balance) {
-            await storage.updateBalance(deposit.userId, {
-              xnrtBalance: (parseFloat(balance.xnrtBalance) + parseFloat(deposit.amount)).toString(),
-              totalEarned: (parseFloat(balance.totalEarned) + parseFloat(deposit.amount)).toString(),
-            });
+          if (!deposit.verified) {
+            throw new Error(`Deposit ${id} not verified on-chain yet`);
           }
+
+          // Use atomic Prisma transaction for safe balance updates
+          await prisma.$transaction(async (tx) => {
+            await tx.balance.upsert({
+              where: { userId: deposit.userId },
+              create: {
+                userId: deposit.userId,
+                xnrtBalance: new Prisma.Decimal(deposit.amount),
+                totalEarned: new Prisma.Decimal(deposit.amount),
+              },
+              update: {
+                xnrtBalance: { increment: new Prisma.Decimal(deposit.amount) },
+                totalEarned: { increment: new Prisma.Decimal(deposit.amount) },
+              },
+            });
+
+            await tx.transaction.update({
+              where: { id },
+              data: { 
+                status: "approved",
+                adminNotes: notes || deposit.adminNotes,
+                approvedBy: req.authUser!.id,
+                approvedAt: new Date(),
+              },
+            });
+          });
 
           // Distribute referral commissions
           await storage.distributeReferralCommissions(deposit.userId, parseFloat(deposit.amount));
