@@ -1,0 +1,157 @@
+--- prisma/schema.prisma+++ prisma/schema.prisma@@ -273,3 +273,29 @@   @@index([userId])
+   @@index([endpoint])
+ }
++
++model LinkedWallet {
++  id        String   @id @default(uuid())
++  userId    String
++  address   String   @unique
++  verified  Boolean  @default(false)
++  createdAt DateTime @default(now())
++
++  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
++
++  @@index([userId])
++}
++
++model SignNonce {
++  id        String   @id @default(uuid())
++  userId    String
++  nonce     String   @unique
++  expiresAt DateTime
++  usedAt    DateTime?
++  createdAt DateTime @default(now())
++
++  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
++
++  @@index([userId])
++  @@index([expiresAt])
++}
+
+--- server/routes.ts+++ server/routes.ts@@ -6,7 +6,9 @@ import { STAKING_TIERS, type StakingTier } from "@shared/schema";
+ import { PrismaClient, Prisma } from "@prisma/client";
+ import { notifyUser, sendPushNotification } from "./notifications";
++import crypto from "crypto";
+ import webpush from "web-push";
++import { isAddress, getAddress, verifyMessage } from "ethers";
+ import rateLimit from "express-rate-limit";
+ import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
+ 
+@@ -2329,6 +2331,117 @@     }
+   });
+ 
+-  const httpServer = createServer(app);
++  
++// --- Wallet Linking via MetaMask (EIP-191) ---
++
++// Get a signed message challenge
++app.get('/api/wallet/link/challenge', requireAuth, async (req, res) => {
++  try {
++    const userId = req.authUser!.id;
++    const { address } = (req.query || {}) as { address?: string };
++
++    if (!address || !isAddress(String(address))) {
++      return res.status(400).json({ message: 'Valid address required' });
++    }
++    const addrLc = String(address).toLowerCase();
++
++    // Create a short-lived nonce
++    const ttlMin = Number(process.env.NONCE_TTL_MIN ?? 10);
++    const expiresAt = new Date(Date.now() + ttlMin * 60 * 1000);
++    const nonce = crypto.randomUUID();
++
++    await prisma.signNonce.create({
++      data: { userId, nonce, expiresAt }
++    });
++
++    const domain = process.env.APP_DOMAIN || req.hostname;
++    const message = [
++      `Link Wallet to XNRT Account`,
++      ``,
++      `Domain: ${domain}`,
++      `Address: ${getAddress(addrLc)}`,
++      `Nonce: ${nonce}`,
++      `Expires: ${expiresAt.toISOString()}`
++    ].join('\n');
++
++    res.json({ message, nonce, address: getAddress(addrLc), expiresAt: expiresAt.toISOString() });
++  } catch (e) {
++    console.error('Challenge error:', e);
++    res.status(500).json({ message: 'Failed to create challenge' });
++  }
++});
++
++// Confirm the signature and link the wallet
++app.post('/api/wallet/link/confirm', requireAuth, validateCSRF, async (req, res) => {
++  try {
++    const userId = req.authUser!.id;
++    const { address, signature, nonce } = req.body as { address?: string, signature?: string, nonce?: string };
++
++    if (!address || !isAddress(String(address))) {
++      return res.status(400).json({ message: 'Valid address required' });
++    }
++    if (!signature || typeof signature !== 'string' || !nonce || typeof nonce !== 'string') {
++      return res.status(400).json({ message: 'Signature and nonce required' });
++    }
++
++    const addrLc = String(address).toLowerCase();
++
++    const sn = await prisma.signNonce.findUnique({ where: { nonce } });
++    if (!sn || sn.userId !== userId) {
++      return res.status(400).json({ message: 'Invalid nonce' });
++    }
++    if (sn.usedAt) {
++      return res.status(400).json({ message: 'Nonce already used' });
++    }
++    if (sn.expiresAt.getTime() < Date.now()) {
++      return res.status(400).json({ message: 'Nonce expired' });
++    }
++
++    const domain = process.env.APP_DOMAIN || req.hostname;
++    const message = [
++      `Link Wallet to XNRT Account`,
++      ``,
++      `Domain: ${domain}`,
++      `Address: ${getAddress(addrLc)}`,
++      `Nonce: ${nonce}`,
++      `Expires: ${sn.expiresAt.toISOString()}`
++    ].join('\n');
++
++    // Recover signer
++    let recovered: string;
++    try {
++      recovered = verifyMessage(message, signature).toLowerCase();
++    } catch (e) {
++      return res.status(400).json({ message: 'Invalid signature' });
++    }
++
++    if (recovered !== addrLc) {
++      return res.status(400).json({ message: 'Signature does not match address' });
++    }
++
++    // Prevent linking someone else's already-linked address
++    const existing = await prisma.linkedWallet.findUnique({ where: { address: addrLc } });
++    if (existing && existing.userId !== userId) {
++      return res.status(409).json({ message: 'This address is already linked to another account' });
++    }
++
++    // Link or move to this user (verified = true via signature)
++    await prisma.linkedWallet.upsert({
++      where: { address: addrLc },
++      create: { userId, address: addrLc, verified: true },
++      update: { userId, verified: true },
++    });
++
++    await prisma.signNonce.update({ where: { nonce }, data: { usedAt: new Date() } });
++
++    res.json({ address: getAddress(addrLc), verified: true });
++  } catch (e) {
++    console.error('Confirm link error:', e);
++    res.status(500).json({ message: 'Failed to link wallet' });
++  }
++});
++// --- end wallet linking ---
++
++const httpServer = createServer(app);
+   return httpServer;
+ }

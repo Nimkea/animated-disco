@@ -1,0 +1,342 @@
+--- shared/schema.ts+++ shared/schema.ts@@ -136,7 +136,8 @@   index("transactions_userId_idx").on(table.userId),
+   index("transactions_type_idx").on(table.type),
+   index("transactions_status_idx").on(table.status),
+-]);
++
++  , unique("transactions_txhash_type_unique").on(table.transactionHash, table.type)]);
+ 
+ // Tasks
+ export const tasks = pgTable("Task", {
+@@ -458,3 +459,48 @@ } as const;
+ 
+ export type StakingTier = keyof typeof STAKING_TIERS;
++
++// Linked wallets (address -> user)
++export const linkedWallets = pgTable("LinkedWallet", {
++  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
++  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
++  address: varchar("address").unique().notNull(), // store lowercase
++  verified: boolean("verified").default(true).notNull(),
++  createdAt: timestamp("createdAt").defaultNow().notNull(),
++}, (table) => [
++  index("linkedWallets_userId_idx").on(table.userId),
++]);
++
++// Chain scan cursor
++export const chainCursors = pgTable("ChainCursor", {
++  id: varchar("id").primaryKey(), // e.g. 'bsc:usdt:toTreasury'
++  block: integer("block").notNull(),
++  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
++});
++
++// Unmatched deposits (sender not linked or linked post-facto)
++export const unmatchedDeposits = pgTable("UnmatchedDeposit", {
++  txHash: varchar("txHash").primaryKey(),
++  from: varchar("from").notNull(),
++  to: varchar("to").notNull(),
++  usdtAmount: decimal("usdtAmount", { precision: 18, scale: 6 }).notNull(),
++  blockNumber: integer("blockNumber").notNull(),
++  note: text("note"),
++  createdAt: timestamp("createdAt").defaultNow().notNull(),
++}, (table) => [
++  index("unmatched_from_idx").on(table.from),
++  index("unmatched_created_idx").on(table.createdAt),
++]);
++
++// Off-chain token mint/burn ledger
++export const tokenLedger = pgTable("TokenLedger", {
++  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
++  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
++  kind: varchar("kind").notNull(), // 'mint_deposit' | 'burn_adjust' | 'airdrop' | 'batch_grant'
++  amount: decimal("amount", { precision: 18, scale: 6 }).notNull(), // +/-
++  meta: jsonb("meta"),
++  createdAt: timestamp("createdAt").defaultNow().notNull(),
++}, (table) => [
++  index("tokenLedger_userId_idx").on(table.userId),
++  index("tokenLedger_created_idx").on(table.createdAt),
++]);
+
+--- server/services/bscWatcher.ts+++ server/services/bscWatcher.ts@@ -0,0 +1,181 @@+import { ethers } from 'ethers';
++import { db } from '../db';
++import * as s from '@shared/schema';
++import { and, eq, sql } from 'drizzle-orm';
++
++const RPC       = process.env.RPC_BSC_URL!;
++const USDT      = (process.env.USDT_BSC_ADDRESS || '').toLowerCase();
++const TREASURY  = (process.env.XNRT_WALLET || '').toLowerCase();
++const REQ_CONF  = Number(process.env.BSC_CONFIRMATIONS ?? 12);
++const RATE_STR  = process.env.XNRT_RATE_USDT ?? '100'; // integer rate
++
++const provider  = new ethers.JsonRpcProvider(RPC);
++const IFACE     = new ethers.Interface(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
++const CURSOR_ID = 'bsc:usdt:toTreasury';
++
++let running = false;
++// @ts-ignore
++if (!(globalThis as any).__bscWatcherStarted) (globalThis as any).__bscWatcherStarted = false;
++
++function mulDecimalStr(a: string, b: string, scaleA = 18, scaleB = 0, outScale = 6) {
++  // multiply decimal strings a (scaleA) * b (scaleB) -> string with outScale
++  const toInt = (s: string, scale: number) => {
++    const [i, f = ""] = s.split(".");
++    const ff = (f + "0".repeat(scale)).slice(0, scale);
++    return BigInt(i + ff);
++  };
++  const A = toInt(a, scaleA);
++  const B = toInt(b, scaleB);
++  const prod = A * B; // scale = scaleA + scaleB
++  const outDiv = 10n ** BigInt(scaleA + scaleB - outScale);
++  const q = prod // integer scaled to outScale
++  return (prod / outDiv).toString() + "." + (prod % outDiv).toString().padStart(outScale, "0");
++}
++
++export async function startBscUsdtWatcher() {
++  if (process.env.AUTO_DEPOSIT !== 'true') {
++    console.log('[Watcher] AUTO_DEPOSIT disabled');
++    return;
++  }
++  if (!RPC || !USDT || !TREASURY) {
++    console.warn('[Watcher] Missing env RPC_BSC_URL/USDT_BSC_ADDRESS/XNRT_WALLET');
++    return;
++  }
++  // @ts-ignore
++  if ((globalThis as any).__bscWatcherStarted) return;
++  // @ts-ignore
++  (globalThis as any).__bscWatcherStarted = true;
++
++  // cursor
++  const cur = await db.query.chainCursors.findFirst({ where: eq(s.chainCursors.id, CURSOR_ID) });
++  let cursorBlock = cur?.block ?? (await provider.getBlockNumber()) - 3;
++  if (!cur) {
++    await db.insert(s.chainCursors).values({ id: CURSOR_ID, block: cursorBlock }).onConflictDoNothing();
++  }
++  console.log('[Watcher] Starting from block', cursorBlock);
++
++  const loop = async () => {
++    if (running) return;
++    running = true;
++    try {
++      const latest = await provider.getBlockNumber();
++      const fromBlock = cursorBlock + 1;
++      const toBlock   = Math.min(latest - REQ_CONF, fromBlock + 999);
++      if (toBlock < fromBlock) return;
++
++      const logs = await provider.getLogs({
++        fromBlock, toBlock, address: USDT,
++        topics: [ethers.id("Transfer(address,address,uint256)"), null, ethers.zeroPadValue(TREASURY, 32)],
++      });
++
++      for (const log of logs) {
++        const parsed = IFACE.parseLog({ topics: log.topics, data: log.data });
++        const from  = (parsed.args[0] as string).toLowerCase();
++        const to    = (parsed.args[1] as string).toLowerCase();
++        const value = parsed.args[2] as bigint;
++        const txHash = log.transactionHash.toLowerCase();
++
++        // skip if processed
++        const exist = await db.query.transactions.findFirst({
++          where: and(eq(s.transactions.transactionHash, txHash), eq(s.transactions.type, 'deposit')),
++          columns: { id: true }
++        });
++        if (exist) continue;
++
++        const link = await db.query.linkedWallets.findFirst({ where: eq(s.linkedWallets.address, from) });
++
++        const receipt = await provider.getTransactionReceipt(txHash).catch(() => null);
++        if (!receipt || receipt.status !== 1 || receipt.blockNumber == null) {
++          if (!link) {
++            await db.insert(s.unmatchedDeposits).values({
++              txHash, from, to, usdtAmount: ethers.formatUnits(value, 18), blockNumber: log.blockNumber
++            }).onConflictDoNothing();
++          }
++          continue;
++        }
++        const conf = (await provider.getBlockNumber()) - (receipt.blockNumber ?? latest);
++        if (conf < REQ_CONF) continue;
++
++        const block = await provider.getBlock(receipt.blockNumber);
++        const txTimeMs = Number(block.timestamp) * 1000;
++
++        if (!link) {
++          await db.insert(s.unmatchedDeposits).values({
++            txHash, from, to, usdtAmount: ethers.formatUnits(value, 18), blockNumber: receipt.blockNumber
++          }).onConflictDoNothing();
++          continue;
++        }
++        if (link.createdAt && link.createdAt.getTime() > txTimeMs) {
++          await db.insert(s.unmatchedDeposits).values({
++            txHash, from, to,
++            usdtAmount: ethers.formatUnits(value, 18),
++            blockNumber: receipt.blockNumber,
++            note: 'Linked after transfer; requires manual review'
++          }).onConflictDoUpdate({
++            target: s.unmatchedDeposits.txHash,
++            set: { note: 'Linked after transfer; requires manual review' }
++          });
++          continue;
++        }
++
++        const usdtStr = ethers.formatUnits(value, 18);
++        const xnrtStr = mulDecimalStr(usdtStr, RATE_STR, 18, 0, 2); // 2dp for balances schema
++
++        await db.transaction(async (trx) => {
++          // ensure balance
++          const bal = await trx.query.balances.findFirst({ where: eq(s.balances.userId, link.userId) });
++          if (!bal) await trx.insert(s.balances).values({ userId: link.userId });
++
++          // create tx
++          await trx.insert(s.transactions).values({
++            userId: link.userId,
++            type: 'deposit',
++            amount: xnrtStr,
++            usdtAmount: usdtStr,
++            walletAddress: TREASURY,
++            transactionHash: txHash,
++            status: 'approved',
++            verified: true,
++            confirmations: conf,
++            verificationData: { auto: true, from, to, usdt: usdtStr } as any,
++          } as any);
++
++          // credit balance
++          await trx.execute(sql`
++            UPDATE "Balance"
++            SET "xnrtBalance" = ("xnrtBalance"::numeric + ${xnrtStr}::numeric),
++                "totalEarned" = ("totalEarned"::numeric + ${xnrtStr}::numeric),
++                "updatedAt" = now()
++            WHERE "userId" = ${link.userId}
++          `);
++
++          // ledger
++          await trx.insert(s.tokenLedger).values({
++            userId: link.userId,
++            kind: 'mint_deposit',
++            amount: xnrtStr,
++            meta: { txHash, usdt: usdtStr } as any
++          } as any);
++        });
++
++        // cleanup unmatched if existed
++        await db.delete(s.unmatchedDeposits).where(eq(s.unmatchedDeposits.txHash, txHash));
++
++        console.log(`[Watcher] Credited ${xnrtStr} XNRT for user ${link.userId} (tx ${txHash})`);
++      }
++
++      cursorBlock = toBlock;
++      await db.insert(s.chainCursors).values({ id: CURSOR_ID, block: cursorBlock }).onConflictDoUpdate({
++        target: s.chainCursors.id,
++        set: { block: cursorBlock, updatedAt: sql`now()` }
++      });
++    } catch (e) {
++      console.error('[Watcher] Error:', e);
++    } finally {
++      running = false;
++    }
++  };
++
++  void loop();
++  setInterval(loop, 6000);
++}
+
+--- server/index.ts+++ server/index.ts@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
+ import { setupVite, serveStatic, log } from "./vite";
+ import { startRetryWorker, stopRetryWorker } from "./retryWorker";
++import { startBscUsdtWatcher } from "./services/bscWatcher";
+ 
+ const app = express();
+ 
+@@ -108,6 +109,7 @@     log(`serving on port ${port}`);
+     
+     startRetryWorker();
++    startBscUsdtWatcher();
+   });
+ 
+   process.on('SIGTERM', () => {
+
+--- server/routes.ts+++ server/routes.ts@@ -9,6 +9,9 @@ import webpush from "web-push";
+ import rateLimit from "express-rate-limit";
+ import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
++import { db } from "./db";
++import * as s from "@shared/schema";
++import { eq, desc } from "drizzle-orm";
+ 
+ const prisma = new PrismaClient();
+ 
+@@ -2332,3 +2335,78 @@   const httpServer = createServer(app);
+   return httpServer;
+ }
++
++// --- Admin: Unmatched deposit review (drizzle) ---
++app.get('/api/admin/unmatched-deposits', requireAuth, requireAdmin, async (req, res) => {
++  try {
++    const rows = await db.select().from(s.unmatchedDeposits).orderBy(desc(s.unmatchedDeposits.createdAt)).limit(200);
++    res.json(rows);
++  } catch (e) {
++    console.error('List unmatched error:', e);
++    res.status(500).json({ message: 'Failed to list unmatched' });
++  }
++});
++
++app.post('/api/admin/unmatched-deposits/:txHash/match', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
++  try {
++    const txHash = String(req.params.txHash).toLowerCase();
++    const row = await db.query.unmatchedDeposits.findFirst({ where: eq(s.unmatchedDeposits.txHash, txHash) });
++    if (!row) return res.status(404).json({ message: 'Not found' });
++
++    const link = await db.query.linkedWallets.findFirst({ where: eq(s.linkedWallets.address, row.from.toLowerCase()) });
++    if (!link) return res.status(400).json({ message: 'Sender address not linked to any user' });
++
++    // ensure not already credited
++    const exist = await db.query.transactions.findFirst({ where: and(eq(s.transactions.transactionHash, txHash), eq(s.transactions.type, 'deposit')) });
++    if (exist) {
++      await db.delete(s.unmatchedDeposits).where(eq(s.unmatchedDeposits.txHash, txHash));
++      return res.json({ ok: true, message: 'Already credited; cleaned' });
++    }
++
++    const usdtStr = String(row.usdtAmount);
++    const rate = process.env.XNRT_RATE_USDT ?? '100';
++    const amountNum = (Number(usdtStr) * Number(rate)).toFixed(2);
++
++    await db.transaction(async (trx) => {
++      // ensure balance
++      const bal = await trx.query.balances.findFirst({ where: eq(s.balances.userId, link.userId) });
++      if (!bal) await trx.insert(s.balances).values({ userId: link.userId });
++
++      await trx.insert(s.transactions).values({
++        userId: link.userId,
++        type: 'deposit',
++        amount: amountNum,
++        usdtAmount: usdtStr,
++        walletAddress: process.env.XNRT_WALLET || null,
++        transactionHash: txHash,
++        status: 'approved',
++        verified: true,
++        confirmations: 999,
++        verificationData: { auto: false, manualMatch: true, from: row.from } as any,
++      } as any);
++
++      await trx.execute(sql`
++        UPDATE "Balance"
++        SET "xnrtBalance" = ("xnrtBalance"::numeric + ${amountNum}::numeric),
++            "totalEarned" = ("totalEarned"::numeric + ${amountNum}::numeric),
++            "updatedAt" = now()
++        WHERE "userId" = ${link.userId}
++      `);
++
++      await trx.insert(s.tokenLedger).values({
++        userId: link.userId,
++        kind: 'mint_deposit',
++        amount: amountNum,
++        meta: { txHash, from: row.from, manual: true } as any
++      } as any);
++
++      await trx.delete(s.unmatchedDeposits).where(eq(s.unmatchedDeposits.txHash, txHash));
++    });
++
++    res.json({ ok: true });
++  } catch (e) {
++    console.error('Match unmatched error:', e);
++    res.status(500).json({ message: 'Failed to match deposit' });
++  }
++});
++// --- end admin block ---
