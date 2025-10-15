@@ -303,11 +303,13 @@ model UnmatchedDeposit {
   matched         Boolean   @default(false)
   matchedUserId   String?
   matchedAt       DateTime?
+  reportedByUserId String?
   createdAt       DateTime  @default(now())
 
   @@index([fromAddress])
   @@index([matched])
   @@index([blockNumber])
+  @@index([reportedByUserId])
 }
 
 model DepositReport {
