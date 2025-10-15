@@ -1,0 +1,87 @@
+You nailed the problem: **exchange withdrawals come from pooled “hot wallets,”** so the `from` address won’t match a user’s linked wallet. That’s why they fall into **Unmatched Deposits**.
+
+Here’s the clean way to handle it without weakening security.
+
+# What to keep
+
+* **Auto-credit only for linked self-custody wallets** (MetaMask/Trust). This is correct and safe.
+* **Unmatched Deposits** list (already in the patch) for anything not linkable.
+
+# Upgrade path (lightweight)
+
+## A) “Deposit from Exchange?” fast-path (user)
+
+On the Deposit page, add a small card:
+
+* “Depositing from Binance/OKX/Bybit? Paste your **TX hash** after it confirms.”
+* Button opens **Report Missing** (already included).
+
+### Server (auto-verify-on-report)
+
+When user submits a report with `txHash`:
+
+1. Fetch receipt → confirm success + ≥ `BSC_CONFIRMATIONS`.
+2. Parse USDT `Transfer` to **your treasury**, get `from`, `amount`.
+3. If **already credited** (by tx hash), exit.
+4. If **user has this `from` linked** → **auto-credit now** (same path as watcher).
+5. Else:
+
+   * If `from` matches a **known exchange hot wallet** (see C), create a **flagged credit** (`verified=false`, `source='exchange_report'`) OR queue for admin review (tunable).
+   * Store proof in `verificationData`.
+
+This gives instant UX for honest cases, without opening credit risk.
+
+## B) Allow multi-address linking (already supported)
+
+* Users can link **more than one** wallet.
+* Encourage “Link the wallet you’ll use for deposits.”
+* Exchange withdrawals still go unmatched (by design).
+
+## C) Known-exchange heuristic (optional, safe)
+
+Maintain a small list of hot wallets you see repeatedly (Binance/OKX/etc.). When a report comes with `txHash`:
+
+* If `from` ∈ `known_exchange`, **require manual review** (don’t auto-credit), but pre-fill admin match with parsed amount and user id.
+* Table: `KnownSender(address, label)`; tiny admin UI to add/remove.
+
+# Exact UX copy (short)
+
+* **Auto-Deposit:** Works only from **linked self-custody wallets** (MetaMask/Trust).
+* **Exchanges:** May not auto-credit. If you used an exchange, **submit TX hash** below and we’ll match it.
+
+# Defaults I recommend
+
+* Keep current auto-credit rules.
+* Enable **auto-verify-on-report** for **linked senders**; everything else → **Unmatched** (admin click-to-credit).
+* Add `DEPOSIT_MANUAL_ENABLED=true` (if you want a single flag to show/hide the manual card; I can wire this in).
+
+# Minimal backend change (pseudo)
+
+```ts
+// on POST /api/deposits/report with { txHash }
+const rcpt = await provider.getTransactionReceipt(txHash);
+if (rcpt?.status !== 1 || confs(rcpt) < REQ_CONF) return 400;
+const { from, to, value } = parseUsdtTransferToTreasury(rcpt.logs);
+if (!to) return 400;
+
+const linked = await prisma.linkedWallet.findUnique({ where: { address: from.toLowerCase() }});
+const already = await prisma.transaction.findFirst({ where: { transactionHash: txHash, type: 'deposit' }});
+if (already) return 200;
+
+if (linked && linked.userId === req.authUser!.id) {
+  // safe auto-credit (same as watcher)
+  creditDeposit({ userId: linked.userId, txHash, usdtAmount, source: 'report_linked' });
+} else if (isKnownExchange(from)) {
+  // hold for admin: pre-fill Unmatched with user hint
+  queueUnmatched({ txHash, from, to, usdtAmount, hintedUserId: req.authUser!.id, note: 'reported_from_exchange' });
+} else {
+  // generic unmatched
+  queueUnmatched({ txHash, from, to, usdtAmount, hintedUserId: req.authUser!.id });
+}
+```
+
+That’s it—**no change to your core principle** (off-chain token, on-chain read for proof), but exchange cases become smooth:
+
+* Users get a clear path,
+* Admin gets a pre-parsed, one-click credit,
+* And you don’t accidentally auto-credit pooled addresses.
