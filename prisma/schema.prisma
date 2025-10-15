@@ -129,7 +129,7 @@ model Transaction {
   usdtAmount      Decimal?
   source          String?
   walletAddress   String?
-  transactionHash String?
+  transactionHash String?   @unique @db.VarChar(66)
   proofImageUrl   String?
   status          String    @default("pending")
   adminNotes      String?
