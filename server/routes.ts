@@ -1666,6 +1666,215 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Unmatched Deposits Admin API
+  app.get('/api/admin/unmatched-deposits', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const unmatched = await prisma.unmatchedDeposit.findMany({
+        where: { matched: false },
+        orderBy: { detectedAt: 'desc' },
+        take: 100
+      });
+      res.json(unmatched);
+    } catch (error) {
+      console.error("Error fetching unmatched deposits:", error);
+      res.status(500).json({ message: "Failed to fetch unmatched deposits" });
+    }
+  });
+
+  app.post('/api/admin/unmatched-deposits/:id/match', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ message: "User ID required" });
+      }
+
+      const unmatchedDeposit = await prisma.unmatchedDeposit.findUnique({
+        where: { id }
+      });
+
+      if (!unmatchedDeposit) {
+        return res.status(404).json({ message: "Unmatched deposit not found" });
+      }
+
+      if (unmatchedDeposit.matched) {
+        return res.status(400).json({ message: "Deposit already matched" });
+      }
+
+      // Calculate XNRT amount
+      const usdtAmount = parseFloat(unmatchedDeposit.amount.toString());
+      const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
+      const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
+      const netUsdt = usdtAmount * (1 - platformFeeBps / 10_000);
+      const xnrtAmount = netUsdt * xnrtRate;
+
+      // Create approved transaction and credit balance atomically
+      await prisma.$transaction(async (tx) => {
+        // Create transaction
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: "deposit",
+            amount: new Prisma.Decimal(xnrtAmount),
+            usdtAmount: new Prisma.Decimal(usdtAmount),
+            transactionHash: unmatchedDeposit.transactionHash,
+            walletAddress: unmatchedDeposit.fromAddress,
+            status: "approved",
+            verified: true,
+            confirmations: unmatchedDeposit.confirmations,
+            verificationData: {
+              manualMatch: true,
+              matchedBy: req.authUser!.id,
+              matchedAt: new Date().toISOString(),
+            } as any,
+            approvedBy: req.authUser!.id,
+            approvedAt: new Date(),
+          }
+        });
+
+        // Credit balance
+        await tx.balance.upsert({
+          where: { userId },
+          create: {
+            userId,
+            xnrtBalance: new Prisma.Decimal(xnrtAmount),
+            totalEarned: new Prisma.Decimal(xnrtAmount),
+          },
+          update: {
+            xnrtBalance: { increment: new Prisma.Decimal(xnrtAmount) },
+            totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
+          },
+        });
+
+        // Mark as matched
+        await tx.unmatchedDeposit.update({
+          where: { id },
+          data: {
+            matched: true,
+            matchedUserId: userId,
+            matchedAt: new Date(),
+          }
+        });
+      });
+
+      res.json({ message: "Deposit matched and credited successfully" });
+    } catch (error) {
+      console.error("Error matching deposit:", error);
+      res.status(500).json({ message: "Failed to match deposit" });
+    }
+  });
+
+  // Deposit Reports Admin API
+  app.get('/api/admin/deposit-reports', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const reports = await prisma.depositReport.findMany({
+        where: { status: 'pending' },
+        include: {
+          user: {
+            select: { email: true, username: true }
+          }
+        },
+        orderBy: { reportedAt: 'desc' },
+        take: 100
+      });
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching deposit reports:", error);
+      res.status(500).json({ message: "Failed to fetch deposit reports" });
+    }
+  });
+
+  app.post('/api/admin/deposit-reports/:id/resolve', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { resolution, adminNotes } = req.body;
+
+      if (!resolution || !['approved', 'rejected'].includes(resolution)) {
+        return res.status(400).json({ message: "Invalid resolution" });
+      }
+
+      const report = await prisma.depositReport.findUnique({
+        where: { id }
+      });
+
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      if (report.status !== 'pending') {
+        return res.status(400).json({ message: "Report already resolved" });
+      }
+
+      if (resolution === 'approved') {
+        // Credit user with reported amount
+        const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
+        const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
+        const usdtAmount = parseFloat(report.amount.toString());
+        const netUsdt = usdtAmount * (1 - platformFeeBps / 10_000);
+        const xnrtAmount = netUsdt * xnrtRate;
+
+        await prisma.$transaction(async (tx) => {
+          // Create approved transaction
+          await tx.transaction.create({
+            data: {
+              userId: report.userId,
+              type: "deposit",
+              amount: new Prisma.Decimal(xnrtAmount),
+              usdtAmount: new Prisma.Decimal(usdtAmount),
+              transactionHash: report.transactionHash,
+              status: "approved",
+              adminNotes: adminNotes || "Credited from deposit report",
+              approvedBy: req.authUser!.id,
+              approvedAt: new Date(),
+            }
+          });
+
+          // Credit balance
+          await tx.balance.upsert({
+            where: { userId: report.userId },
+            create: {
+              userId: report.userId,
+              xnrtBalance: new Prisma.Decimal(xnrtAmount),
+              totalEarned: new Prisma.Decimal(xnrtAmount),
+            },
+            update: {
+              xnrtBalance: { increment: new Prisma.Decimal(xnrtAmount) },
+              totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
+            },
+          });
+
+          // Update report status
+          await tx.depositReport.update({
+            where: { id },
+            data: {
+              status: 'approved',
+              resolvedBy: req.authUser!.id,
+              resolvedAt: new Date(),
+              adminNotes: adminNotes || null,
+            }
+          });
+        });
+      } else {
+        // Reject report
+        await prisma.depositReport.update({
+          where: { id },
+          data: {
+            status: 'rejected',
+            resolvedBy: req.authUser!.id,
+            resolvedAt: new Date(),
+            adminNotes: adminNotes || null,
+          }
+        });
+      }
+
+      res.json({ message: `Report ${resolution} successfully` });
+    } catch (error) {
+      console.error("Error resolving deposit report:", error);
+      res.status(500).json({ message: "Failed to resolve report" });
+    }
+  });
+
   app.post('/api/admin/reconcile-referrals', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
     try {
       console.log('[RECONCILE] Starting referral commission reconciliation...');
