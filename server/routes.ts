@@ -758,26 +758,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
+      // Transaction hash format validation (must be 64-char hex with 0x prefix)
+      if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+        return res.status(400).json({ message: "Invalid transaction hash format" });
+      }
+
       // Validate proofImageUrl if provided (should be base64 data URL or valid URL)
       if (proofImageUrl) {
         const isBase64DataUrl = proofImageUrl.startsWith('data:image/');
-        const isValidUrl = proofImageUrl.startsWith('http://') || proofImageUrl.startsWith('https://');
+        const isValidUrl = /^https?:\/\//.test(proofImageUrl);
         
         if (!isBase64DataUrl && !isValidUrl) {
           return res.status(400).json({ message: "Invalid proof image URL format" });
         }
       }
 
-      const xnrtAmount = parseFloat(usdtAmount) * 100; // 1 USDT = 100 XNRT
+      const rate = Number(process.env.XNRT_RATE_USDT ?? 100);
+      const feeBps = Number(process.env.PLATFORM_FEE_BPS ?? 0);
+      const usdt = Number(usdtAmount);
+      const netUsdt = usdt * (1 - feeBps / 10_000);
+      const xnrtAmount = netUsdt * rate;
 
       const transaction = await storage.createTransaction({
         userId,
         type: "deposit",
         amount: xnrtAmount.toString(),
-        usdtAmount: usdtAmount.toString(),
+        usdtAmount: usdt.toString(),
         transactionHash,
+        walletAddress: process.env.XNRT_WALLET!,
         ...(proofImageUrl && { proofImageUrl }),
         status: "pending",
+        verified: false,
+        confirmations: 0,
       });
 
       res.json(transaction);
