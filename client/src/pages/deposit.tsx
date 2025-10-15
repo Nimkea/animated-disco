@@ -223,10 +223,13 @@ export default function Deposit() {
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md space-y-2">
                 <p className="text-sm text-amber-600 dark:text-amber-400">
                   ✨ <strong>Auto-Deposit:</strong> Deposits from linked wallets are detected and credited automatically. 
                   No need to submit transaction hash manually!
+                </p>
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  💡 <strong>From Exchange?</strong> Use "Report Missing Deposit" below with your TX hash for instant verification & credit.
                 </p>
               </div>
             </div>

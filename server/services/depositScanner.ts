@@ -307,4 +307,4 @@ async function sendDepositNotification(userId: string, amount: number, txHash: s
 }
 
 // Export for manual trigger if needed
-export { scanForDeposits };
+export { scanForDeposits, sendDepositNotification };

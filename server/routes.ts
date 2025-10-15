@@ -886,7 +886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if report already exists
       const existingReport = await prisma.depositReport.findFirst({
-        where: { transactionHash }
+        where: { txHash: transactionHash }
       });
 
       if (existingReport) {
@@ -909,10 +909,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const report = await prisma.depositReport.create({
           data: {
             userId,
-            transactionHash,
+            fromAddress: "",
+            txHash: transactionHash,
             amount: new Prisma.Decimal(amount),
-            description: description || `Verification: ${verification.reason}`,
-            status: 'pending'
+            notes: description || `Verification: ${verification.reason}`,
+            status: 'open'
           }
         });
 
@@ -1008,7 +1009,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             confirmations: verification.confirmations,
             reportedByUserId: userId,
             matched: false,
-          }
+          } as any
         });
 
         return res.json({ 

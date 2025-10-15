@@ -46,21 +46,42 @@ export function ReportMissingDeposit() {
     setLoading(true);
 
     try {
-      await apiRequest("POST", "/api/wallet/report-deposit", {
+      const response: any = await apiRequest("POST", "/api/wallet/report-deposit", {
         transactionHash: txHash.trim(),
         amount: parseFloat(amount),
         description: description.trim(),
       });
 
-      toast({
-        title: "✅ Report Submitted",
-        description: "Admin will investigate and credit your deposit if valid",
-      });
+      // Handle different response types
+      if (response.credited) {
+        // Auto-credited from linked wallet
+        toast({
+          title: "🎉 Instantly Credited!",
+          description: `${response.amount.toLocaleString()} XNRT has been credited to your account`,
+        });
+      } else if (response.verified && response.pendingAdminReview) {
+        // Exchange deposit - verified but needs admin approval
+        toast({
+          title: "✅ Deposit Verified!",
+          description: "Your deposit was verified on blockchain. Admin will credit your account shortly.",
+        });
+      } else {
+        // Fallback or verification failed
+        toast({
+          title: "📝 Report Submitted",
+          description: response.message || "Admin will investigate and credit your deposit if valid",
+        });
+      }
 
       setOpen(false);
       setTxHash("");
       setAmount("");
       setDescription("");
+      
+      // Refresh deposits list
+      const { queryClient } = await import("@/lib/queryClient");
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions/deposits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/balance"] });
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -84,7 +105,7 @@ export function ReportMissingDeposit() {
         <DialogHeader>
           <DialogTitle>Report Missing Deposit</DialogTitle>
           <DialogDescription>
-            If you sent USDT from a linked wallet but didn't receive XNRT, report it here
+            Paste your TX hash for instant verification. Works for deposits from exchanges (Binance, OKX, etc.) or linked wallets.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
