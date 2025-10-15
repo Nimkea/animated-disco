@@ -1,0 +1,58 @@
+You’re getting `P2022 … column "Transaction.verified" does not exist` because the **Prisma schema was updated** but the **database wasn’t**. Fix is to push the Prisma schema and regenerate the client.
+
+## Do this (in Replit shell)
+
+1. **Add proper Prisma scripts** (your current `db:push` is Drizzle).
+   In `package.json` add:
+
+```json
+"scripts": {
+  "prisma:gen": "prisma generate",
+  "prisma:push": "prisma db push",
+  "prisma:studio": "prisma studio",
+  "dev": "NODE_ENV=development tsx server/index.ts",
+  "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+  "start": "NODE_ENV=production node dist/index.js",
+  "check": "tsc"
+}
+```
+
+2. **Push schema + regenerate client**
+
+```bash
+npx prisma db push
+npx prisma generate
+```
+
+*(These will add the new columns: `verified BOOLEAN DEFAULT false`, `confirmations INTEGER DEFAULT 0`, `verificationData JSONB`, and `walletAddress TEXT`.)*
+
+3. **Restart the server** (stop → run `npm run dev` again).
+
+4. **Retry the deposit** from the UI.
+
+---
+
+### If you prefer raw SQL (same effect)
+
+Run this once against your DB (Neon):
+
+```sql
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "verified" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "confirmations" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "verificationData" JSONB;
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "walletAddress" TEXT;
+```
+
+Then `npx prisma generate` and restart.
+
+---
+
+### Quick sanity checks
+
+* `npx prisma studio` → open **Transaction** table and verify the new columns exist.
+* Create a small test deposit; you should no longer see the `500 Failed to create deposit`.
+
+> Why this happened
+> Your code paths (in `storage.ts` and `routes.ts`) read/write `verified`, `confirmations`, and `verificationData`. Prisma validated them from `schema.prisma`, but the actual Postgres table didn’t have those columns yet.
+
+Once you push/generate and restart, the error goes away.
