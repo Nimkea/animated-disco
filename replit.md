@@ -2,7 +2,33 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard.
 
 ## Recent Changes
-### Auto-Deposit System with Blockchain Scanner (Latest)
+### Smart Deposit Report with Auto-Verify & Credit (Latest)
+- **Feature**: Enhanced "Report Missing Deposit" to auto-verify transactions on BSC and intelligently credit or queue for admin review
+- **How It Works**:
+  1. User pastes TX hash in "Report Missing Deposit" dialog
+  2. System verifies transaction on BSC blockchain using `verifyBscUsdt` service
+  3. **Smart Logic**:
+     - If TX from **linked wallet** → Instantly credits XNRT to user (same as auto-deposit)
+     - If TX from **exchange/unlinked wallet** → Creates UnmatchedDeposit with `reportedByUserId` hint for admin
+     - If verification fails → Creates DepositReport for admin investigation
+- **Use Cases**:
+  - **Exchange Deposits**: Users depositing from Binance/OKX/etc. can paste TX hash for instant verification & admin approval
+  - **Linked Wallet Edge Cases**: If auto-deposit scanner missed a TX, user can manually trigger verification
+  - **Troubleshooting**: Failed verifications are logged with reason for admin review
+- **Technical Implementation**:
+  - Enhanced `POST /api/wallet/report-deposit` with blockchain verification
+  - Checks for duplicate TX hashes (prevents double-crediting)
+  - Extracts sender address from transaction to determine if linked to user
+  - Atomic credit for linked wallets with notification
+  - Creates UnmatchedDeposit with `reportedByUserId` for admin matching
+- **UI Updates**:
+  - Deposit page clarifies: "From Exchange? Use Report Missing Deposit with TX hash"
+  - Report dialog shows different success messages based on outcome
+  - Auto-invalidates balance and deposits queries after successful credit
+- **Security**: All existing verification checks apply (confirmations, amount, USDT contract, treasury address)
+- **Status**: Complete - production-ready smart deposit verification for both personal wallets and exchanges
+
+### Auto-Deposit System with Blockchain Scanner
 - **Feature**: Fully automated deposit system where users link their MetaMask wallet once, then deposits are auto-detected and credited without manual submission
 - **Architecture**:
   - **Wallet Linking**: Users link BSC wallets via MetaMask signature verification (ethers.js)
