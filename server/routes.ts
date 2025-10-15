@@ -1200,7 +1200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await verifyBscUsdtDeposit({
         txHash: deposit.transactionHash,
-        expectedTo: process.env.XNRT_WALLET!,
+        expectedTo: deposit.walletAddress || process.env.XNRT_WALLET!,
         minAmount: deposit.usdtAmount ? parseFloat(deposit.usdtAmount) : undefined,
         requiredConf: Number(process.env.BSC_CONFIRMATIONS ?? 12),
       });
