@@ -11,6 +11,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info, Upload, X } from "lucide-react";
 import type { Transaction } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { LinkWalletCard } from "@/components/link-wallet-card";
 
 const COMPANY_WALLET = "0x715C32deC9534d2fB34e0B567288AF8d895efB59";
 const USDT_TO_XNRT_RATE = 100;
@@ -181,6 +182,8 @@ export default function Deposit() {
         <p className="text-muted-foreground">Deposit USDT to receive XNRT tokens</p>
       </div>
 
+      <LinkWalletCard />
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-primary/20">
           <CardHeader>
@@ -194,8 +197,8 @@ export default function Deposit() {
                   1
                 </div>
                 <div>
-                  <p className="font-semibold">Send USDT to XNRT Wallet</p>
-                  <p className="text-sm text-muted-foreground">Use BEP20 network</p>
+                  <p className="font-semibold">Send USDT from Linked Wallet</p>
+                  <p className="text-sm text-muted-foreground">Use your linked MetaMask wallet via BEP20 network</p>
                 </div>
               </div>
 
@@ -204,8 +207,8 @@ export default function Deposit() {
                   2
                 </div>
                 <div>
-                  <p className="font-semibold">Copy Transaction Hash</p>
-                  <p className="text-sm text-muted-foreground">From your wallet after sending</p>
+                  <p className="font-semibold">Wait for Confirmations</p>
+                  <p className="text-sm text-muted-foreground">12 BSC confirmations (~36 seconds)</p>
                 </div>
               </div>
 
@@ -214,19 +217,16 @@ export default function Deposit() {
                   3
                 </div>
                 <div>
-                  <p className="font-semibold">Submit Deposit Details</p>
-                  <p className="text-sm text-muted-foreground">Wait for admin approval</p>
+                  <p className="font-semibold">Auto-Credit XNRT</p>
+                  <p className="text-sm text-muted-foreground">Automatically credited to your balance</p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold flex-shrink-0">
-                  4
-                </div>
-                <div>
-                  <p className="font-semibold">Receive XNRT</p>
-                  <p className="text-sm text-muted-foreground">1 USDT = 100 XNRT</p>
-                </div>
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  ✨ <strong>Auto-Deposit:</strong> Deposits from linked wallets are detected and credited automatically. 
+                  No need to submit transaction hash manually!
+                </p>
               </div>
             </div>
 
@@ -258,8 +258,8 @@ export default function Deposit() {
 
         <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
           <CardHeader>
-            <CardTitle>Submit Deposit</CardTitle>
-            <CardDescription>Enter your deposit details</CardDescription>
+            <CardTitle>Manual Deposit Submission</CardTitle>
+            <CardDescription>Optional: For deposits from unlinked wallets or troubleshooting</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
