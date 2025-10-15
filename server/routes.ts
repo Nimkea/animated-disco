@@ -872,33 +872,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid transaction hash format" });
       }
 
-      // Check if report already exists
-      const existing = await prisma.depositReport.findFirst({
+      // Check if already processed (in transactions table)
+      const existingTx = await prisma.transaction.findFirst({
         where: { transactionHash }
       });
 
-      if (existing) {
+      if (existingTx) {
+        return res.status(409).json({ 
+          message: "This deposit has already been credited",
+          alreadyProcessed: true 
+        });
+      }
+
+      // Check if report already exists
+      const existingReport = await prisma.depositReport.findFirst({
+        where: { transactionHash }
+      });
+
+      if (existingReport) {
         return res.status(409).json({ message: "This deposit has already been reported" });
       }
 
-      // Create deposit report
-      const report = await prisma.depositReport.create({
-        data: {
+      // Verify transaction on BSC
+      const { verifyBscUsdtDeposit } = await import('./services/verifyBscUsdt');
+      const treasuryAddress = process.env.XNRT_WALLET || "";
+      const verification = await verifyBscUsdtDeposit({
+        txHash: transactionHash,
+        expectedTo: treasuryAddress,
+        minAmount: amount,
+        requiredConf: Number(process.env.BSC_CONFIRMATIONS || 12)
+      });
+
+      // If verification failed or insufficient confirmations
+      if (!verification.verified) {
+        // Create deposit report for admin review
+        const report = await prisma.depositReport.create({
+          data: {
+            userId,
+            transactionHash,
+            amount: new Prisma.Decimal(amount),
+            description: description || `Verification: ${verification.reason}`,
+            status: 'pending'
+          }
+        });
+
+        return res.json({ 
+          message: "Report submitted for admin review",
+          reportId: report.id,
+          reason: verification.reason
+        });
+      }
+
+      // Get transaction receipt to find sender address
+      const provider = new (await import('ethers')).ethers.JsonRpcProvider(process.env.RPC_BSC_URL);
+      const receipt = await provider.getTransactionReceipt(transactionHash);
+      const transaction = await provider.getTransaction(transactionHash);
+      const fromAddress = transaction?.from?.toLowerCase() || "";
+
+      // Check if sender is a linked wallet of this user
+      const linkedWallet = await prisma.linkedWallet.findFirst({
+        where: { 
           userId,
-          transactionHash,
-          amount: new Prisma.Decimal(amount),
-          description: description || null,
-          status: 'pending'
+          address: fromAddress,
+          active: true 
         }
       });
 
-      res.json({ 
-        message: "Report submitted successfully", 
-        reportId: report.id 
-      });
-    } catch (error) {
+      const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
+      const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
+      const usdtAmount = verification.amountOnChain || amount;
+      const netUsdt = usdtAmount * (1 - platformFeeBps / 10_000);
+      const xnrtAmount = netUsdt * xnrtRate;
+
+      if (linkedWallet) {
+        // Auto-credit: TX is from user's linked wallet
+        await prisma.$transaction(async (tx) => {
+          // Create approved transaction
+          await tx.transaction.create({
+            data: {
+              userId,
+              type: "deposit",
+              amount: new Prisma.Decimal(xnrtAmount),
+              usdtAmount: new Prisma.Decimal(usdtAmount),
+              transactionHash,
+              walletAddress: fromAddress,
+              status: "approved",
+              verified: true,
+              confirmations: verification.confirmations,
+              verificationData: {
+                autoVerified: true,
+                reportSubmitted: true,
+                verifiedAt: new Date().toISOString(),
+                blockNumber: receipt?.blockNumber,
+              } as any,
+            }
+          });
+
+          // Credit balance atomically
+          await tx.balance.upsert({
+            where: { userId },
+            create: {
+              userId,
+              xnrtBalance: new Prisma.Decimal(xnrtAmount),
+              totalEarned: new Prisma.Decimal(xnrtAmount),
+            },
+            update: {
+              xnrtBalance: { increment: new Prisma.Decimal(xnrtAmount) },
+              totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
+            },
+          });
+        });
+
+        console.log(`[ReportDeposit] Auto-credited ${xnrtAmount} XNRT to user ${userId}`);
+
+        // Send notification (non-blocking)
+        const { sendDepositNotification } = await import('./services/depositScanner');
+        void sendDepositNotification(userId, xnrtAmount, transactionHash).catch(err => {
+          console.error("[ReportDeposit] Notification error:", err);
+        });
+
+        return res.json({ 
+          message: "Deposit verified and credited automatically!",
+          credited: true,
+          amount: xnrtAmount
+        });
+      } else {
+        // Create unmatched deposit with user hint (for exchange deposits)
+        await prisma.unmatchedDeposit.create({
+          data: {
+            fromAddress,
+            toAddress: treasuryAddress,
+            amount: new Prisma.Decimal(usdtAmount),
+            transactionHash,
+            blockNumber: receipt?.blockNumber || 0,
+            confirmations: verification.confirmations,
+            reportedByUserId: userId,
+            matched: false,
+          }
+        });
+
+        return res.json({ 
+          message: "Deposit verified on blockchain. Admin will credit your account shortly.",
+          verified: true,
+          pendingAdminReview: true
+        });
+      }
+    } catch (error: any) {
       console.error("Error reporting deposit:", error);
-      res.status(500).json({ message: "Failed to submit report" });
+      
+      // Check for duplicate key error
+      if (error.code === 'P2002' && error.meta?.target?.includes('transactionHash')) {
+        return res.status(409).json({ 
+          message: "This transaction has already been processed",
+          alreadyProcessed: true
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to process deposit report" });
     }
   });
 
