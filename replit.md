@@ -2,7 +2,51 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard.
 
 ## Recent Changes
-### Blockchain Verification System for BSC USDT Deposits (Latest)
+### Auto-Deposit System with Blockchain Scanner (Latest)
+- **Feature**: Fully automated deposit system where users link their MetaMask wallet once, then deposits are auto-detected and credited without manual submission
+- **Architecture**:
+  - **Wallet Linking**: Users link BSC wallets via MetaMask signature verification (ethers.js)
+    - Challenge/response flow with time-limited nonces stored in session
+    - Signature verification ensures user owns the wallet
+    - Multiple wallets can be linked per account
+  - **Blockchain Scanner**: Service runs every 60 seconds, scans BSC for USDT transfers to treasury
+    - Queries eth_getLogs for Transfer events to XNRT Wallet address
+    - Matches deposits to linked wallets automatically
+    - Stores unmatched deposits for admin review
+    - Tracks scanner state (last block, errors) in database
+  - **Auto-Credit Logic**: 
+    - Deposits from linked wallets auto-credit after 12 BSC confirmations (~36 seconds)
+    - Creates approved transaction atomically with balance update
+    - Sends push notification to user on successful credit
+    - Pending deposits show in history until confirmations met
+- **Database Schema** (New Tables):
+  - `LinkedWallet`: Stores user-wallet mappings with signature proof
+  - `UnmatchedDeposit`: USDT transfers to treasury not matched to any user
+  - `DepositReport`: User-submitted reports for missing deposits (edge case handling)
+  - `ScannerState`: Tracks scanner progress, last block scanned, error count
+  - Added `transactionHash` unique constraint (lowercase normalized) to prevent duplicates
+- **User Experience**:
+  - Deposit page shows "Link Your BSC Wallet" card (Step 0)
+  - MetaMask integration with one-click wallet linking
+  - Updated instructions: "Send → Wait 12 confirmations → Auto-credited"
+  - "Report Missing Deposit" dialog for troubleshooting edge cases
+  - Manual deposit submission still available as fallback
+- **Admin Features**:
+  - `GET /api/admin/unmatched-deposits` - View deposits not matched to users
+  - `POST /api/admin/unmatched-deposits/:id/match` - Manually match to user and credit
+  - `GET /api/admin/deposit-reports` - View user-reported missing deposits
+  - `POST /api/admin/deposit-reports/:id/resolve` - Approve/reject reports with optional notes
+- **Security**:
+  - Signature verification prevents wallet address spoofing
+  - Wallet can only be linked to one account (prevents multi-account fraud)
+  - Database-level unique constraint on transaction hashes
+  - Atomic balance updates prevent race conditions
+  - Rate limiting and validation on all endpoints
+- **Environment Variables**: RPC_BSC_URL (BSC node endpoint), DEPOSIT_SCAN_INTERVAL_MS (optional, default 60000)
+- **Production Notes**: Public BSC RPC may hit rate limits. Paid RPC providers (QuickNode, Infura, Alchemy) recommended for production
+- **Status**: Complete - production-ready auto-deposit system with wallet linking, blockchain scanning, and admin tools
+
+### Blockchain Verification System for BSC USDT Deposits
 - **Feature**: Added on-chain verification for USDT deposits on Binance Smart Chain
 - **Implementation**:
   - Created `verifyBscUsdt.ts` service using ethers.js v6 to verify transactions on BSC
