@@ -9,6 +9,8 @@ const TREASURY_ADDRESS = (process.env.XNRT_WALLET || "").toLowerCase();
 const REQUIRED_CONFIRMATIONS = Number(process.env.BSC_CONFIRMATIONS || 12);
 const XNRT_RATE = Number(process.env.XNRT_RATE_USDT || 100);
 const PLATFORM_FEE_BPS = Number(process.env.PLATFORM_FEE_BPS || 0);
+const SCAN_BATCH = Number(process.env.BSC_SCAN_BATCH || 300);
+const AUTO_DEPOSIT_ENABLED = process.env.AUTO_DEPOSIT === 'true';
 
 const provider = new ethers.JsonRpcProvider(RPC_URL);
 const USDT_ABI = [
@@ -19,12 +21,18 @@ const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_ABI, provider);
 let isScanning = false;
 
 export async function startDepositScanner() {
+  if (!AUTO_DEPOSIT_ENABLED) {
+    console.log("[DepositScanner] AUTO_DEPOSIT not enabled, scanner disabled");
+    return;
+  }
+
   const scanInterval = 60 * 1000; // 1 minute
 
   console.log("[DepositScanner] Starting scanner service...");
   console.log(`[DepositScanner] Treasury: ${TREASURY_ADDRESS}`);
   console.log(`[DepositScanner] USDT: ${USDT_ADDRESS}`);
   console.log(`[DepositScanner] Required confirmations: ${REQUIRED_CONFIRMATIONS}`);
+  console.log(`[DepositScanner] Scan batch size: ${SCAN_BATCH}`);
 
   // Run immediately
   await scanForDeposits().catch(err => {
@@ -50,20 +58,29 @@ async function scanForDeposits() {
   try {
     // Get or create scanner state
     let state = await prisma.scannerState.findFirst();
+    const currentBlock = await provider.getBlockNumber();
+    
     if (!state) {
-      const currentBlock = await provider.getBlockNumber();
+      // Initialize scanner state
+      let startBlock = currentBlock - 100; // Default: 100 blocks ago
+      
+      // Support BSC_START_FROM='latest' to start near tip
+      if (process.env.BSC_START_FROM === 'latest') {
+        startBlock = Math.max(0, currentBlock - REQUIRED_CONFIRMATIONS - 3);
+        console.log(`[DepositScanner] Starting from latest (block ${startBlock})`);
+      }
+      
       state = await prisma.scannerState.create({
         data: {
-          lastBlock: Math.max(0, currentBlock - 100), // Start from 100 blocks ago
+          lastBlock: Math.max(0, startBlock),
           lastScanAt: new Date(),
           isScanning: true,
         }
       });
     }
 
-    const currentBlock = await provider.getBlockNumber();
     const fromBlock = state.lastBlock + 1;
-    const toBlock = currentBlock;
+    const toBlock = Math.min(currentBlock - REQUIRED_CONFIRMATIONS, fromBlock + SCAN_BATCH - 1);
 
     if (fromBlock > toBlock) {
       console.log(`[DepositScanner] No new blocks to scan`);
