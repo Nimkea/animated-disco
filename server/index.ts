@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startRetryWorker, stopRetryWorker } from "./retryWorker";
+import { startDepositScanner } from "./services/depositScanner";
 
 const app = express();
 
@@ -108,6 +109,7 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
     
     startRetryWorker();
+    startDepositScanner();
   });
 
   process.on('SIGTERM', () => {
