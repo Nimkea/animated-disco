@@ -752,15 +752,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/transactions/deposit', requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const { usdtAmount, transactionHash, proofImageUrl } = req.body;
+      let { usdtAmount, transactionHash, proofImageUrl } = req.body;
 
       if (!usdtAmount || !transactionHash) {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
+      // Normalize transaction hash to lowercase
+      transactionHash = String(transactionHash).trim().toLowerCase();
+
       // Transaction hash format validation (must be 64-char hex with 0x prefix)
-      if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      if (!/^0x[a-f0-9]{64}$/.test(transactionHash)) {
         return res.status(400).json({ message: "Invalid transaction hash format" });
+      }
+
+      // Check for duplicate transaction hash
+      const existing = await prisma.transaction.findFirst({
+        where: { transactionHash }
+      });
+      
+      if (existing) {
+        return res.status(409).json({ 
+          message: "This transaction hash was already used for a deposit." 
+        });
       }
 
       // Validate proofImageUrl if provided (should be base64 data URL or valid URL)
@@ -793,7 +807,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(transaction);
-    } catch (error) {
+    } catch (error: any) {
+      // Handle unique constraint violation from database
+      if (error.code === 'P2002' && error.meta?.target?.includes('transactionHash')) {
+        return res.status(409).json({
+          message: "This transaction hash was already used for a deposit."
+        });
+      }
       console.error("Error creating deposit:", error);
       res.status(500).json({ message: "Failed to create deposit" });
     }
