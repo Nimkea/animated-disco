@@ -9,6 +9,8 @@ import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
 import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
+import { ethers } from "ethers";
+import { nanoid } from "nanoid";
 
 const prisma = new PrismaClient();
 
@@ -746,6 +748,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching withdrawals:", error);
       res.status(500).json({ message: "Failed to fetch withdrawals" });
+    }
+  });
+
+  // Wallet Linking API
+  app.get('/api/wallet/me', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const wallets = await prisma.linkedWallet.findMany({
+        where: { userId, active: true },
+        select: { address: true, linkedAt: true },
+        orderBy: { linkedAt: 'desc' }
+      });
+      res.json(wallets.map(w => w.address));
+    } catch (error) {
+      console.error("Error fetching linked wallets:", error);
+      res.status(500).json({ message: "Failed to fetch wallets" });
+    }
+  });
+
+  app.get('/api/wallet/link/challenge', requireAuth, async (req, res) => {
+    try {
+      const { address } = req.query;
+      if (!address || typeof address !== 'string') {
+        return res.status(400).json({ message: "Address required" });
+      }
+
+      const normalized = address.toLowerCase();
+      if (!/^0x[a-f0-9]{40}$/.test(normalized)) {
+        return res.status(400).json({ message: "Invalid address format" });
+      }
+
+      const nonce = nanoid(16);
+      const appDomain = process.env.APP_DOMAIN || 'localhost:5000';
+      const message = `Sign this message to link your wallet to XNRT.\n\nAddress: ${normalized}\nNonce: ${nonce}\nDomain: ${appDomain}`;
+
+      // Store nonce temporarily in session or memory (expires in 10 min)
+      req.session.walletLinkNonce = { nonce, address: normalized, expiresAt: Date.now() + 10 * 60 * 1000 };
+      
+      res.json({ message, nonce });
+    } catch (error) {
+      console.error("Error generating challenge:", error);
+      res.status(500).json({ message: "Failed to generate challenge" });
+    }
+  });
+
+  app.post('/api/wallet/link/confirm', requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const { address, signature, nonce } = req.body;
+
+      if (!address || !signature || !nonce) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Verify nonce from session
+      const storedNonce = req.session.walletLinkNonce;
+      if (!storedNonce || storedNonce.nonce !== nonce || storedNonce.address !== address.toLowerCase()) {
+        return res.status(400).json({ message: "Invalid or expired nonce" });
+      }
+
+      if (Date.now() > storedNonce.expiresAt) {
+        return res.status(400).json({ message: "Nonce expired" });
+      }
+
+      // Reconstruct and verify signature
+      const appDomain = process.env.APP_DOMAIN || 'localhost:5000';
+      const message = `Sign this message to link your wallet to XNRT.\n\nAddress: ${address.toLowerCase()}\nNonce: ${nonce}\nDomain: ${appDomain}`;
+      
+      const recoveredAddress = ethers.verifyMessage(message, signature);
+      
+      if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+        return res.status(400).json({ message: "Signature verification failed" });
+      }
+
+      // Check if already linked to another user
+      const existing = await prisma.linkedWallet.findFirst({
+        where: { address: address.toLowerCase(), active: true }
+      });
+
+      if (existing && existing.userId !== userId) {
+        return res.status(409).json({ message: "This wallet is already linked to another account" });
+      }
+
+      if (existing && existing.userId === userId) {
+        return res.json({ address: existing.address, alreadyLinked: true });
+      }
+
+      // Link wallet
+      const linked = await prisma.linkedWallet.create({
+        data: {
+          userId,
+          address: address.toLowerCase(),
+          signature,
+          nonce
+        }
+      });
+
+      // Clear nonce
+      delete req.session.walletLinkNonce;
+
+      res.json({ address: linked.address });
+    } catch (error) {
+      console.error("Error linking wallet:", error);
+      res.status(500).json({ message: "Failed to link wallet" });
     }
   });
 
