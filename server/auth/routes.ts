@@ -207,10 +207,11 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     });
 
     // Set cookie
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie('sid', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -278,10 +279,11 @@ router.post('/verify-email', async (req, res) => {
     });
 
     // Set cookie
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie('sid', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -410,11 +412,12 @@ router.get('/me', requireAuth, async (req, res) => {
 // GET /auth/csrf
 router.get('/csrf', (req, res) => {
   const csrfToken = generateCSRFToken();
+  const isProd = process.env.NODE_ENV === 'production';
   
   res.cookie('csrfToken', csrfToken, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   });
 
