@@ -119,8 +119,8 @@ export const transactions = pgTable("Transaction", {
   amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
   usdtAmount: decimal("usdtAmount", { precision: 18, scale: 2 }),
   source: varchar("source"), // For withdrawals: main, referral
-  walletAddress: varchar("walletAddress"),
-  transactionHash: varchar("transactionHash"),
+  walletAddress: varchar("walletAddress", { length: 42 }),
+  transactionHash: varchar("transactionHash", { length: 66 }),
   proofImageUrl: varchar("proofImageUrl"),
   status: varchar("status").default("pending").notNull(), // pending, approved, rejected, paid
   adminNotes: text("adminNotes"),
