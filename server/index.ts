@@ -10,8 +10,9 @@ import { startDepositScanner } from "./services/depositScanner";
 const app = express();
 
 // Trust proxy - required for Replit's reverse proxy environment
-// This allows express-rate-limit and other middleware to correctly identify client IPs
-app.set('trust proxy', true);
+// Set to 1 to trust the first proxy (Replit's reverse proxy)
+// This is more secure than 'true' and satisfies express-rate-limit security requirements
+app.set('trust proxy', 1);
 
 // Security headers - relax only in development for Vite HMR and Replit preview
 const isDevelopment = app.get("env") === "development";
