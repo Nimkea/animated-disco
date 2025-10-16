@@ -2,7 +2,7 @@
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
 
@@ -140,7 +140,19 @@ registerRoute(
   })
 );
 
+// Auth & Wallet Routes - NEVER cache (NetworkOnly)
+registerRoute(
+  /\/auth\/.*/,
+  new NetworkOnly()
+);
+
+registerRoute(
+  /\/api\/wallet\/.*/,
+  new NetworkOnly()
+);
+
 // API Routes - Network First with short cache (1 minute for fresh data)
+// Auth & wallet routes are excluded above
 registerRoute(
   /\/api\/.*/,
   new NetworkFirst({

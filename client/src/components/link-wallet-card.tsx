@@ -3,31 +3,22 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wallet, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { EthereumProvider } from "@walletconnect/ethereum-provider";
+import { ensureCsrf } from "@/lib/csrf";
+import { requireSession } from "@/lib/auth";
 
 export function LinkWalletCard() {
   const [address, setAddress] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [linked, setLinked] = useState<string[]>([]);
-  const [wcProvider, setWcProvider] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     // Fetch user's linked wallets on mount
-    fetch("/api/wallet/me", { credentials: "include" })
+    fetch("/api/wallet/me", { credentials: "include", cache: "no-store" })
       .then(r => r.ok ? r.json() : [])
       .then(wallets => setLinked(wallets))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    // Cleanup WalletConnect on unmount
-    return () => {
-      if (wcProvider) {
-        wcProvider.disconnect();
-      }
-    };
-  }, [wcProvider]);
 
   const isMobile = () => {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -39,45 +30,29 @@ export function LinkWalletCard() {
     let accounts: string[] = [];
 
     try {
-      // Check if we should use WalletConnect (mobile without injected provider)
+      // 1) Must be authenticated in THIS webview/browser
+      await requireSession();
+
+      // 2) CSRF token guaranteed
+      const csrf = await ensureCsrf();
+
+      // 3) Check for injected provider (prioritize this over WalletConnect)
       const hasInjectedProvider = !!(window as any).ethereum;
-      const shouldUseWalletConnect = isMobile() && !hasInjectedProvider;
 
-      if (shouldUseWalletConnect) {
-        // Initialize WalletConnect for mobile
-        provider = await EthereumProvider.init({
-          projectId: "3c3b6ad24c3e4e7e8f8f8f8f8f8f8f8f", // Public WalletConnect project ID
-          chains: [56], // BSC Mainnet
-          showQrModal: true,
-          qrModalOptions: {
-            themeMode: "dark",
-            themeVariables: {
-              "--wcm-z-index": "9999"
-            }
-          },
-          metadata: {
-            name: "XNRT",
-            description: "XNRT - We Build the NextGen",
-            url: window.location.origin,
-            icons: [`${window.location.origin}/icon-192.png`]
-          }
-        });
-
-        // Enable session (shows QR code modal)
-        accounts = await provider.enable();
-        setWcProvider(provider);
-      } else if (hasInjectedProvider) {
-        // Use injected provider (MetaMask/Trust Wallet in-app browser)
+      if (hasInjectedProvider) {
+        // Use injected provider (MetaMask/Trust Wallet in-app browser or extension)
         provider = (window as any).ethereum;
         accounts = await provider.request({ 
           method: "eth_requestAccounts" 
         });
       } else {
-        // No provider available at all
+        // No injected provider - user needs to install a wallet or use wallet browser
         toast({
           variant: "destructive",
-          title: "Wallet Connection Required",
-          description: "Please install MetaMask or Trust Wallet, or use WalletConnect to link your wallet.",
+          title: "No Wallet Found",
+          description: isMobile() 
+            ? "Please open this page in MetaMask or Trust Wallet browser."
+            : "Please install MetaMask extension to link your wallet.",
         });
         return;
       }
@@ -85,38 +60,55 @@ export function LinkWalletCard() {
       const account = String(accounts?.[0] || "").toLowerCase();
       setAddress(account);
 
-      // Get challenge message and nonce
+      // 4) Get challenge (no-store to bypass service worker cache)
       const challengeRes = await fetch(
         `/api/wallet/link/challenge?address=${account}`, 
-        { credentials: "include" }
+        { 
+          credentials: "include",
+          cache: "no-store",
+          headers: { "x-csrf-token": csrf }
+        }
       );
       
+      if (challengeRes.status === 401) {
+        throw new Error("Please log in inside this browser and try again.");
+      }
+      if (challengeRes.status === 403) {
+        throw new Error("Security token missing/invalid. Refresh the page and try again.");
+      }
       if (!challengeRes.ok) {
-        const error = await challengeRes.json();
+        const error = await challengeRes.json().catch(() => ({}));
         throw new Error(error.message || "Failed to get challenge");
       }
 
       const { message, nonce } = await challengeRes.json();
 
-      // Request signature using the appropriate provider
+      // 5) Sign message
       const signature = await provider.request({
         method: "personal_sign",
         params: [message, account],
       });
 
-      // Confirm link
+      // 6) Confirm link (CSRF + no-store)
       const confirmRes = await fetch("/api/wallet/link/confirm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-csrf-token": (window as any).CSRF_TOKEN,
+          "x-csrf-token": csrf,
         },
         credentials: "include",
+        cache: "no-store",
         body: JSON.stringify({ address: account, signature, nonce }),
       });
 
+      if (confirmRes.status === 401) {
+        throw new Error("Your session expired. Log in again and retry.");
+      }
+      if (confirmRes.status === 403) {
+        throw new Error("Security token invalid. Refresh and try again.");
+      }
       if (!confirmRes.ok) {
-        const error = await confirmRes.json();
+        const error = await confirmRes.json().catch(() => ({}));
         throw new Error(error.message || "Failed to link wallet");
       }
 
@@ -124,7 +116,7 @@ export function LinkWalletCard() {
       
       toast({
         title: "✅ Wallet Linked",
-        description: `${result.address.slice(0, 6)}...${result.address.slice(-4)} is now linked to your account`,
+        description: `${result.address.slice(0, 6)}...${result.address.slice(-4)} is now linked`,
       });
 
       if (!linked.includes(result.address)) {
@@ -163,12 +155,12 @@ export function LinkWalletCard() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Connecting...
+                Linking...
               </>
             ) : (
               <>
                 <Wallet className="mr-2 h-4 w-4" />
-                {isMobile() && !(window as any).ethereum ? "Connect Wallet" : "Link with MetaMask"}
+                Link Wallet
               </>
             )}
           </Button>
