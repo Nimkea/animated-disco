@@ -1,0 +1,78 @@
+Got it—I looked over your write-up and the screenshot. Your diagnosis and the “switch to `text`” fix are correct. Here’s a quick review plus a few upgrades so you don’t trade one problem for another.
+
+## What you got right
+
+* The failure is because prod already contains `transactionHash` values longer than 66; shrinking to `varchar(66)` fails. ✅
+* Migrating both `transactionHash` and `walletAddress` to `text` removes the length constraint and deploys safely. ✅
+
+## What I’d improve (safe + future-proof)
+
+1. **Keep flexibility but enforce format with a CHECK constraint**
+
+   * EVM tx hashes are exactly 66 chars (`0x` + 64 hex). Addresses are 42 chars.
+   * Use `text` for migration safety, then add *validation* at the DB so garbage can’t creep back in.
+
+   ```sql
+   -- add constraints without blocking writes
+   ALTER TABLE "Transaction"
+     ADD CONSTRAINT tx_hash_format
+     CHECK ("transactionHash" ~ '^0x[0-9A-Fa-f]{64}$') NOT VALID;
+
+   ALTER TABLE "Transaction"
+     ADD CONSTRAINT wallet_addr_format
+     CHECK ("walletAddress" ~ '^0x[0-9A-Fa-f]{40}$') NOT VALID;
+
+   -- validate in a follow-up step to avoid long locks
+   ALTER TABLE "Transaction" VALIDATE CONSTRAINT tx_hash_format;
+   ALTER TABLE "Transaction" VALIDATE CONSTRAINT wallet_addr_format;
+   ```
+
+   *Why:* You keep the easy migration (`text`) while preventing future bad data.
+
+2. **Inspect and clean the outliers before validating**
+
+   ```sql
+   SELECT id, "transactionHash"
+   FROM "Transaction"
+   WHERE length("transactionHash") <> 66
+      OR "transactionHash" !~ '^0x[0-9A-Fa-f]{64}$';
+
+   SELECT id, "walletAddress"
+   FROM "Transaction"
+   WHERE length("walletAddress") <> 42
+      OR "walletAddress" !~ '^0x[0-9A-Fa-f]{40}$';
+   ```
+
+   * Decide whether to fix, delete, or quarantine those rows. Don’t blindly `LEFT(...,66)` unless you’re sure it’s junk.
+
+3. **Indexing/uniqueness (if applicable)**
+
+   * If these are identifiers, make them unique to prevent duplicates:
+
+   ```sql
+   CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_transaction_hash_unique
+     ON "Transaction" ("transactionHash");
+   ```
+
+   * `text` is fine for a btree index in Postgres.
+
+4. **App-layer validation**
+
+   * Add a simple regex check in your ORM/models so bad data never reaches the DB.
+   * Trim whitespace before inserts/updates.
+
+5. **Migration order**
+
+   * Keep it in two steps if you’re adding constraints:
+
+     1. `ALTER ... TYPE text` (deploy)
+     2. Clean bad rows, add `CHECK ... NOT VALID`, `VALIDATE CONSTRAINT` (deploy)
+
+## TL;DR next actions
+
+1. Deploy the `text` migration you wrote (good).
+2. Query and fix the bad rows.
+3. Add the `CHECK` constraints (NOT VALID → VALIDATE).
+4. (Optional) Add `UNIQUE` indexes if these fields are keys.
+
+That will get you unblocked now and protect you from the same issue later.
