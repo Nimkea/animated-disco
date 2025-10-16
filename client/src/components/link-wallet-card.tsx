@@ -3,11 +3,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wallet, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import EthereumProvider from "@walletconnect/ethereum-provider";
 
 export function LinkWalletCard() {
   const [address, setAddress] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [linked, setLinked] = useState<string[]>([]);
+  const [wcProvider, setWcProvider] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -16,25 +18,68 @@ export function LinkWalletCard() {
       .then(r => r.ok ? r.json() : [])
       .then(wallets => setLinked(wallets))
       .catch(() => {});
-  }, []);
+
+    // Cleanup WalletConnect on unmount
+    return () => {
+      if (wcProvider) {
+        wcProvider.disconnect();
+      }
+    };
+  }, [wcProvider]);
+
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
 
   const linkWallet = async () => {
-    // Check if MetaMask is installed
-    if (!(window as any).ethereum) {
-      toast({
-        variant: "destructive",
-        title: "MetaMask Not Detected",
-        description: "Please install MetaMask or Trust Wallet to link your wallet.",
-      });
-      return;
-    }
-
     setLoading(true);
+    let provider: any = null;
+    let accounts: string[] = [];
+
     try {
-      // Request account access
-      const accounts = await (window as any).ethereum.request({ 
-        method: "eth_requestAccounts" 
-      });
+      // Check if we should use WalletConnect (mobile without injected provider)
+      const hasInjectedProvider = !!(window as any).ethereum;
+      const shouldUseWalletConnect = isMobile() && !hasInjectedProvider;
+
+      if (shouldUseWalletConnect) {
+        // Initialize WalletConnect for mobile
+        provider = await EthereumProvider.init({
+          projectId: "3c3b6ad24c3e4e7e8f8f8f8f8f8f8f8f", // Public WalletConnect project ID
+          chains: [56], // BSC Mainnet
+          showQrModal: true,
+          qrModalOptions: {
+            themeMode: "dark",
+            themeVariables: {
+              "--wcm-z-index": "9999"
+            }
+          },
+          metadata: {
+            name: "XNRT",
+            description: "XNRT - We Build the NextGen",
+            url: window.location.origin,
+            icons: [`${window.location.origin}/icon-192.png`]
+          }
+        });
+
+        // Enable session (shows QR code modal)
+        accounts = await provider.enable();
+        setWcProvider(provider);
+      } else if (hasInjectedProvider) {
+        // Use injected provider (MetaMask/Trust Wallet in-app browser)
+        provider = (window as any).ethereum;
+        accounts = await provider.request({ 
+          method: "eth_requestAccounts" 
+        });
+      } else {
+        // No provider available at all
+        toast({
+          variant: "destructive",
+          title: "Wallet Connection Required",
+          description: "Please install MetaMask or Trust Wallet, or use WalletConnect to link your wallet.",
+        });
+        return;
+      }
+
       const account = String(accounts?.[0] || "").toLowerCase();
       setAddress(account);
 
@@ -51,8 +96,8 @@ export function LinkWalletCard() {
 
       const { message, nonce } = await challengeRes.json();
 
-      // Request signature
-      const signature = await (window as any).ethereum.request({
+      // Request signature using the appropriate provider
+      const signature = await provider.request({
         method: "personal_sign",
         params: [message, account],
       });
@@ -116,12 +161,12 @@ export function LinkWalletCard() {
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Linking...
+                Connecting...
               </>
             ) : (
               <>
                 <Wallet className="mr-2 h-4 w-4" />
-                Link with MetaMask
+                {isMobile() && !(window as any).ethereum ? "Connect Wallet" : "Link with MetaMask"}
               </>
             )}
           </Button>
