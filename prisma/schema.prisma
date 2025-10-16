@@ -297,6 +297,19 @@ model LinkedWallet {
   @@index([address])
 }
 
+model WalletNonce {
+  id        String   @id @default(uuid())
+  userId    String
+  address   String   @db.VarChar(42)
+  nonce     String
+  issuedAt  DateTime @default(now())
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([userId, address])
+  @@index([expiresAt])
+}
+
 model UnmatchedDeposit {
   id              String    @id @default(uuid())
   fromAddress     String    @db.VarChar(42)
