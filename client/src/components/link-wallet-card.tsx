@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wallet, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import EthereumProvider from "@walletconnect/ethereum-provider";
+import { EthereumProvider } from "@walletconnect/ethereum-provider";
 
 export function LinkWalletCard() {
   const [address, setAddress] = useState<string>("");
@@ -13,12 +13,14 @@ export function LinkWalletCard() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Fetch user's linked wallets
+    // Fetch user's linked wallets on mount
     fetch("/api/wallet/me", { credentials: "include" })
       .then(r => r.ok ? r.json() : [])
       .then(wallets => setLinked(wallets))
       .catch(() => {});
+  }, []);
 
+  useEffect(() => {
     // Cleanup WalletConnect on unmount
     return () => {
       if (wcProvider) {
