@@ -11,7 +11,12 @@ async function setupProduction() {
     // 1. Create/Update Admin User
     console.log('1️⃣ Setting up admin user...');
     const adminEmail = 'noahkeaneowen@hotmail.com';
-    const adminPassword = 'Udaina@23May24';
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    
+    if (!adminPassword) {
+      throw new Error('ADMIN_PASSWORD environment variable is required');
+    }
+    
     const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
 
     let adminUser = await prisma.user.findUnique({
