@@ -769,24 +769,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/wallet/link/challenge', requireAuth, async (req, res) => {
     try {
-      const { address } = req.query;
-      if (!address || typeof address !== 'string') {
-        return res.status(400).json({ message: "Address required" });
-      }
-
-      const normalized = address.toLowerCase();
-      if (!/^0x[a-f0-9]{40}$/.test(normalized)) {
+      const userId = req.authUser!.id;
+      const address = String((req.query.address || '')).toLowerCase();
+      
+      if (!/^0x[a-f0-9]{40}$/.test(address)) {
         return res.status(400).json({ message: "Invalid address format" });
       }
 
       const nonce = nanoid(16);
-      const appDomain = process.env.APP_DOMAIN || 'localhost:5000';
-      const message = `Sign this message to link your wallet to XNRT.\n\nAddress: ${normalized}\nNonce: ${nonce}\nDomain: ${appDomain}`;
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      const issuedAt = new Date();
 
-      // Store nonce temporarily in session or memory (expires in 10 min)
-      (req.session as any).walletLinkNonce = { nonce, address: normalized, expiresAt: Date.now() + 10 * 60 * 1000 };
-      
-      res.json({ message, nonce });
+      // Store nonce in database (upsert for idempotency)
+      await prisma.walletNonce.upsert({
+        where: { userId_address: { userId, address } },
+        update: { nonce, expiresAt, issuedAt },
+        create: { userId, address, nonce, expiresAt, issuedAt },
+      });
+
+      const message =
+        `XNRT Wallet Link\n\n` +
+        `Address: ${address}\n` +
+        `Nonce: ${nonce}\n` +
+        `Issued: ${issuedAt.toISOString()}`;
+
+      res.json({ message, nonce, issuedAt: issuedAt.toISOString() });
     } catch (error) {
       console.error("Error generating challenge:", error);
       res.status(500).json({ message: "Failed to generate challenge" });
