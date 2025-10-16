@@ -1,0 +1,162 @@
+Awesome—thanks for the full dump. Here’s the tight review + fixes that matter, especially for wallet linking and the TypeScript/Prisma errors you reported.
+
+---
+
+# What’s going on with wallet link?
+
+* Your latest `server/routes.ts` already implements the **DB-backed nonce** flow (`walletNonce` upsert + verify with `ethers.verifyMessage`). ✅
+* Auth cookies and CSRF are issued from `/auth/login` and `/auth/csrf` with `sameSite: isProd ? 'none' : 'lax'` and `secure: isProd`. ✅
+* In MetaMask’s in-app browser, once you’re logged in **inside that webview**, the flow works—as you observed. The earlier failure was just “logged in on Chrome, not in MetaMask”.
+
+So the wallet link is healthy now. Keep the “manual link” fallback you showed in the screenshots—great UX for users without an injected provider.
+
+---
+
+# Critical TypeScript/Prisma fixes in `server/routes.ts`
+
+These are the ones that blow up type-checking and some admin endpoints. They’re all quick patches.
+
+## 1) Field name mismatches (Deposit Reports)
+
+**Symptoms you listed earlier**
+
+* `report.amount` possibly null
+* `transactionHash` doesn’t exist on `DepositReport`
+* `reportedAt` doesn’t exist (orderBy error)
+* `resolvedBy` not in model
+
+**Root causes in your code**
+
+* You create `DepositReport` with **`txHash`**, but later read **`report.transactionHash`**.
+* You order by **`reportedAt`**, but the model likely only has **`createdAt`**.
+* You set **`resolvedBy`** in updates; model likely doesn’t have it.
+* Prisma type says `amount: Decimal | null`.
+
+**Fix (no schema change):**
+
+```diff
+// /api/admin/deposit-reports (list)
+- orderBy: { reportedAt: 'desc' },
++ orderBy: { createdAt: 'desc' },
+
+// /api/admin/deposit-reports/:id/resolve (when crediting)
+- transactionHash: report.transactionHash,
++ transactionHash: report.txHash,
+
+- data: {
+-   status: 'approved',
+-   resolvedBy: req.authUser!.id,
+-   resolvedAt: new Date(),
+-   adminNotes: adminNotes || null,
+- }
++ data: {
++   status: 'approved',
++   resolvedAt: new Date(),
++   adminNotes: adminNotes || null,
++ }
+
+// Reject branch:
+- data: {
+-   status: 'rejected',
+-   resolvedBy: req.authUser!.id,
+-   resolvedAt: new Date(),
+-   adminNotes: adminNotes || null,
+- }
++ data: {
++   status: 'rejected',
++   resolvedAt: new Date(),
++   adminNotes: adminNotes || null,
++ }
+```
+
+If you **do** want to keep `resolvedBy` for audit, add it to the Prisma model:
+
+```prisma
+model DepositReport {
+  id         String   @id @default(cuid())
+  userId     String
+  txHash     String?
+  amount     Decimal?
+  status     String   @default("pending")
+  adminNotes String?
+  resolvedAt DateTime?
+  resolvedBy String?   // <— add this if you want
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+```
+
+Then migrate & `prisma generate`, and you can keep the `resolvedBy` assignments.
+
+For the “possibly null amount” warning, either guard:
+
+```ts
+const usdtAmount = parseFloat((report.amount ?? new Prisma.Decimal(0)).toString());
+```
+
+…or make `amount` non-nullable in the schema if you always set it.
+
+## 2) Unmatched deposits ordering
+
+You order by `detectedAt`:
+
+```diff
+// /api/admin/unmatched-deposits
+- orderBy: { detectedAt: 'desc' },
++ orderBy: { createdAt: 'desc' }, // or add detectedAt to the model
+```
+
+If you **need** `detectedAt`, add it to the Prisma model with a default `now()` and migrate.
+
+## 3) “declared but never used” (lint noise)
+
+Change unused params to `_req` (TS treats underscore-prefixed as intentionally unused) or remove locals:
+
+```ts
+app.post('/csp-report', (_req, res) => { ... });
+
+const todayStart = today.toISOString();
+// If unused, remove or rename to _todayStart
+```
+
+Apply this to all flagged lines you listed; it’s purely cosmetic but keeps CI green.
+
+## 4) Cookie clearing symmetry (nice-to-have)
+
+When clearing session cookies, match the attributes you set on login:
+
+```ts
+const isProd = process.env.NODE_ENV === 'production';
+res.clearCookie('sid', {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'lax',
+});
+```
+
+---
+
+# Wallet-link flow sanity checklist
+
+* `/auth/login` and `/auth/csrf` return cookies with `secure:true` + `sameSite:none` in prod. ✅
+* Frontend calls `initCSRFToken()` once (you do it in `AppContent` `useEffect`). ✅
+* `LinkWalletCard` includes `"x-csrf-token": window.CSRF_TOKEN` on **POST /confirm** (it does). ✅
+* `GET /challenge` only requires auth (no CSRF), returns `{ message, nonce, issuedAt }`. ✅
+* Signature uses **exact** message format (you reconstruct the same format on server). ✅
+* `ethers.verifyMessage(message, signature)` matches `address`. ✅
+* Nonce is checked against **DB** and transactionally deleted on success. ✅
+
+You’re in good shape here.
+
+---
+
+# TL;DR patch list
+
+1. **Use `createdAt`** instead of `reportedAt` and `detectedAt` in `orderBy`.
+2. **Use `report.txHash`** instead of `report.transactionHash` in admin resolve.
+3. **Drop `resolvedBy`** in updates unless you add it to the Prisma model.
+4. **Guard `report.amount`** (or make it non-nullable).
+5. **Rename unused params** to `_req` and trim unused locals.
+6. (Optional) **Symmetric cookie clear** options on logout.
+
+If you share your Prisma `schema.prisma` models for `DepositReport` and `UnmatchedDeposit`, I’ll tailor the exact field names so you can paste the final code without guessing.

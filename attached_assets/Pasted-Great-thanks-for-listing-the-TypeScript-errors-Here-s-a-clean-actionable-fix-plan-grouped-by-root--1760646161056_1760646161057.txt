@@ -1,0 +1,158 @@
+Great—thanks for listing the TypeScript errors. Here’s a clean, actionable fix plan grouped by root-cause, plus exact patches you can apply.
+
+---
+
+# 1) “declared but never used” (all the `req` / `todayStart` warnings)
+
+**What it means**
+TypeScript’s `noUnusedParameters`/`noUnusedLocals` are flagging parameters/vars you don’t read.
+
+**Fix (preferred)**
+Rename unused parameters to start with an underscore (TS treats them as intentionally unused):
+
+```ts
+router.get('/path', (_req, res) => { /* ... */ })
+```
+
+Delete truly unused locals like `todayStart` (Ln 1330) or prefix with `_todayStart` if you keep them for clarity.
+
+> Do this for all lines the linter flagged (31, 148, 300, 476, 1330, 1437, 1487, 1497, 1817, 1916, 2025, 2154, 2210, 2365, 2415, 2567, 2721).
+
+---
+
+# 2) Prisma `orderBy` fields don’t exist
+
+Errors:
+
+* `UnmatchedDeposit`: **`detectedAt`** not in type (Ln 1821)
+* `DepositReport`: **`reportedAt`** not in type (Ln 1925)
+
+**Why**
+Your Prisma models don’t have those columns. Most tables have `createdAt` by default.
+
+**Fix NOW (use existing field):**
+
+```ts
+// UnmatchedDeposit listing
+orderBy: { createdAt: 'desc' }  // instead of detectedAt
+
+// DepositReport listing
+orderBy: { createdAt: 'desc' }  // instead of reportedAt
+```
+
+**OR, if you actually want those fields**, add them to your Prisma schema and migrate:
+
+```prisma
+model UnmatchedDeposit {
+  id          String   @id @default(cuid())
+  // ...
+  detectedAt  DateTime @default(now())
+}
+
+model DepositReport {
+  id          String   @id @default(cuid())
+  // ...
+  reportedAt  DateTime @default(now())
+}
+```
+
+Then:
+
+```
+npx prisma migrate dev -n "add-detected-reported-at"
+npx prisma generate
+```
+
+---
+
+# 3) Property mismatches on selected types
+
+* **`transactionHash` does not exist** (Ln 1972)
+  From the error type, the field is **`txHash`**, not `transactionHash`.
+
+**Fix:**
+
+```ts
+// replace
+row.transactionHash
+// with
+row.txHash
+```
+
+* **`resolvedBy` not allowed in `DepositReportUpdateInput`** (Ln 1999, 2011)
+  The model doesn’t have `resolvedBy`. Either remove it from the update call **or** add it to the schema.
+
+**Fix NOW (remove field):**
+
+```ts
+await prisma.depositReport.update({
+  where: { id },
+  data: { resolvedAt: new Date(), /* ...other valid fields */ },
+});
+```
+
+**OR add it to schema if you need it:**
+
+```prisma
+model DepositReport {
+  id         String   @id @default(cuid())
+  // ...
+  resolvedBy String?  // FK to User.id if you want
+}
+```
+
+Then migrate & regenerate.
+
+---
+
+# 4) “possibly null” on `report.amount` (Ln 1960)
+
+**Why**
+The type says `amount: Decimal | null`. Guard or coalesce.
+
+**Fix:**
+
+```ts
+import { Prisma } from '@prisma/client';
+
+const amount = report.amount ?? new Prisma.Decimal(0);
+// use `amount` safely afterwards
+```
+
+Or ensure your `find*` excludes nulls:
+
+```ts
+where: { amount: { not: null } }
+```
+
+---
+
+# 5) Misc. robustness (recommended)
+
+* **Logout cookie clearing**
+  When you set cookies with `sameSite:'none', secure:true` in prod, clearing must match attributes:
+
+```ts
+const isProd = process.env.NODE_ENV === 'production';
+res.clearCookie('sid', {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'lax',
+});
+```
+
+* **CORS**
+  Ensure `CLIENT_URL` exactly matches the origin you’re using (e.g., `https://xnrt.org`). If you serve multiple origins (local/prod/www), use an allow-list function.
+
+---
+
+## Quick checklist you can run through now
+
+1. Rename unused params → `_req` (and remove truly unused locals).
+2. Replace `orderBy: { detectedAt… }` & `orderBy: { reportedAt… }` with `createdAt`, **or** add those columns and migrate.
+3. Rename `transactionHash` → `txHash`.
+4. Remove `resolvedBy` from updates, or add it to Prisma model and migrate.
+5. Guard `report.amount` with `?? new Prisma.Decimal(0)`.
+6. Update `logout` `clearCookie` to match cookie attributes.
+
+If you paste the relevant **model snippets** from `shared/schema.prisma` (for `UnmatchedDeposit` and `DepositReport`) I can give you the exact `orderBy` and update payloads tailored to your schema.

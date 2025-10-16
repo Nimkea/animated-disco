@@ -1,0 +1,72 @@
+'Request' is declared but never used.
+(typescript)
+Ln 1, Col 24
+'req' is declared but its value is never read.
+(typescript)
+Ln 31, Col 10
+'req' is declared but its value is never read.
+(typescript)
+Ln 148, Col 77
+'req' is declared but its value is never read.
+(typescript)
+Ln 300, Col 77
+'req' is declared but its value is never read.
+(typescript)
+Ln 476, Col 48
+'todayStart' is declared but its value is never read.
+(typescript)
+Ln 1330, Col 13
+'req' is declared but its value is never read.
+(typescript)
+Ln 1437, Col 65
+'req' is declared but its value is never read.
+(typescript)
+Ln 1487, Col 76
+'req' is declared but its value is never read.
+(typescript)
+Ln 1497, Col 79
+'req' is declared but its value is never read.
+(typescript)
+Ln 1817, Col 78
+Object literal may only specify known properties, and 'detectedAt' does not exist in type 'UnmatchedDepositOrderByWithRelationInput | UnmatchedDepositOrderByWithRelationInput[]'.
+(typescript)
+Ln 1821, Col 20
+'req' is declared but its value is never read.
+(typescript)
+Ln 1916, Col 75
+Object literal may only specify known properties, and 'reportedAt' does not exist in type 'DepositReportOrderByWithRelationInput | DepositReportOrderByWithRelationInput[]'.
+(typescript)
+Ln 1925, Col 20
+'report.amount' is possibly 'null'.
+(typescript)
+Ln 1960, Col 39
+Property 'transactionHash' does not exist on type '{ status: string; id: string; createdAt: Date; userId: string; amount: Decimal | null; fromAddress: string; txHash: string | null; notes: string | null; resolvedAt: Date | null; }'.
+(typescript)
+Ln 1972, Col 39
+Object literal may only specify known properties, but 'resolvedBy' does not exist in type '(Without<DepositReportUpdateInput, DepositReportUncheckedUpdateInput> & DepositReportUncheckedUpdateInput) | (Without<...> & DepositReportUpdateInput)'. Did you mean to write 'resolvedAt'?
+(typescript)
+Ln 1999, Col 15
+Object literal may only specify known properties, but 'resolvedBy' does not exist in type '(Without<DepositReportUpdateInput, DepositReportUncheckedUpdateInput> & DepositReportUncheckedUpdateInput) | (Without<...> & DepositReportUpdateInput)'. Did you mean to write 'resolvedAt'?
+(typescript)
+Ln 2011, Col 13
+'req' is declared but its value is never read.
+(typescript)
+Ln 2025, Col 94
+'req' is declared but its value is never read.
+(typescript)
+Ln 2154, Col 65
+'req' is declared but its value is never read.
+(typescript)
+Ln 2210, Col 69
+'req' is declared but its value is never read.
+(typescript)
+Ln 2365, Col 64
+'req' is declared but its value is never read.
+(typescript)
+Ln 2415, Col 66
+'req' is declared but its value is never read.
+(typescript)
+Ln 2567, Col 65
+'req' is declared but its value is never read.
+(typescript)
+Ln 2721, Col 72

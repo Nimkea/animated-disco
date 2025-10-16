@@ -1,0 +1,561 @@
+Awesome — here’s a **drop-in, copy-paste patch** tailored to your repo that adds **DepositIntent** (baseAmount + fingerprint + exactAmount) and the API + scanner glue to **auto-verify USDT deposits to your single treasury address** and **auto-credit off-chain XNRT**.
+
+---
+
+# 1) Prisma: add `DepositIntent` model
+
+Append this model to `prisma/schema.prisma` (keep your existing models unchanged):
+
+```prisma
+model DepositIntent {
+  id              String   @id @default(uuid())
+  userId          String
+  // EVM chain tag, keep "bsc" for now
+  chain           String   @default("bsc")
+  // Treasury address users send to (lowercased 0x…)
+  toAddress       String   @db.VarChar(42)
+
+  // Token info for the on-chain deposit (we’ll use USDT on BSC)
+  tokenSymbol     String
+  tokenContract   String   @db.VarChar(42)
+  tokenDecimals   Int      // e.g., 18 for Binance-Peg USDT
+
+  // Amounts
+  baseAmount      Decimal  @db.Decimal(38, 18)    // user-entered base (e.g., 100)
+  fingerprint     Decimal  @db.Decimal(38, 18)    // the unique “decimal tag” (e.g., 0.52)
+  exactAmount     Decimal  @db.Decimal(38, 18)    // base + fingerprint (e.g., 100.52)
+  exactAmountRaw  BigInt                                // exactAmount * 10^tokenDecimals
+
+  // Lifecycle
+  status          String   @default("pending")     // pending | matched | credited | expired | reversed
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Match data from chain
+  matchedTxHash   String?  @db.Text
+  matchedLogIndex Int?
+  matchedAt       DateTime?
+  confirmations   Int      @default(0)
+
+  // Credit info
+  creditedXnrt    Decimal? @db.Decimal(38, 18)
+  creditedAt      DateTime?
+  reversedAt      DateTime?
+  notes           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([toAddress, tokenSymbol, status, expiresAt])
+  // Helpful for quick matching: (to, token, exactRaw)
+  @@index([toAddress, tokenSymbol, exactAmountRaw])
+}
+```
+
+**Then run:**
+
+```bash
+npx prisma generate
+npx prisma migrate dev -n add_deposit_intent
+```
+
+---
+
+# 2) ENV additions (fingerprint + chain)
+
+Add these to `.env` (or your Replit secrets). Keep names consistent with your existing vars:
+
+```bash
+# Chain + tokens
+RPC_BSC_URL=wss://bsc-ws-node.nariox.org:443 # or your provider (WebSocket recommended)
+RPC_BSC_HTTPS=https://bsc-dataseed.binance.org      # HTTPS fallback
+BSC_CONFIRMATIONS=12
+BSC_USDT_CONTRACT=0x55d398326f99059fF775485246999027B3197955
+BSC_USDT_DECIMALS=18
+
+# Treasury
+XNRT_WALLET=0xYourCompanyTreasuryAddress_Lowercased
+
+# XNRT conversion
+XNRT_RATE_USDT=100
+PLATFORM_FEE_BPS=0
+
+# Fingerprint settings
+FINGERPRINT_DECIMALS=2   # 2 is safest globally; set 3 only if all target exchanges allow 3 dp “You will receive”
+FINGERPRINT_MIN=0.01
+FINGERPRINT_MAX=0.99
+FINGERPRINT_EXCLUDE=0.10,0.20,0.50
+FINGERPRINT_TTL_MINUTES=60
+```
+
+> If you confirm your target exchanges support **3 decimals** in “You will receive”, switch to:
+> `FINGERPRINT_DECIMALS=3`, `FINGERPRINT_MIN=0.001`, `FINGERPRINT_MAX=0.999`, update EXCLUDE accordingly.
+
+---
+
+# 3) API patch (server)
+
+Add **DepositIntent API** into `server/routes.ts`.
+Search for a logical place (e.g., after “// Transaction routes”) and paste:
+
+```ts
+// === Fingerprint Deposit Intents (USDT on BSC) ===
+app.post('/api/deposits/intent', requireAuth, validateCSRF, async (req, res) => {
+  try {
+    const userId = req.authUser!.id;
+    const { baseAmount, tokenSymbol } = req.body as { baseAmount: string | number; tokenSymbol?: string };
+
+    const symbol = (tokenSymbol || 'USDT').toUpperCase();
+    if (symbol !== 'USDT') {
+      return res.status(400).json({ message: 'Only USDT (BEP-20) is supported for now' });
+    }
+
+    const treasury = (process.env.XNRT_WALLET || '').toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(treasury)) {
+      return res.status(500).json({ message: 'Treasury address not configured' });
+    }
+
+    const tokenContract = (process.env.BSC_USDT_CONTRACT || '').toLowerCase();
+    const tokenDecimals = Number(process.env.BSC_USDT_DECIMALS || 18);
+    if (!/^0x[a-f0-9]{40}$/.test(tokenContract)) {
+      return res.status(500).json({ message: 'USDT contract not configured' });
+    }
+
+    const dec = Number(process.env.FINGERPRINT_DECIMALS || 2);
+    const min = Number(process.env.FINGERPRINT_MIN || (dec === 3 ? 0.001 : 0.01));
+    const max = Number(process.env.FINGERPRINT_MAX || (dec === 3 ? 0.999 : 0.99));
+    const excludes = (process.env.FINGERPRINT_EXCLUDE || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(parseFloat);
+
+    const ttlMins = Number(process.env.FINGERPRINT_TTL_MINUTES || 60);
+    const expiresAt = new Date(Date.now() + ttlMins * 60 * 1000);
+
+    const base = typeof baseAmount === 'string' ? parseFloat(baseAmount) : baseAmount;
+    if (!Number.isFinite(base) || base <= 0) {
+      return res.status(400).json({ message: 'Invalid baseAmount' });
+    }
+
+    // build candidate fingerprints (step = 10^-dec)
+    const step = Number('1'.padStart(dec + 1, '0')) ** -1 || Math.pow(10, -dec);
+    const pool: number[] = [];
+    for (let x = min; x <= max + 1e-12; x = Number((x + step).toFixed(dec))) {
+      if (!excludes.includes(Number(x.toFixed(dec)))) pool.push(Number(x.toFixed(dec)));
+    }
+
+    // get currently active (non-expired) intents to avoid collisions
+    const now = new Date();
+    const active = await prisma.depositIntent.findMany({
+      where: {
+        chain: 'bsc',
+        toAddress: treasury,
+        tokenSymbol: symbol,
+        status: 'pending',
+        expiresAt: { gt: now },
+      },
+      select: { fingerprint: true, exactAmount: true },
+    });
+
+    const used = new Set(active.map(a => Number(a.fingerprint.toString()).toFixed(dec)));
+
+    // pick a free fingerprint
+    const candidates = pool.filter(v => !used.has(v.toFixed(dec)));
+    if (candidates.length === 0) {
+      return res.status(409).json({ message: 'No fingerprint slots available. Please try again in a few minutes.' });
+    }
+
+    // random pick helps spread collisions
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    const exact = Number((base + pick).toFixed(Math.max(2, dec))); // keep at least 2 dp
+
+    // compute exactAmountRaw = exact * 10^tokenDecimals
+    const pow = BigInt(10) ** BigInt(tokenDecimals);
+    const exactRaw = BigInt(Math.round(exact * 10 ** Math.min(8, tokenDecimals))) * (pow / BigInt(10 ** Math.min(8, tokenDecimals)));
+
+    const intent = await prisma.depositIntent.create({
+      data: {
+        userId,
+        chain: 'bsc',
+        toAddress: treasury,
+        tokenSymbol: symbol,
+        tokenContract,
+        tokenDecimals,
+        baseAmount: new Prisma.Decimal(base),
+        fingerprint: new Prisma.Decimal(pick),
+        exactAmount: new Prisma.Decimal(exact),
+        exactAmountRaw: exactRaw,
+        status: 'pending',
+        expiresAt,
+      },
+    });
+
+    return res.json({
+      id: intent.id,
+      toAddress: treasury,
+      tokenSymbol: symbol,
+      tokenContract,
+      baseAmount: intent.baseAmount,
+      fingerprint: intent.fingerprint,
+      exactAmount: intent.exactAmount,
+      expiresAt: intent.expiresAt,
+      instructions: [
+        `Network: BSC (BEP-20)`,
+        `Token: ${symbol}`,
+        `Send exactly: ${exact} ${symbol}`,
+        `Destination address: ${treasury}`,
+        `Important: Make sure the exchange shows "You will receive" = ${exact} ${symbol}.`,
+        `This instruction expires at: ${intent.expiresAt.toISOString()}`,
+      ],
+    });
+  } catch (err) {
+    console.error('[intent] error:', err);
+    return res.status(500).json({ message: 'Failed to create deposit intent' });
+  }
+});
+
+app.get('/api/deposits/intents', requireAuth, async (req, res) => {
+  try {
+    const userId = req.authUser!.id;
+    const status = (req.query.status as string) || undefined;
+
+    const where: any = { userId };
+    if (status) where.status = status;
+
+    const intents = await prisma.depositIntent.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    res.json(intents);
+  } catch (err) {
+    console.error('[intent:list] error:', err);
+    res.status(500).json({ message: 'Failed to fetch intents' });
+  }
+});
+
+app.post('/api/deposits/intents/:id/cancel', requireAuth, validateCSRF, async (req, res) => {
+  try {
+    const userId = req.authUser!.id;
+    const { id } = req.params;
+
+    const intent = await prisma.depositIntent.findUnique({ where: { id } });
+    if (!intent || intent.userId !== userId) {
+      return res.status(404).json({ message: 'Intent not found' });
+    }
+    if (intent.status !== 'pending') {
+      return res.status(400).json({ message: 'Intent is not pending' });
+    }
+
+    const updated = await prisma.depositIntent.update({
+      where: { id },
+      data: { status: 'expired', expiresAt: new Date() },
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error('[intent:cancel] error:', err);
+    res.status(500).json({ message: 'Failed to cancel intent' });
+  }
+});
+```
+
+> These endpoints follow your existing **`requireAuth`** + **`validateCSRF`** style and Prisma usage.
+
+---
+
+# 4) Scanner patch (auto-match + auto-credit)
+
+You already import `startDepositScanner()` in `server/index.ts`.
+Extend `server/services/depositScanner.ts` with a **fingerprint listener**.
+
+If you want to keep your current scanner logic untouched, append the **new code** below and call `startFingerprintScanner()` from `startDepositScanner()`.
+
+```ts
+// server/services/depositScanner.ts
+import { PrismaClient, Prisma } from '@prisma/client';
+import { ethers } from 'ethers';
+import { notifyUser } from '../notifications';
+
+const prisma = new PrismaClient();
+
+let wsProvider: ethers.WebSocketProvider | null = null;
+let httpProvider: ethers.JsonRpcProvider | null = null;
+
+function getProvider() {
+  if (!wsProvider) {
+    try {
+      if (process.env.RPC_BSC_URL) {
+        wsProvider = new ethers.WebSocketProvider(process.env.RPC_BSC_URL);
+        wsProvider.on('error', (e) => console.error('[WS] provider error', e));
+        wsProvider._ws?.on('close', () => {
+          console.warn('[WS] closed, will recreate on next tick');
+          wsProvider = null;
+        });
+      }
+    } catch (e) {
+      console.error('[WS] init error:', e);
+    }
+  }
+  if (!httpProvider) {
+    httpProvider = new ethers.JsonRpcProvider(process.env.RPC_BSC_HTTPS || process.env.RPC_BSC_URL);
+  }
+  return { ws: wsProvider, http: httpProvider! };
+}
+
+async function creditOffchainXNRT(params: {
+  intentId: string;
+  userId: string;
+  usdtAmount: number;
+  txHash: string;
+  logIndex: number;
+  confirmations: number;
+  receiptBlock: number;
+}) {
+  const rate = Number(process.env.XNRT_RATE_USDT ?? 100);
+  const feeBps = Number(process.env.PLATFORM_FEE_BPS ?? 0);
+  const netUsdt = params.usdtAmount * (1 - feeBps / 10_000);
+  const xnrtAmount = netUsdt * rate;
+
+  await prisma.$transaction(async (tx) => {
+    // Create approved deposit transaction (idempotent via unique txHash in your schema)
+    await tx.transaction.create({
+      data: {
+        userId: params.userId,
+        type: 'deposit',
+        amount: new Prisma.Decimal(xnrtAmount),
+        usdtAmount: new Prisma.Decimal(params.usdtAmount),
+        transactionHash: params.txHash,               // unique in your schema
+        walletAddress: process.env.XNRT_WALLET!,
+        status: 'approved',
+        verified: true,
+        confirmations: params.confirmations,
+        verificationData: {
+          via: 'fingerprint-intent',
+          logIndex: params.logIndex,
+          blockNumber: params.receiptBlock,
+        } as any,
+      },
+    });
+
+    // Credit balance atomically
+    await tx.balance.upsert({
+      where: { userId: params.userId },
+      create: {
+        userId: params.userId,
+        xnrtBalance: new Prisma.Decimal(xnrtAmount),
+        totalEarned: new Prisma.Decimal(xnrtAmount),
+      },
+      update: {
+        xnrtBalance: { increment: new Prisma.Decimal(xnrtAmount) },
+        totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
+      },
+    });
+
+    // Mark intent credited
+    await tx.depositIntent.update({
+      where: { id: params.intentId },
+      data: {
+        status: 'credited',
+        creditedXnrt: new Prisma.Decimal(xnrtAmount),
+        creditedAt: new Date(),
+        confirmations: params.confirmations,
+      },
+    });
+  });
+
+  // Non-blocking notification
+  void notifyUser(params.userId, {
+    type: 'deposit_credited',
+    title: '💰 Deposit credited!',
+    message: `Your deposit of ${params.usdtAmount.toFixed(2)} USDT was verified and ${xnrtAmount.toFixed(2)} XNRT was credited.`,
+    url: '/wallet',
+    metadata: {
+      txHash: params.txHash,
+      usdtAmount: params.usdtAmount.toString(),
+      xnrtAmount: xnrtAmount.toString(),
+    },
+  }).catch(e => console.error('[notifyUser] error:', e));
+}
+
+async function handleMatchedIntent(intentId: string, txHash: string, logIndex: number) {
+  const confReq = Number(process.env.BSC_CONFIRMATIONS || 12);
+  const { http } = getProvider();
+
+  try {
+    const receipt = await http.getTransactionReceipt(txHash);
+    if (!receipt || !receipt.blockNumber) return;
+
+    const tip = await http.getBlockNumber();
+    const conf = Math.max(0, tip - Number(receipt.blockNumber) + 1);
+
+    // Update match state
+    const intent = await prisma.depositIntent.update({
+      where: { id: intentId },
+      data: {
+        matchedTxHash: txHash,
+        matchedLogIndex: logIndex,
+        matchedAt: new Date(),
+        confirmations: conf,
+        status: conf >= confReq ? 'credited' : 'matched',
+      },
+    });
+
+    // Credit now if already enough confirmations, else schedule a poll
+    const usdt = Number(intent.exactAmount.toString());
+    if (conf >= confReq) {
+      await creditOffchainXNRT({
+        intentId,
+        userId: intent.userId,
+        usdtAmount: usdt,
+        txHash,
+        logIndex,
+        confirmations: conf,
+        receiptBlock: receipt.blockNumber,
+      });
+    }
+  } catch (e) {
+    console.error('[matchedIntent] error:', e);
+  }
+}
+
+// Periodic confirmer (for matched intents waiting confirmations)
+async function confirmLoop() {
+  const confReq = Number(process.env.BSC_CONFIRMATIONS || 12);
+  const { http } = getProvider();
+
+  try {
+    const tip = await http.getBlockNumber();
+    const matched = await prisma.depositIntent.findMany({
+      where: { status: { in: ['matched'] }, matchedTxHash: { not: null } },
+      take: 100,
+    });
+
+    for (const intent of matched) {
+      const receipt = await http.getTransactionReceipt(intent.matchedTxHash!);
+      if (!receipt || !receipt.blockNumber) continue;
+
+      const conf = Math.max(0, tip - Number(receipt.blockNumber) + 1);
+      if (conf >= confReq) {
+        await creditOffchainXNRT({
+          intentId: intent.id,
+          userId: intent.userId,
+          usdtAmount: Number(intent.exactAmount.toString()),
+          txHash: intent.matchedTxHash!,
+          logIndex: intent.matchedLogIndex ?? 0,
+          confirmations: conf,
+          receiptBlock: receipt.blockNumber,
+        });
+      } else {
+        await prisma.depositIntent.update({
+          where: { id: intent.id },
+          data: { confirmations: conf },
+        });
+      }
+    }
+  } catch (e) {
+    console.error('[confirmLoop] error:', e);
+  }
+}
+
+export async function startFingerprintScanner() {
+  const treasury = (process.env.XNRT_WALLET || '').toLowerCase();
+  const usdt = (process.env.BSC_USDT_CONTRACT || '').toLowerCase();
+  const tokenDecimals = Number(process.env.BSC_USDT_DECIMALS || 18);
+  if (!/^0x[a-f0-9]{40}$/.test(treasury) || !/^0x[a-f0-9]{40}$/.test(usdt)) {
+    console.warn('[fingerprint] disabled (treasury or USDT contract missing)');
+    return;
+  }
+
+  const { ws, http } = getProvider();
+  const provider = (ws ?? http)!;
+  const iface = new ethers.Interface([
+    'event Transfer(address indexed from, address indexed to, uint256 value)'
+  ]);
+  const usdtContract = new ethers.Contract(usdt, iface, provider);
+
+  // Live events: USDT Transfer(to == treasury)
+  usdtContract.on('Transfer', async (_from: string, to: string, value: ethers.BigNumberish, event) => {
+    try {
+      if ((to || '').toLowerCase() !== treasury) return;
+
+      // value is raw (uint256)
+      const raw = BigInt(value.toString());
+
+      // Find pending, non-expired intent with exactAmountRaw == value
+      const now = new Date();
+      const intent = await prisma.depositIntent.findFirst({
+        where: {
+          chain: 'bsc',
+          toAddress: treasury,
+          tokenSymbol: 'USDT',
+          tokenContract: usdt,
+          status: 'pending',
+          expiresAt: { gt: now },
+          exactAmountRaw: raw,
+        },
+      });
+
+      if (!intent) return; // no match for this exact amount
+
+      // Mark as matched, then attempt immediate credit if already >= confirmations
+      await handleMatchedIntent(intent.id, event.log.transactionHash, event.log.index);
+    } catch (e) {
+      console.error('[Transfer handler] error:', e);
+    }
+  });
+
+  // Backfill/poll confirmations
+  setInterval(confirmLoop, 15_000);
+  console.log('[fingerprint] scanner started (USDT, BSC)');
+}
+
+// Call this from your existing starter
+export async function startDepositScanner() {
+  // ... keep your existing scanner boot logic here ...
+  try {
+    await startFingerprintScanner();
+  } catch (e) {
+    console.error('[startDepositScanner] fingerprint init error:', e);
+  }
+}
+```
+
+> This listener:
+>
+> * subscribes to **USDT `Transfer`** events where `to == treasury`
+> * matches **exact `value`** to a **non-expired pending `DepositIntent`**
+> * marks **matched**, waits for **N confirmations**, then **credits off-chain XNRT** + creates a normal `Transaction` row (approved, verified)
+
+---
+
+# 5) Frontend (minimal)
+
+On your **Deposit** page, replace “enter amount + tx hash + upload proof” with:
+
+* Call `POST /api/deposits/intent` with `{ baseAmount: number, tokenSymbol: 'USDT' }`
+* Render the returned **exactAmount** + **toAddress** + instructions
+* Poll `GET /api/deposits/intents?status=pending` every ~10–15s, or subscribe to your existing notification center; when status becomes `matched/credited`, show success.
+
+(Your existing `NotificationCenter` and toasts will work with the `notifyUser` call.)
+
+---
+
+## Notes & guardrails
+
+* **Idempotency:** your `Transaction.transactionHash` is unique → protects double credit.
+  For ultra-edge cases (multiple credits in a single tx) you may later add `logIndex` to `Transaction` and enforce composite uniqueness.
+* **Reversals:** the confirmer loop can mark `reversed` on deep reorgs (rare on BSC). A basic reversal hook is sketched (status has `reversed`) — you can extend to auto-debit with an audit log if needed.
+* **BNB/native deposits:** this patch is USDT-only. You can add a similar listener on native transfers if you want to support BNB with fingerprints.
+* **3 decimals:** only enable if exchanges your users use allow **three decimals in the “You will receive”** field.
+
+---
+
+That’s it. With this patch you get:
+
+* **No wallet linking**
+* **No manual admin approve**
+* Users **copy address, send exact USDT**, and the system **auto-credits XNRT** after confirmations.
