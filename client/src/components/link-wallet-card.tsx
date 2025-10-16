@@ -5,11 +5,13 @@ import { Wallet, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ensureCsrf } from "@/lib/csrf";
 import { requireSession } from "@/lib/auth";
+import ManualLinkWalletDialog from "./manual-link-wallet-dialog";
 
 export function LinkWalletCard() {
   const [address, setAddress] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [linked, setLinked] = useState<string[]>([]);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -146,24 +148,34 @@ export function LinkWalletCard() {
             Connect your MetaMask or Trust Wallet. Deposits from linked wallets auto-credit after confirmations.
           </p>
 
-          <Button 
-            onClick={linkWallet} 
-            disabled={loading}
-            className="bg-amber-500 hover:bg-amber-600 text-black font-semibold"
-            data-testid="button-link-wallet"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Linking...
-              </>
-            ) : (
-              <>
-                <Wallet className="mr-2 h-4 w-4" />
-                Link Wallet
-              </>
-            )}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              onClick={linkWallet} 
+              disabled={loading}
+              className="bg-amber-500 hover:bg-amber-600 text-black font-semibold"
+              data-testid="button-link-wallet"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Linking...
+                </>
+              ) : (
+                <>
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Link Wallet
+                </>
+              )}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setManualDialogOpen(true)}
+              disabled={loading}
+              data-testid="button-manual-link"
+            >
+              Having trouble?
+            </Button>
+          </div>
 
           {linked.length > 0 && (
             <div className="mt-4 space-y-2" data-testid="container-linked-wallets">
@@ -184,6 +196,16 @@ export function LinkWalletCard() {
           )}
         </div>
       </div>
+
+      <ManualLinkWalletDialog
+        open={manualDialogOpen}
+        onOpenChange={setManualDialogOpen}
+        onLinked={(addr) => {
+          if (!linked.includes(addr)) {
+            setLinked(prev => [addr, ...prev]);
+          }
+        }}
+      />
     </Card>
   );
 }
