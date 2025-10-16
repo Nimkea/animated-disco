@@ -167,6 +167,9 @@
 @layer base {
   * {
     @apply border-border;
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: ease;
+    transition-duration: 0.3s;
   }
 
   html {
@@ -176,12 +179,6 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     transition: background-color 0.3s ease, color 0.3s ease;
-  }
-  
-  * {
-    transition-property: background-color, border-color, color, fill, stroke;
-    transition-timing-function: ease;
-    transition-duration: 0.3s;
   }
 }
 
@@ -202,7 +199,7 @@
     content: "";
     pointer-events: none;
     position: absolute;
-    inset: 0px;
+    inset: 0;
     border-radius: inherit;
     z-index: -1;
   }
@@ -230,7 +227,7 @@
     content: "";
     pointer-events: none;
     position: absolute;
-    inset: 0px;
+    inset: 0;
     border-radius: inherit;
     z-index: 999;
   }
@@ -248,8 +245,7 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
-  .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
-  .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
+  .border.active-elevate-2:not(.no-active-interaction-elevate)::after {
     inset: -1px;
   }
 

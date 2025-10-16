@@ -15,14 +15,21 @@
         ]
       }
     ],
-    "declaration-block-trailing-semicolon": null,
-    "no-descending-specificity": null,
-    "import-notation": null,
     "function-no-unknown": [
       true,
       {
         "ignoreFunctions": ["theme"]
       }
-    ]
+    ],
+    "no-descending-specificity": null,
+    "import-notation": null,
+    "color-function-notation": null,
+    "alpha-value-notation": null,
+    "hue-degree-notation": null,
+    "color-function-alias-notation": null,
+    "custom-property-empty-line-before": null,
+    "value-keyword-case": null,
+    "declaration-empty-line-before": null,
+    "rule-empty-line-before": null
   }
 }
