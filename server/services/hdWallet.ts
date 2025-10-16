@@ -20,26 +20,24 @@ export function deriveDepositAddress(derivationIndex: number): string {
     throw new Error('MASTER_SEED environment variable not set');
   }
 
-  // Validate seed format (should be 12 or 24 word mnemonic OR hex seed)
-  let hdNode: ethers.HDNodeWallet;
+  // Validate seed format (should be 12 or 24 word mnemonic)
+  let mnemonic: ethers.Mnemonic;
   
   try {
-    // Try as mnemonic first
     if (masterSeed.split(' ').length >= 12) {
-      hdNode = ethers.HDNodeWallet.fromPhrase(masterSeed);
+      mnemonic = ethers.Mnemonic.fromPhrase(masterSeed);
     } else {
-      // Try as hex seed
-      hdNode = ethers.HDNodeWallet.fromSeed(masterSeed);
+      throw new Error('MASTER_SEED must be a 12 or 24 word mnemonic phrase');
     }
   } catch (error) {
-    throw new Error('Invalid MASTER_SEED format. Must be 12/24 word mnemonic or hex seed');
+    throw new Error('Invalid MASTER_SEED format. Must be 12/24 word mnemonic');
   }
 
-  // Derive child address at index
+  // Create HD wallet from mnemonic and derive child address
   const derivationPath = `${BSC_DERIVATION_PATH}/${derivationIndex}`;
-  const childWallet = hdNode.derivePath(derivationPath);
+  const hdNode = ethers.HDNodeWallet.fromMnemonic(mnemonic, derivationPath);
 
-  return childWallet.address.toLowerCase();
+  return hdNode.address.toLowerCase();
 }
 
 /**
@@ -88,16 +86,16 @@ export function getDerivedPrivateKey(derivationIndex: number): string {
     throw new Error('MASTER_SEED not set');
   }
 
-  let hdNode: ethers.HDNodeWallet;
+  let mnemonic: ethers.Mnemonic;
   
   if (masterSeed.split(' ').length >= 12) {
-    hdNode = ethers.HDNodeWallet.fromPhrase(masterSeed);
+    mnemonic = ethers.Mnemonic.fromPhrase(masterSeed);
   } else {
-    hdNode = ethers.HDNodeWallet.fromSeed(masterSeed);
+    throw new Error('MASTER_SEED must be a 12 or 24 word mnemonic phrase');
   }
 
   const derivationPath = `${BSC_DERIVATION_PATH}/${derivationIndex}`;
-  const childWallet = hdNode.derivePath(derivationPath);
+  const hdNode = ethers.HDNodeWallet.fromMnemonic(mnemonic, derivationPath);
 
-  return childWallet.privateKey;
+  return hdNode.privateKey;
 }
