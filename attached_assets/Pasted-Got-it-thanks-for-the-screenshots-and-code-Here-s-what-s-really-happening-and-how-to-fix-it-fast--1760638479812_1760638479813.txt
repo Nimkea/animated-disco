@@ -1,0 +1,163 @@
+Got it—thanks for the screenshots and code. Here’s what’s really happening and how to fix it fast.
+
+## What the two errors mean
+
+1. **“No Wallet Found. Please open this page in MetaMask or Trust Wallet browser.”**
+   That’s your desktop/mobile browser **without** an injected provider. It’s expected when you’re not inside a wallet browser *and* not using WalletConnect.
+
+2. **MetaMask in-app browser: “Linking Failed – Failed to generate challenge.”**
+   This isn’t a provider problem. It’s your **backend refusing `/api/wallet/link/challenge`** because the request doesn’t carry a valid **session cookie and/or CSRF token**. In the MetaMask browser you’re in a fresh WebView (new cookie jar). If the user isn’t logged in there or your CSRF token hasn’t been set yet, the challenge endpoint returns an error → your toast shows “Failed to generate challenge”.
+
+## Why it happens in your code
+
+* You call `initCSRFToken()` inside `AppContent` **after** the app renders. If the user hits “Link Wallet” immediately, the CSRF cookie/header race means your first wallet request can run **before** the token is ready.
+* Challenge & confirm are split routes. **GET** challenge *should not* need CSRF (safe/idempotent). If it currently requires an authenticated session and/or CSRF, it will fail when:
+
+  * The user is **not logged in** in the MetaMask WebView (most common).
+  * The **sid** cookie or **csrfToken** cookie isn’t present yet (race or cookie settings).
+
+## The minimal, robust fix
+
+### 1) Make challenge CSRF-free (server)
+
+For the challenge route **only**, allow authenticated session OR relax CSRF (keep CSRF on the **confirm** POST). GETs should be safe:
+
+```ts
+// server/wallet/routes.ts (example)
+router.get('/link/challenge', requireAuth, async (req, res) => {
+  // DO NOT validate CSRF here – keep it for POST /confirm
+  const { address } = req.query as { address?: string };
+  if (!address) return res.status(400).json({ message: 'Missing address' });
+
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const message = `XNRT Wallet Link\n\nAddress: ${address}\nNonce: ${nonce}\nIssued: ${new Date().toISOString()}`;
+  // persist nonce keyed by userId+address with short TTL
+  await prisma.walletNonce.upsert({
+    where: { userId_address: { userId: req.authUser!.id, address: address.toLowerCase() } },
+    update: { nonce, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+    create: { userId: req.authUser!.id, address: address.toLowerCase(), nonce, expiresAt: new Date(Date.now() + 10 * 60 * 1000) }
+  });
+  res.json({ message, nonce });
+});
+```
+
+### 2) Initialize CSRF **before** rendering (client)
+
+Guarantee the token is ready for the **POST /confirm**.
+
+```ts
+// client/src/main.tsx
+import { initMonitoring } from './lib/monitoring';
+import { initCSRFToken } from './lib/queryClient';
+initMonitoring();
+
+(async () => {
+  try { await initCSRFToken(); } catch {}
+  createRoot(document.getElementById('root')!).render(
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  );
+})();
+```
+
+…and **remove** the `initCSRFToken()` call from `AppContent` (it’s now redundant).
+
+### 3) Guard in the UI: make sure the user is logged in in MetaMask
+
+If there’s no session, ask them to log in right there (in the MetaMask browser) before linking.
+
+```ts
+// client/src/components/link-wallet-card.tsx (inside linkWallet)
+const me = await fetch('/auth/me', { credentials: 'include' });
+if (me.status === 401) {
+  toast({
+    variant: 'destructive',
+    title: 'Please log in',
+    description: 'You need to log in inside your wallet browser before linking.',
+  });
+  setLoading(false);
+  return;
+}
+
+// ensure CSRF exists (belt-and-suspenders)
+if (!(window as any).CSRF_TOKEN) {
+  try {
+    const r = await fetch('/auth/csrf', { credentials: 'include' });
+    const j = await r.json();
+    (window as any).CSRF_TOKEN = j.csrfToken;
+  } catch {}
+}
+```
+
+### 4) Cookie hardening for in-app browsers
+
+When you set the session cookie:
+
+```ts
+res.cookie('sid', token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  // If you serve from a custom apex + subdomain, also set:
+  // domain: '.xnrt.org'
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+```
+
+If you ever move between `www.xnrt.org` and `xnrt.org`, set `domain: '.xnrt.org'` so the MetaMask WebView keeps the cookie.
+
+## UX fallback so users aren’t blocked
+
+You can ship a **manual linking** path that still preserves security:
+
+1. **Paste address → sign in wallet → paste signature**
+
+   * Show the challenge message (from `/api/wallet/link/challenge`) and a **“Copy to clipboard”** button.
+   * In MetaMask/Trust Wallet, users can sign a message from the app (both have “Sign/Verify message” tools).
+   * They paste the **hex signature** back; you call `/api/wallet/link/confirm` with `{ address, nonce, signature }`.
+
+2. **Unverified address (manual review)**
+
+   * Allow users to paste an address without signature → mark as **unverified** and **do not** auto-credit.
+   * Your existing “deposit report” flow + admin match handles credits for these users safely.
+
+Here’s a tiny component snippet you can add under the button:
+
+```tsx
+// Quick manual fallback UI
+const [manualAddr, setManualAddr] = useState('');
+const [manualSig, setManualSig] = useState('');
+async function manualConfirm() {
+  try {
+    // fetch challenge for this address if you don’t have one yet
+    const c = await fetch(`/api/wallet/link/challenge?address=${manualAddr}`, { credentials: 'include' });
+    if (!c.ok) throw new Error('Get challenge failed');
+    const { nonce } = await c.json();
+
+    const r = await fetch('/api/wallet/link/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': (window as any).CSRF_TOKEN },
+      credentials: 'include',
+      body: JSON.stringify({ address: manualAddr, signature: manualSig, nonce }),
+    });
+    if (!r.ok) throw new Error((await r.json()).message || 'Confirm failed');
+    toast({ title: 'Wallet linked', description: manualAddr });
+  } catch (e:any) {
+    toast({ variant: 'destructive', title: 'Manual link failed', description: e.message });
+  }
+}
+```
+
+## Quick checklist to verify after changes
+
+* Open **MetaMask browser** → **log in** to XNRT → go to **Deposit** → **Link Wallet**
+* Network tab:
+
+  * `/auth/csrf` returns a token and sets `csrfToken` cookie
+  * `/auth/me` returns 200
+  * `/api/wallet/link/challenge` returns `{ message, nonce }` (no CSRF required)
+  * `personal_sign` succeeds
+  * `/api/wallet/link/confirm` returns 200 (CSRF required)
+
+If you do the four fixes above, the “Failed to generate challenge” goes away and linking works both in MetaMask’s browser and regular browsers (with WalletConnect). And the manual fallback ensures nobody gets stuck.

@@ -1,0 +1,217 @@
+You’re spot-on: the “Failed to generate challenge” toast is coming from the **server catch** in the challenge route (the request reached the endpoint, so you *were* authenticated). In MetaMask’s WebView the failure is almost always due to **session cookie persistence**—you generate the nonce and then try to save it in `req.session`, but the session cookie isn’t stable in that environment.
+
+Below is a clean way to make linking rock-solid, plus a quick fallback so no user gets stuck.
+
+---
+
+# 1) Make cookies/WebView friendly (quick win)
+
+If you use `express-session` for `req.session` **and** a separate JWT cookie (`sid`), configure both cookies for wallet/app WebViews:
+
+```ts
+// server/index.ts
+import session from 'express-session';
+import cookieParser from 'cookie-parser';
+
+app.set('trust proxy', 1); // important behind proxy / Replit
+
+const isProd = process.env.NODE_ENV === 'production';
+const cookieDomain = process.env.COOKIE_DOMAIN || undefined; // e.g. ".xnrt.org"
+
+app.use(cookieParser());
+
+app.use(session({
+  name: 'connect.sid',
+  secret: process.env.SESSION_SECRET!,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: isProd,            // must be true if SameSite=None
+    sameSite: 'none',          // WebViews need this; 'lax' breaks cross-webview flows
+    domain: cookieDomain,      // use ".xnrt.org" if you have subdomains
+    maxAge: 10 * 60 * 1000,    // enough for link flow
+  }
+}));
+```
+
+Also set the JWT cookie similarly (you already do this—just ensure parity):
+
+```ts
+// wherever you set the auth cookie
+res.cookie('sid', token, {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: 'none',
+  domain: cookieDomain,
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+```
+
+> If you ever alternate between `www.xnrt.org` and `xnrt.org`, **set `COOKIE_DOMAIN=.xnrt.org`** so MetaMask’s WebView doesn’t lose cookies.
+
+---
+
+# 2) Remove session fragility: store nonce in DB (most reliable)
+
+Relying on `req.session` for the wallet nonce is fragile in WebViews. Put it in the DB and the problem disappears.
+
+### Prisma model
+
+```prisma
+model WalletNonce {
+  id        String   @id @default(cuid())
+  userId    String
+  address   String
+  nonce     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([userId, address])
+  @@index([expiresAt])
+}
+```
+
+### Challenge (GET) – keep CSRF off here; require auth only
+
+```ts
+// server/wallet/routes.ts
+router.get('/link/challenge', requireAuth, async (req, res) => {
+  try {
+    const { address } = req.query as { address?: string };
+    if (!address) return res.status(400).json({ message: 'Missing address' });
+
+    const normalized = address.toLowerCase();
+    const nonce = crypto.randomBytes(16).toString('hex');
+
+    await prisma.walletNonce.upsert({
+      where: { userId_address: { userId: req.authUser!.id, address: normalized } },
+      update: { nonce, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+      create: { userId: req.authUser!.id, address: normalized, nonce, expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+    });
+
+    const message =
+      `XNRT Wallet Link\n\nAddress: ${normalized}\n` +
+      `Nonce: ${nonce}\nIssued: ${new Date().toISOString()}`;
+
+    res.json({ message, nonce });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Failed to generate challenge' });
+  }
+});
+```
+
+### Confirm (POST) – keep CSRF required here
+
+```ts
+router.post('/link/confirm', requireAuth, async (req, res) => {
+  try {
+    const { address, signature, nonce } = req.body as { address: string; signature: string; nonce: string };
+
+    const rec = await prisma.walletNonce.findUnique({
+      where: { userId_address: { userId: req.authUser!.id, address: address.toLowerCase() } }
+    });
+    if (!rec || rec.nonce !== nonce || rec.expiresAt < new Date()) {
+      return res.status(400).json({ message: 'Invalid or expired challenge' });
+    }
+
+    // Recover signer and compare
+    const recovered = ethers.verifyMessage(
+      `XNRT Wallet Link\n\nAddress: ${address.toLowerCase()}\nNonce: ${nonce}\nIssued: ${rec.createdAt.toISOString()}`,
+      signature
+    ).toLowerCase();
+
+    if (recovered !== address.toLowerCase()) {
+      return res.status(400).json({ message: 'Signature does not match address' });
+    }
+
+    await prisma.$transaction([
+      prisma.walletNonce.delete({ where: { id: rec.id } }),
+      prisma.linkedWallet.upsert({
+        where: { userId_address: { userId: req.authUser!.id, address: address.toLowerCase() } },
+        update: {},
+        create: { userId: req.authUser!.id, address: address.toLowerCase(), chainId: 56 }
+      })
+    ]);
+
+    res.json({ address: address.toLowerCase() });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Failed to link wallet' });
+  }
+});
+```
+
+*(Adjust the verifyMessage construction to match the exact message you send in the challenge.)*
+
+---
+
+# 3) Client: keep your flow; add clearer errors + fallback
+
+You already preload CSRF and check `/auth/me`. Make the toasts explicit for the three failure classes users hit most:
+
+```ts
+if (challengeRes.status === 401) {
+  throw new Error('Please log in inside this browser (MetaMask/Trust) and try again.');
+}
+if (challengeRes.status === 403) {
+  throw new Error('Security token missing/invalid. Refresh this page and try again.');
+}
+if (!challengeRes.ok) {
+  const error = await challengeRes.json().catch(() => ({}));
+  throw new Error(error.message || 'Failed to get challenge');
+}
+```
+
+---
+
+# 4) Universal fallback (paste signature) so nobody is blocked
+
+Add a small “Having trouble? Link manually” drawer:
+
+* Field 1: **Wallet address**
+* Button: **Get challenge** → you show the challenge message and nonce
+* Field 2: **Paste signature**
+* Button: **Confirm**
+
+Under the hood it just calls the same `/link/challenge` then `/link/confirm`. This works:
+
+* In any browser,
+* Even if injected provider isn’t present,
+* Even if WalletConnect is not used.
+
+*(You can keep WalletConnect as the primary path—this fallback is just for edge cases.)*
+
+---
+
+# 5) Test checklist (what to verify)
+
+1. **MetaMask in-app browser**
+
+   * Log in to XNRT.
+   * `/auth/csrf` returns a token and sets `csrfToken`.
+   * `/auth/me` → 200.
+   * `/wallet/link/challenge` → `{ message, nonce }`.
+   * `personal_sign` → success.
+   * `/wallet/link/confirm` → 200; wallet appears in list.
+
+2. **Chrome/Safari (no injected wallet)**
+
+   * “Connect Wallet” uses WalletConnect; QR/deeplink works.
+   * Same request sequence as above succeeds.
+
+3. **Cookie inspection**
+
+   * `connect.sid` and `sid` are set with `SameSite=None; Secure` and proper `Domain`.
+
+---
+
+## TL;DR
+
+* The error isn’t auth—it’s **session nonce persistence** in the WebView.
+* **Fix cookies** for WebView, or better, **store nonce in DB** (recommended).
+* Keep CSRF on **confirm**, not on **challenge**.
+* Add a **manual paste-signature fallback** so users can always link.
+
+If you want, I can draft the small client modal for the manual fallback and the exact Prisma migration for `WalletNonce`—just say the word.
