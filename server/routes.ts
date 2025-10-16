@@ -803,35 +803,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/wallet/link/confirm', requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const { address, signature, nonce } = req.body;
+      const { address, signature, nonce, issuedAt } = req.body;
+      const normalized = String(address || '').toLowerCase();
 
-      if (!address || !signature || !nonce) {
+      if (!address || !signature || !nonce || !issuedAt) {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
-      // Verify nonce from session
-      const storedNonce = (req.session as any).walletLinkNonce;
-      if (!storedNonce || storedNonce.nonce !== nonce || storedNonce.address !== address.toLowerCase()) {
-        return res.status(400).json({ message: "Invalid or expired nonce" });
+      // Fetch nonce from database
+      const rec = await prisma.walletNonce.findUnique({
+        where: { userId_address: { userId, address: normalized } },
+      });
+
+      if (!rec || rec.nonce !== nonce || rec.expiresAt < new Date()) {
+        return res.status(400).json({ message: "Invalid or expired challenge" });
       }
 
-      if (Date.now() > storedNonce.expiresAt) {
-        return res.status(400).json({ message: "Nonce expired" });
+      // Reconstruct message with same format as challenge
+      const message =
+        `XNRT Wallet Link\n\n` +
+        `Address: ${normalized}\n` +
+        `Nonce: ${nonce}\n` +
+        `Issued: ${issuedAt}`;
+
+      // Verify signature
+      let recoveredAddress: string;
+      try {
+        recoveredAddress = ethers.verifyMessage(message, signature).toLowerCase();
+      } catch {
+        return res.status(400).json({ message: "Invalid signature" });
       }
 
-      // Reconstruct and verify signature
-      const appDomain = process.env.APP_DOMAIN || 'localhost:5000';
-      const message = `Sign this message to link your wallet to XNRT.\n\nAddress: ${address.toLowerCase()}\nNonce: ${nonce}\nDomain: ${appDomain}`;
-      
-      const recoveredAddress = ethers.verifyMessage(message, signature);
-      
-      if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
-        return res.status(400).json({ message: "Signature verification failed" });
+      if (recoveredAddress !== normalized) {
+        return res.status(400).json({ message: "Signature does not match address" });
       }
 
       // Check if already linked to another user
       const existing = await prisma.linkedWallet.findFirst({
-        where: { address: address.toLowerCase(), active: true }
+        where: { address: normalized, active: true }
       });
 
       if (existing && existing.userId !== userId) {
@@ -842,20 +851,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ address: existing.address, alreadyLinked: true });
       }
 
-      // Link wallet
-      const linked = await prisma.linkedWallet.create({
-        data: {
-          userId,
-          address: address.toLowerCase(),
-          signature,
-          nonce
-        }
-      });
+      // Atomically delete nonce and create linked wallet
+      await prisma.$transaction([
+        prisma.walletNonce.delete({ where: { id: rec.id } }),
+        prisma.linkedWallet.create({
+          data: {
+            userId,
+            address: normalized,
+            signature,
+            nonce,
+          },
+        }),
+      ]);
 
-      // Clear nonce
-      delete (req.session as any).walletLinkNonce;
-
-      res.json({ address: linked.address });
+      res.json({ address: normalized });
     } catch (error) {
       console.error("Error linking wallet:", error);
       res.status(500).json({ message: "Failed to link wallet" });

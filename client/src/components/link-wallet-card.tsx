@@ -81,7 +81,7 @@ export function LinkWalletCard() {
         throw new Error(error.message || "Failed to get challenge");
       }
 
-      const { message, nonce } = await challengeRes.json();
+      const { message, nonce, issuedAt } = await challengeRes.json();
 
       // 5) Sign message
       const signature = await provider.request({
@@ -98,7 +98,7 @@ export function LinkWalletCard() {
         },
         credentials: "include",
         cache: "no-store",
-        body: JSON.stringify({ address: account, signature, nonce }),
+        body: JSON.stringify({ address: account, signature, nonce, issuedAt }),
       });
 
       if (confirmRes.status === 401) {
