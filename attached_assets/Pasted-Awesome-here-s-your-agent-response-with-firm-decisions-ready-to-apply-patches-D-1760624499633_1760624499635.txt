@@ -1,0 +1,231 @@
+Awesome — here’s your “agent” response with firm decisions + ready-to-apply patches.
+
+---
+
+# ✅ Decision (to avoid drift)
+
+**Make Prisma the single source of truth for migrations.**
+Keep Drizzle for queries/types if you like, but **don’t generate/apply Drizzle migrations**.
+
+* Remove/disable any `drizzle-kit generate` step from CI.
+* Keep `schema.ts` aligned with Prisma, but migrations come only from Prisma.
+
+---
+
+# 1) Unblock deployment (now)
+
+### Prisma change
+
+In `schema.prisma`, widen the hash that’s failing:
+
+```prisma
+model Transaction {
+  // ...
+  transactionHash String? @unique @db.Text   // was @db.VarChar(66)
+  // ...
+}
+```
+
+Then generate + apply:
+
+```bash
+npx prisma migrate dev --name widen-transaction-hash
+# in prod:
+npx prisma migrate deploy
+```
+
+**If you’re still stuck because an old “shrink to varchar(66)” migration is queued:** delete that migration file locally and regenerate a widening migration, then deploy.
+
+**Emergency SQL (only if you must hotfix prod first):**
+
+```sql
+ALTER TABLE "Transaction"
+  ALTER COLUMN "transactionHash" TYPE text USING "transactionHash"::text;
+```
+
+---
+
+# 2) Secure the production setup script
+
+### Problems fixed
+
+* No accidental admin password resets
+* No plaintext passwords in logs
+* Guard so it can’t run by mistake
+* PII dump disabled by default
+* Idempotent seeds
+
+### Minimal patch (drop into `scripts/setup-production.ts`)
+
+```ts
+// Guards
+if (process.env.PROD_SETUP_I_UNDERSTAND !== '1') {
+  throw new Error('Refusing to run: set PROD_SETUP_I_UNDERSTAND=1');
+}
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'noahkeaneowen@hotmail.com';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME ?? 'noahkeane';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const RESET_ADMIN_PASSWORD = process.env.RESET_ADMIN_PASSWORD === 'true';
+const PRINT_USERS = process.env.PRINT_USERS === 'true';
+if (!ADMIN_PASSWORD) throw new Error('ADMIN_PASSWORD is required');
+
+// Admin + balance in a transaction (no password logs)
+await prisma.$transaction(async (tx) => {
+  const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+  const existing = await tx.user.findUnique({ where: { email: ADMIN_EMAIL } });
+
+  if (!existing) {
+    const admin = await tx.user.create({
+      data: {
+        email: ADMIN_EMAIL,
+        username: ADMIN_USERNAME,
+        passwordHash: hash,
+        referralCode: `ADMIN${nanoid(6).toUpperCase()}`,
+        isAdmin: true,
+        emailVerified: true,
+      },
+    });
+    await tx.balance.upsert({ where: { userId: admin.id }, update: {}, create: { userId: admin.id } });
+  } else {
+    await tx.user.update({
+      where: { email: ADMIN_EMAIL },
+      data: { isAdmin: true, ...(RESET_ADMIN_PASSWORD ? { passwordHash: hash } : {}) },
+    });
+    await tx.balance.upsert({ where: { userId: existing.id }, update: {}, create: { userId: existing.id } });
+  }
+});
+
+// Idempotent upserts for achievements/tasks (no PII logging)
+// …and do not print ADMIN_PASSWORD anywhere
+```
+
+> Run with:
+> `PROD_SETUP_I_UNDERSTAND=1 ADMIN_PASSWORD='strong' node scripts/setup-production.ts`
+> (Add `RESET_ADMIN_PASSWORD=true` only when you intend to rotate.)
+
+---
+
+# 3) Fix token precision (one migration)
+
+Change **all token/fiat amounts** to 38,18 (safe for crypto math):
+
+* In `schema.prisma`:
+
+  * `Balance.*Balance`, `Balance.totalEarned` → `@db.Decimal(38, 18)`
+  * `Stake.amount`, `Stake.dailyRate` (use `@db.Decimal(8, 6)` or `@db.Decimal(18, 8)` for rates), `Stake.totalProfit`
+  * `Referral.totalCommission`
+  * `Transaction.amount`, `usdtAmount`, `fee`, `netAmount`
+  * `Task.xnrtReward`
+
+Example:
+
+```prisma
+xnrtBalance Decimal @default(0) @db.Decimal(38, 18)
+amount      Decimal @db.Decimal(38, 18)
+dailyRate   Decimal @db.Decimal(8, 6)
+```
+
+Then:
+
+```bash
+npx prisma migrate dev --name widen-decimals-to-38_18
+npx prisma migrate deploy
+```
+
+*(Prisma handles conversions; if any column contains more than 2 decimals today, this prevents silent rounding.)*
+
+---
+
+# 4) Data integrity (quick wins)
+
+### Uniques & indexes
+
+* **One UserTask per (user, task):**
+
+  ```prisma
+  model UserTask {
+    // ...
+    @@unique([userId, taskId])
+  }
+  ```
+
+* **Unique titles for idempotent seeding:**
+
+  ```prisma
+  model Task        { title String @unique ... }
+  model Achievement { title String @unique ... }
+  ```
+
+* **Transactions**: you already have `@unique` on `transactionHash` (keep it).
+  Add combined index for common queries:
+
+  ```prisma
+  model Transaction {
+    // ...
+    @@index([userId, createdAt])
+  }
+  ```
+
+### Enums (prevent typos)
+
+Replace free-text strings with enums (example):
+
+```prisma
+enum TransactionType { deposit withdrawal }
+enum TransactionStatus { pending approved rejected paid }
+
+model Transaction {
+  type   TransactionType
+  status TransactionStatus @default(pending)
+}
+```
+
+### Format validation (DB-level, optional but strong)
+
+Add a create-only migration and append:
+
+```sql
+ALTER TABLE "Transaction"
+  ADD CONSTRAINT txhash_format
+  CHECK ("transactionHash" IS NULL OR "transactionHash" ~ '^0x[0-9A-Fa-f]{64}$') NOT VALID;
+ALTER TABLE "Transaction"
+  ADD CONSTRAINT walletaddr_format
+  CHECK ("walletAddress" IS NULL OR "walletAddress" ~ '^0x[0-9A-Fa-f]{40}$') NOT VALID;
+
+-- validate after cleaning any bad rows
+ALTER TABLE "Transaction" VALIDATE CONSTRAINT txhash_format;
+ALTER TABLE "Transaction" VALIDATE CONSTRAINT walletaddr_format;
+```
+
+---
+
+# 5) Drizzle schema alignment (no migrations)
+
+* Keep `transactions.transactionHash` and `walletAddress` as `text` (already done).
+* Upgrade decimals in `schema.ts` to `{ precision: 38, scale: 18 }` (and `dailyRate` to `{ precision: 8, scale: 6 }`).
+* Add:
+
+  * `unique("user_tasks_user_task_unique").on(table.userId, table.taskId)`
+  * `unique("tasks_title_unique").on(table.title)`
+  * `unique("achievements_title_unique").on(table.title)`
+  * `unique("transactions_txhash_unique").on(table.transactionHash)`
+* Make `updatedAt` auto-update:
+
+  ```ts
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull(),
+  ```
+
+---
+
+## What I’ll tackle first (unless you say otherwise)
+
+1. **Prisma migration to widen `Transaction.transactionHash` → `@db.Text`**
+   (unblocks deploy immediately)
+
+2. **Patch `setup-production.ts`** with guards & idempotency.
+
+3. **Precision migration** to `Decimal(38,18)` (and `dailyRate` to `8,6`).
+
+4. **Integrity pass**: uniques, indexes, enums; optional CHECKs.
+
+If you want a single PR, I can bundle the Prisma schema diffs + a fresh migration + the production script patch in one go.

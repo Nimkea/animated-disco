@@ -1,0 +1,223 @@
+Great—thanks for the full `schema.prisma`. Here’s a focused review with exact diffs to both **unblock your deploy** and **tighten data integrity**.
+
+---
+
+# 1) Immediate unblock (the failing migration)
+
+Your blocker is:
+
+```prisma
+model Transaction {
+  ...
+  transactionHash String? @unique @db.VarChar(66)  // <-- too small for existing data
+  ...
+}
+```
+
+### Fix
+
+Widen to `Text` (keep the `@unique`), then generate/deploy a migration.
+
+```prisma
+model Transaction {
+  id              String    @id @default(uuid())
+  userId          String
+  type            String
+  amount          Decimal   @db.Decimal(38, 18)   // see §2
+  usdtAmount      Decimal?  @db.Decimal(38, 18)
+  source          String?
+  walletAddress   String?   // leave flexible
+  transactionHash String?   @unique @db.Text      // <- changed
+  proofImageUrl   String?
+  status          String    @default("pending")
+  adminNotes      String?
+  fee             Decimal?  @db.Decimal(38, 18)
+  netAmount       Decimal?  @db.Decimal(38, 18)
+  approvedBy      String?
+  approvedAt      DateTime?
+  verified        Boolean   @default(false)
+  confirmations   Int       @default(0)
+  verificationData Json?
+  createdAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+```
+
+Then:
+
+```bash
+npx prisma migrate dev --name widen-transaction-hash
+# deploy via your normal flow
+```
+
+*Tip:* If the stuck migration still tries to shrink to `varchar(66)`, delete/regenerate it so it only widens to `text`.
+
+---
+
+# 2) Token-amount precision (recommended)
+
+You’re storing token amounts in `Decimal` without precision/scale. For EVM-style tokens, use 18 decimals consistently:
+
+* `Balance` (`xnrtBalance`, `stakingBalance`, `miningBalance`, `referralBalance`, `totalEarned`)
+* `Stake` (`amount`, `dailyRate`, `totalProfit`)
+* `Referral.totalCommission`
+* `Transaction.amount/usdtAmount/fee/netAmount`
+* `Task.xnrtReward`
+
+```prisma
+Decimal @db.Decimal(38, 18)
+```
+
+(38,18 is safe on Postgres and plays well with big numbers.)
+
+---
+
+# 3) Where fixed lengths can bite you again
+
+You also have strict lengths elsewhere:
+
+```prisma
+model LinkedWallet {
+  address   String   @db.VarChar(42)
+  ...
+}
+
+model UnmatchedDeposit {
+  fromAddress     String    @db.VarChar(42)
+  toAddress       String    @db.VarChar(42)
+  transactionHash String    @unique @db.VarChar(66)
+  ...
+}
+
+model DepositReport {
+  fromAddress String  @db.VarChar(42)
+  txHash      String? @db.VarChar(66)
+}
+```
+
+These are *correct* for EVM (42/66), but if any upstream sends longer/shorter strings you’ll hit the same failure. Two safer options:
+
+* **Keep them as `text` + add CHECK constraints** (see §4), or
+* Keep `varchar` but validate aggressively in the app before insert/update.
+
+If you want the “text + checks” route, change to `@db.Text` and add the checks in a SQL migration (Prisma can’t model CHECKs directly).
+
+---
+
+# 4) Strong data validation (DB-level)
+
+After you’re unblocked, add **format checks** so junk can’t creep back:
+
+```sql
+-- create-only migration, then append:
+ALTER TABLE "Transaction"
+  ADD CONSTRAINT transactionhash_format
+  CHECK ("transactionHash" IS NULL OR "transactionHash" ~ '^0x[0-9A-Fa-f]{64}$') NOT VALID;
+
+ALTER TABLE "UnmatchedDeposit"
+  ADD CONSTRAINT undep_hash_format
+  CHECK ("transactionHash" ~ '^0x[0-9A-Fa-f]{64}$') NOT VALID;
+
+ALTER TABLE "LinkedWallet"
+  ADD CONSTRAINT linked_addr_format
+  CHECK (address ~ '^0x[0-9A-Fa-f]{40}$') NOT VALID;
+
+ALTER TABLE "UnmatchedDeposit"
+  ADD CONSTRAINT undep_from_format
+  CHECK ( "fromAddress" ~ '^0x[0-9A-Fa-f]{40}$') NOT VALID;
+
+ALTER TABLE "UnmatchedDeposit"
+  ADD CONSTRAINT undep_to_format
+  CHECK ( "toAddress"   ~ '^0x[0-9A-Fa-f]{40}$') NOT VALID;
+
+ALTER TABLE "DepositReport"
+  ADD CONSTRAINT dep_from_format
+  CHECK ( "fromAddress" ~ '^0x[0-9A-Fa-f]{40}$') NOT VALID;
+
+ALTER TABLE "DepositReport"
+  ADD CONSTRAINT dep_tx_format
+  CHECK ( "txHash" IS NULL OR "txHash" ~ '^0x[0-9A-Fa-f]{64}$') NOT VALID;
+
+-- validate after you clean any bad rows
+ALTER TABLE "Transaction"      VALIDATE CONSTRAINT transactionhash_format;
+ALTER TABLE "UnmatchedDeposit" VALIDATE CONSTRAINT undep_hash_format;
+ALTER TABLE "LinkedWallet"     VALIDATE CONSTRAINT linked_addr_format;
+ALTER TABLE "UnmatchedDeposit" VALIDATE CONSTRAINT undep_from_format;
+ALTER TABLE "UnmatchedDeposit" VALIDATE CONSTRAINT undep_to_format;
+ALTER TABLE "DepositReport"    VALIDATE CONSTRAINT dep_from_format;
+ALTER TABLE "DepositReport"    VALIDATE CONSTRAINT dep_tx_format;
+```
+
+---
+
+# 5) Case-insensitive email/username (nice upgrade)
+
+If you want `email`/`username` uniqueness to be case-insensitive:
+
+```prisma
+model User {
+  id        String  @id @default(uuid())
+  email     String  @db.Citext @unique
+  username  String  @db.Citext @unique
+  ...
+}
+```
+
+You’ll need the extension once:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS citext;
+```
+
+---
+
+# 6) Integrity & indexing tweaks (small but valuable)
+
+* **UserTask**: usually one row per (user, task).
+
+  ```prisma
+  model UserTask {
+    ...
+    @@unique([userId, taskId])
+  }
+  ```
+
+* **Referral**: often you want a single referrer per referred user:
+
+  ```prisma
+  @@unique([referredUserId])
+  ```
+
+  (Or `@@unique([referrerId, referredUserId])` if multi-level refs are allowed but not duplicated.)
+
+* **ScannerState**: it’s a singleton—enforce it:
+
+  * Either fix the `id` to a constant (e.g., `"scanner"`) or add `@@unique([isScanning])` isn’t correct; better to store one row and guard in app/DDL. Easiest: seed a single row with a fixed `id` and never create more.
+
+* **Common query helpers**:
+
+  ```prisma
+  model Transaction { @@index([userId, createdAt]) }
+  model Stake       { @@index([userId, createdAt]) }
+  model Activity    { @@index([userId, createdAt]) }
+  ```
+
+* **Enums** for strings that represent a finite set (`Transaction.type/status`, `Stake.status`, `MiningSession.status`, `Notification.type`, `Task.category`). Replacing free-form `String` with `enum` prevents accidental typos.
+
+---
+
+## TL;DR
+
+* **Change `Transaction.transactionHash` to `@db.Text`** and migrate → deploy to unblock.
+* Standardize **Decimal** precision with `@db.Decimal(38, 18)` for all token amounts.
+* Consider **text + CHECK constraints** for addresses/hashes to keep flexibility and enforce format.
+* Optionally switch **email/username to CITEXT** for case-insensitive uniqueness.
+* Add a few **uniques & indexes** (`UserTask`, `Referral`, createdAt indexes).
+
+If you want, paste your generated migration SQL and I’ll sanity-check it before you run it.
