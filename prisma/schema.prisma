@@ -58,11 +58,11 @@ model Session {
 model Balance {
   id              String   @id @default(uuid())
   userId          String   @unique
-  xnrtBalance     Decimal  @default(0)
-  stakingBalance  Decimal  @default(0)
-  miningBalance   Decimal  @default(0)
-  referralBalance Decimal  @default(0)
-  totalEarned     Decimal  @default(0)
+  xnrtBalance     Decimal  @default(0) @db.Decimal(38, 18)
+  stakingBalance  Decimal  @default(0) @db.Decimal(38, 18)
+  miningBalance   Decimal  @default(0) @db.Decimal(38, 18)
+  referralBalance Decimal  @default(0) @db.Decimal(38, 18)
+  totalEarned     Decimal  @default(0) @db.Decimal(38, 18)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -73,12 +73,12 @@ model Stake {
   id             String    @id @default(uuid())
   userId         String
   tier           String
-  amount         Decimal
-  dailyRate      Decimal
+  amount         Decimal   @db.Decimal(38, 18)
+  dailyRate      Decimal   @db.Decimal(8, 6)
   duration       Int
   startDate      DateTime  @default(now())
   endDate        DateTime
-  totalProfit    Decimal   @default(0)
+  totalProfit    Decimal   @default(0) @db.Decimal(38, 18)
   lastProfitDate DateTime?
   status         String    @default("active")
   createdAt      DateTime  @default(now())
@@ -87,6 +87,7 @@ model Stake {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, createdAt])
 }
 
 model MiningSession {
@@ -113,7 +114,7 @@ model Referral {
   referrerId       String
   referredUserId   String
   level            Int
-  totalCommission  Decimal  @default(0)
+  totalCommission  Decimal  @default(0) @db.Decimal(38, 18)
   createdAt        DateTime @default(now())
 
   referrer     User @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
@@ -127,16 +128,16 @@ model Transaction {
   id              String    @id @default(uuid())
   userId          String
   type            String
-  amount          Decimal
-  usdtAmount      Decimal?
+  amount          Decimal   @db.Decimal(38, 18)
+  usdtAmount      Decimal?  @db.Decimal(38, 18)
   source          String?
   walletAddress   String?
-  transactionHash String?   @unique @db.VarChar(66)
+  transactionHash String?   @unique @db.Text
   proofImageUrl   String?
   status          String    @default("pending")
   adminNotes      String?
-  fee             Decimal?
-  netAmount       Decimal?
+  fee             Decimal?  @db.Decimal(38, 18)
+  netAmount       Decimal?  @db.Decimal(38, 18)
   approvedBy      String?
   approvedAt      DateTime?
   verified        Boolean   @default(false)
@@ -149,14 +150,16 @@ model Transaction {
   @@index([userId])
   @@index([type])
   @@index([status])
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model Task {
   id          String    @id @default(uuid())
-  title       String
+  title       String    @unique
   description String
   xpReward    Int
-  xnrtReward  Decimal   @default(0)
+  xnrtReward  Decimal   @default(0) @db.Decimal(38, 18)
   category    String
   requirements String?
   isActive    Boolean   @default(true)
@@ -178,13 +181,14 @@ model UserTask {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, taskId])
   @@index([userId])
   @@index([taskId])
 }
 
 model Achievement {
   id          String   @id @default(uuid())
-  title       String
+  title       String   @unique
   description String
   icon        String
   category    String
@@ -219,6 +223,7 @@ model Activity {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, createdAt])
 }
 
 model PasswordReset {
@@ -296,8 +301,8 @@ model UnmatchedDeposit {
   id              String    @id @default(uuid())
   fromAddress     String    @db.VarChar(42)
   toAddress       String    @db.VarChar(42)
-  amount          Decimal
-  transactionHash String    @unique @db.VarChar(66)
+  amount          Decimal   @db.Decimal(38, 18)
+  transactionHash String    @unique @db.Text
   blockNumber     Int
   confirmations   Int       @default(0)
   matched         Boolean   @default(false)
@@ -316,8 +321,8 @@ model DepositReport {
   id          String    @id @default(uuid())
   userId      String
   fromAddress String    @db.VarChar(42)
-  amount      Decimal?
-  txHash      String?   @db.VarChar(66)
+  amount      Decimal?  @db.Decimal(38, 18)
+  txHash      String?   @db.Text
   notes       String?
   status      String    @default("open")
   resolvedAt  DateTime?
