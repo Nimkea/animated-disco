@@ -137,6 +137,7 @@ export function LinkWalletCard() {
   };
 
   return (
+    <>
     <Card className="p-6 bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20" data-testid="card-link-wallet">
       <div className="flex items-start gap-4">
         <div className="p-3 rounded-xl bg-amber-500/10">
@@ -196,16 +197,17 @@ export function LinkWalletCard() {
           )}
         </div>
       </div>
-
-      <ManualLinkWalletDialog
-        open={manualDialogOpen}
-        onOpenChange={setManualDialogOpen}
-        onLinked={(addr) => {
-          if (!linked.includes(addr)) {
-            setLinked(prev => [addr, ...prev]);
-          }
-        }}
-      />
     </Card>
+
+    <ManualLinkWalletDialog
+      open={manualDialogOpen}
+      onOpenChange={setManualDialogOpen}
+      onLinked={(addr) => {
+        if (!linked.includes(addr)) {
+          setLinked(prev => [addr, ...prev]);
+        }
+      }}
+    />
+  </>
   );
 }
