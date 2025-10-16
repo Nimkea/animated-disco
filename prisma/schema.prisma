@@ -22,6 +22,11 @@ model User {
   level           Int       @default(1)
   streak          Int       @default(0)
   lastCheckIn     DateTime?
+  
+  // HD Wallet deposit address (unique per user)
+  depositAddress  String?   @unique @db.VarChar(42)
+  derivationIndex Int?      @unique
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
