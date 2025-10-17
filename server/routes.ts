@@ -873,7 +873,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User Deposit Address API
-  app.get('/api/deposit-address', requireAuth, async (req, res) => {
+  app.get('/api/wallet/deposit-address', requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
       
