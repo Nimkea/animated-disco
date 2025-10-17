@@ -5355,7 +5355,39 @@ var vite_config_default = defineConfig({
   root: path.resolve(import.meta.dirname, "client"),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/lucide-react") || id.includes("node_modules/framer-motion")) {
+            return "vendor-ui";
+          }
+          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-")) {
+            return "vendor-charts";
+          }
+          if (id.includes("node_modules")) {
+            return "vendor-libs";
+          }
+          if (id.includes("/pages/admin/")) {
+            return "admin";
+          }
+          if (id.includes("/pages/staking") || id.includes("/pages/mining")) {
+            return "earning";
+          }
+          if (id.includes("/pages/referrals") || id.includes("/pages/leaderboard")) {
+            return "social";
+          }
+          if (id.includes("/pages/deposit") || id.includes("/pages/withdrawal")) {
+            return "transactions";
+          }
+        }
+      }
+    },
+    chunkSizeWarningLimit: 600
+    // Increase from default 500KB
   },
   server: {
     fs: {
