@@ -33,6 +33,31 @@
 
 ### 💰 **Earning Mechanisms**
 
+#### 💎 **Automated Deposit System (Blockchain-Verified)**
+**Revolutionary deposit experience with zero wallet connection required:**
+
+**How It Works:**
+1. **Personal BSC Address**: Each user receives a unique Binance Smart Chain (BEP-20) deposit address
+2. **Direct Exchange Deposits**: Send USDT directly from Binance, OKX, or any exchange - no wallet needed
+3. **Auto-Detection**: System monitors blockchain and detects deposits automatically
+4. **Auto-Verification**: Deposits verified on-chain after 12 block confirmations (~36 seconds)
+5. **Auto-Credit**: XNRT tokens automatically credited to your balance (1 USDT = 100 XNRT)
+
+**Key Features:**
+- ✅ **HD Wallet Derivation**: Unique addresses generated using BIP44 path (m/44'/714'/0'/0/{index})
+- ✅ **No Gas Fees**: Deposit from exchanges without blockchain interaction
+- ✅ **No Wallet Linking**: No MetaMask or WalletConnect required
+- ✅ **QR Code Support**: Scan with mobile wallet for quick deposits
+- ✅ **Real-time Tracking**: Monitor deposit status with blockchain confirmations
+- ✅ **Automatic Scanning**: Background scanner checks blockchain every 60 seconds
+
+**Technical Implementation:**
+- Master seed stored securely in environment variables
+- ethers.js v6 for blockchain interaction
+- BSC public RPC endpoint for on-chain verification
+- Prisma database stores unique addresses per user
+- Automated scanner watches all user addresses simultaneously
+
 #### 🏦 **Staking System (4 Tiers)**
 Stake XNRT tokens to earn passive income with up to 730% APY
 
@@ -87,12 +112,14 @@ Complete platform management system with:
 - Pending action alerts
 
 #### **Deposits & Withdrawals**
-- **Approve/reject** pending transactions
+- **Auto-verified deposits** via blockchain scanner (no manual approval needed)
+- **Manual deposit reporting** for edge cases with admin approval
 - **1 USDT = 100 XNRT** conversion rate
 - **2% withdrawal fee** deduction
 - **Proof of payment** image upload
 - **Admin notes** for rejections
 - **Transaction history** tracking
+- **Blockchain verification** status tracking
 
 #### **User Management**
 - View all users with stats
@@ -186,9 +213,29 @@ DATABASE_URL=postgresql://user:password@host:5432/dbname
 # Session
 SESSION_SECRET=your-super-secret-key-min-32-chars
 
+# HD Wallet & Blockchain (for automated deposit system)
+MASTER_SEED=your-12-or-24-word-mnemonic-phrase-here
+RPC_BSC_URL=https://bsc-dataseed.binance.org/
+USDT_BSC_ADDRESS=0x55d398326f99059fF775485246999027B3197955
+
 # Optional: Sentry
 VITE_SENTRY_DSN=your-sentry-dsn-here
 ```
+
+**⚠️ MASTER_SEED Security Warning:**
+- The `MASTER_SEED` is a BIP39 mnemonic phrase that derives all user deposit addresses
+- **CRITICAL**: Keep this secret secure - it controls access to all deposit addresses
+- Never commit to version control or expose publicly
+- Use a cryptographically secure random generator for production
+- Loss of this seed means loss of access to deposit addresses
+
+**🔗 Blockchain Configuration:**
+- `RPC_BSC_URL`: BSC blockchain RPC endpoint (required for deposit scanner)
+  - Default: `https://bsc-dataseed.binance.org/` (public, free, may have rate limits)
+  - Production: Consider private RPC (QuickNode, Ankr, Infura) for reliability
+- `USDT_BSC_ADDRESS`: USDT contract address on BSC (required for deposit scanning)
+  - Default: `0x55d398326f99059fF775485246999027B3197955` (BSC USDT contract)
+  - **Do not change unless using different token**
 
 ---
 
@@ -218,6 +265,8 @@ VITE_SENTRY_DSN=your-sentry-dsn-here
 - **bcrypt** - Password hashing
 - **helmet** - Security headers
 - **express-rate-limit** - Rate limiting
+- **ethers.js v6** - Blockchain interaction
+- **Automated deposit scanner** - Background blockchain monitoring
 
 #### **Database**
 - **PostgreSQL** (Neon) - Primary database
@@ -252,6 +301,9 @@ xnrt-platform/
 │
 ├── server/               # Backend Express API
 │   ├── auth/            # Authentication logic
+│   ├── services/        # Business logic services
+│   │   ├── hdWallet.ts  # HD wallet derivation
+│   │   └── depositScanner.ts  # Blockchain scanner
 │   ├── db.ts            # Database connection
 │   ├── routes.ts        # API endpoints
 │   ├── storage.ts       # Data layer
@@ -280,12 +332,12 @@ xnrt-platform/
 ### Database Schema
 
 #### **Core Models**
-- `User` - User accounts with auth & profile
+- `User` - User accounts with auth & profile (includes `depositAddress` and `derivationIndex`)
 - `Balance` - Separate balances (staking, mining, referral, total)
 - `Stake` - Active & completed stakes
 - `MiningSession` - 24hr mining sessions
 - `Referral` - 3-level referral tree
-- `Transaction` - Deposits & withdrawals
+- `Transaction` - Deposits & withdrawals (includes blockchain verification fields)
 - `Task` - Platform tasks
 - `UserTask` - User task progress
 - `Achievement` - Platform achievements
@@ -294,6 +346,13 @@ xnrt-platform/
 - `Notification` - Real-time notifications
 - `Session` - JWT session management
 - `PasswordReset` - Secure password reset tokens
+
+**Deposit System Tables:**
+- `User.depositAddress` - Unique BSC address per user (42 chars, nullable)
+- `User.derivationIndex` - HD wallet derivation index (unique, nullable)
+- `Transaction.blockNumber` - Block number for on-chain verification
+- `Transaction.confirmations` - Current confirmation count
+- `Transaction.autoVerified` - Boolean flag for scanner-verified deposits
 
 ---
 
@@ -397,11 +456,18 @@ GET    /api/referrals/stats    - Get referral stats
 GET    /api/referrals/leaderboard - Get leaderboard
 ```
 
+#### **Wallet & Deposits**
+```
+GET    /api/wallet/deposit-address  - Get personal BSC deposit address
+POST   /api/wallet/report-deposit   - Manually report missing deposit
+```
+
 #### **Transactions**
 ```
-POST   /api/deposit            - Create deposit request
-POST   /api/withdraw           - Create withdrawal request
-GET    /api/transactions       - Get transaction history
+POST   /api/transactions/deposit    - Create manual deposit request
+POST   /api/transactions/withdraw   - Create withdrawal request
+GET    /api/transactions/deposits   - Get deposit history
+GET    /api/transactions/withdrawals - Get withdrawal history
 ```
 
 #### **Tasks & Achievements**

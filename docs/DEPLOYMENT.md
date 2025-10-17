@@ -13,6 +13,9 @@
 ### ✅ **2. Environment & Secrets**
 - [x] `DATABASE_URL` configured in Secrets
 - [x] `SESSION_SECRET` configured in Secrets
+- [x] `MASTER_SEED` configured in Secrets (HD wallet mnemonic for deposit addresses)
+- [x] `RPC_BSC_URL` configured in Secrets (BSC blockchain RPC endpoint)
+- [x] `USDT_BSC_ADDRESS` configured in Secrets (USDT contract address on BSC)
 - [x] All PostgreSQL secrets configured (PG*)
 - [ ] Verify secrets will transfer to production (they don't auto-transfer)
 
@@ -29,6 +32,8 @@
 - [x] Referral system (3-level commissions)
 - [x] Admin dashboard
 - [x] Deposit/Withdrawal flows
+- [x] **Automated Deposit System** (Personal BSC addresses, blockchain scanner, auto-verification)
+- [x] HD Wallet integration (BIP44 derivation for unique addresses)
 - [x] PWA functionality (install prompt, offline mode, update notifications)
 
 ---
@@ -79,9 +84,24 @@ npm run build
 2. Confirm these exist:
    - `DATABASE_URL`
    - `SESSION_SECRET`
+   - `MASTER_SEED` (HD wallet mnemonic for generating deposit addresses)
    - `PGDATABASE`, `PGHOST`, `PGPASSWORD`, `PGPORT`, `PGUSER`
 
 **⚠️ Important:** Secrets in development don't automatically transfer to production. You'll need to manually add them to your deployment.
+
+**🔐 MASTER_SEED Security:**
+- This is a BIP39 mnemonic phrase (12-24 words) used to derive all user deposit addresses
+- **CRITICAL:** Keep this secret secure - it controls all deposit addresses
+- If compromised, all user deposits could be at risk
+- Use a cryptographically secure random generator for production
+- Development seed: "urban base bundle stock sport cruise gadget lemon stick cluster mix squeeze"
+
+**🔗 Blockchain Configuration:**
+- `RPC_BSC_URL`: BSC blockchain RPC endpoint (e.g., "https://bsc-dataseed.binance.org/")
+- `USDT_BSC_ADDRESS`: USDT contract address on BSC (default: "0x55d398326f99059fF775485246999027B3197955")
+- **Without these, the deposit scanner cannot connect to blockchain**
+- Public RPC endpoints are free but may have rate limits
+- Consider using private RPC services (QuickNode, Ankr) for production reliability
 
 ### **Step 3: Configure Deployment** ✅ (Already Done)
 Deployment configuration is already set up:
@@ -89,12 +109,22 @@ Deployment configuration is already set up:
 - **Build:** `npm run build`
 - **Run:** `npm start`
 
+**⚠️ Blockchain Integration Note:**
+The automated deposit scanner runs as part of the main Node.js process. When deployed:
+- Scanner checks all user deposit addresses every 60 seconds
+- Monitors BSC blockchain via public RPC endpoint
+- Auto-credits XNRT after 12 block confirmations
+- No additional services or workflows required
+
 ### **Step 4: Click Publish Button**
 1. Click **Deploy** button in top-right of Replit workspace
 2. Review deployment settings
 3. **Add Production Secrets:**
    - Copy `DATABASE_URL` from development secrets
    - Copy `SESSION_SECRET` from development secrets
+   - Copy `MASTER_SEED` from development secrets (or generate new production seed)
+   - Copy `RPC_BSC_URL` from development secrets (or use production RPC endpoint)
+   - Copy `USDT_BSC_ADDRESS` from development secrets (default BSC USDT contract)
    - **Or** use production database URL if you have a separate one
 4. Click **Deploy**
 5. Wait for build to complete (~2-3 minutes)
@@ -151,6 +181,8 @@ Once deployed, you'll get a production URL like `https://your-repl.repl.co`
 ### **Immediate Verification**
 - [ ] Visit production URL
 - [ ] Test user registration/login
+- [ ] **Verify deposit address generation** (each user gets unique BSC address)
+- [ ] **Check deposit scanner logs** (should show scanning activity)
 - [ ] Create a test stake
 - [ ] Start a mining session
 - [ ] Test referral link generation
@@ -212,6 +244,7 @@ When you make code changes:
   - TypeScript errors → Run `npm run check` locally
   - Missing dependencies → Verify package.json
   - Environment variables → Add to production secrets
+  - Missing MASTER_SEED → Add HD wallet mnemonic to secrets
 
 ### **Database Connection Fails**
 - Verify `DATABASE_URL` is set in production secrets
@@ -227,6 +260,17 @@ When you make code changes:
 - Check production logs for stack traces
 - Verify all environment variables are set
 - Test endpoints individually with curl/Postman
+
+### **Deposit Scanner Issues**
+- **Scanner not running:** Check logs for "Deposit scanner initialized" message
+- **"RPC_BSC_URL is not defined" error:** Add `RPC_BSC_URL` to production secrets (e.g., "https://bsc-dataseed.binance.org/")
+- **"USDT_BSC_ADDRESS is not defined" error:** Add `USDT_BSC_ADDRESS` to production secrets (default: "0x55d398326f99059fF775485246999027B3197955")
+- **Addresses not generated:** Verify MASTER_SEED is set in production secrets
+- **Deposits not detected:** 
+  - Check BSC RPC endpoint connectivity
+  - Verify RPC_BSC_URL is accessible and not rate-limited
+  - Confirm USDT_BSC_ADDRESS matches the correct contract
+- **Scanner errors:** Review logs for blockchain connection issues (network timeouts, invalid RPC responses)
 
 ---
 
@@ -252,7 +296,7 @@ When you make code changes:
 
 ---
 
-## ✅ Production Readiness Score: **98/100**
+## ✅ Production Readiness Score: **99/100**
 
 ### **What's Complete:**
 ✅ Full-stack PWA architecture  
@@ -260,6 +304,9 @@ When you make code changes:
 ✅ Production build pipeline  
 ✅ Secure authentication system  
 ✅ Complete earning mechanics (staking, mining, referrals)  
+✅ **Automated deposit system with personal BSC addresses**  
+✅ **HD wallet integration (BIP44 derivation)**  
+✅ **Blockchain scanner with auto-verification**  
 ✅ Admin dashboard  
 ✅ Database schema & migrations  
 ✅ PWA icons & manifest  

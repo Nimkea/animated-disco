@@ -90,11 +90,26 @@
 - Responsive: Card layout on mobile
 - Filters: Top-aligned with clear visual separation
 
+**Deposit Address Display:**
+- Personal BSC address: Large, monospaced font with copy button
+- QR code toggle: Collapsible section for mobile wallet scanning
+- Network/Token info: Clear labels (BSC BEP-20, USDT)
+- Instructions: Step-by-step deposit guide
+- Warning alerts: Highlight network and minimum confirmation requirements
+
 **Forms:**
 - Dark inputs with subtle borders
 - Focus: Neon blue glow effect
 - Validation: Real-time with color feedback
 - Labels: Clear hierarchy, Lora serif for important fields
+
+**Deposit Flow (Updated - No Wallet Linking):**
+- Direct address display: Users see their unique personal BSC address immediately
+- QR code: Toggle button to show/hide scannable QR for mobile deposits
+- Copy functionality: One-click copy with visual confirmation
+- Exchange-friendly: Instructions for depositing from Binance, OKX, etc.
+- No wallet connection required: Removed MetaMask/WalletConnect flows
+- Auto-verification: Deposits automatically detected and credited after 12 confirmations
 
 ## Visual Effects
 
@@ -135,6 +150,13 @@
 - Tier-specific gradient cards (no photos)
 - Gem/crystal icons for each tier (Royal Sapphire, Legendary Emerald, Imperial Platinum, Mythic Diamond)
 - Animated glow effects on hover
+
+**QR Codes:**
+- Generated dynamically using `qrcode` library
+- 256x256px size for clarity
+- Black/white contrast for scanability
+- Displayed in glassmorphic card with toggle
+- Mobile-optimized for wallet app scanning
 
 ## Responsive Design
 
