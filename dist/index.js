@@ -1,17 +1,144 @@
-// server/index.ts
-import express2 from "express";
-import cookieParser from "cookie-parser";
-import cors from "cors";
-import helmet from "helmet";
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
-// server/routes.ts
-import { createServer } from "http";
+// server/notifications.ts
+var notifications_exports = {};
+__export(notifications_exports, {
+  notifyUser: () => notifyUser,
+  sendPushNotification: () => sendPushNotification
+});
+import webpush from "web-push";
+async function sendPushNotification(userId, payload) {
+  if (!ENABLE_PUSH_NOTIFICATIONS) {
+    console.log(`Push notifications disabled`);
+    return false;
+  }
+  try {
+    const subscriptions = await storage.getUserPushSubscriptions(userId);
+    if (subscriptions.length === 0) {
+      console.log(`No push subscriptions found for user ${userId}`);
+      return false;
+    }
+    const pushPayload = JSON.stringify({
+      ...payload,
+      icon: payload.icon || "/icon-192.png",
+      badge: payload.badge || "/icon-192.png"
+    });
+    let successCount = 0;
+    const sendPromises = subscriptions.map(async (subscription) => {
+      try {
+        const pushSubscription = {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth
+          }
+        };
+        await webpush.sendNotification(pushSubscription, pushPayload);
+        console.log(`Push notification sent successfully to ${subscription.endpoint}`);
+        successCount++;
+      } catch (error) {
+        console.error(`Error sending push notification to ${subscription.endpoint}:`, error);
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          console.log(`Subscription expired/gone, disabling: ${subscription.endpoint}`);
+          await storage.disablePushSubscription(subscription.endpoint);
+        }
+      }
+    });
+    await Promise.allSettled(sendPromises);
+    return successCount > 0;
+  } catch (error) {
+    console.error("Error in sendPushNotification:", error);
+    return false;
+  }
+}
+async function notifyUser(userId, notification) {
+  try {
+    const createdNotification = await storage.createNotification({
+      userId,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      metadata: notification.metadata
+    });
+    const pushPayload = {
+      title: notification.title,
+      body: notification.message,
+      data: {
+        url: notification.url || "/",
+        type: notification.type,
+        id: createdNotification.id,
+        ...notification.metadata
+      }
+    };
+    try {
+      const pushSuccess = await sendPushNotification(userId, pushPayload);
+      const currentAttempts = createdNotification.deliveryAttempts || 0;
+      if (pushSuccess) {
+        await storage.updateNotificationDelivery(createdNotification.id, {
+          deliveredAt: /* @__PURE__ */ new Date(),
+          deliveryAttempts: currentAttempts + 1,
+          lastAttemptAt: /* @__PURE__ */ new Date(),
+          pendingPush: false
+        });
+      } else if (ENABLE_PUSH_NOTIFICATIONS) {
+        await storage.updateNotificationDelivery(createdNotification.id, {
+          deliveryAttempts: currentAttempts + 1,
+          lastAttemptAt: /* @__PURE__ */ new Date(),
+          pendingPush: true,
+          pushError: "No active subscriptions or push failed"
+        });
+      }
+    } catch (pushError) {
+      console.error("Error sending push notification (non-blocking):", pushError);
+      if (ENABLE_PUSH_NOTIFICATIONS) {
+        const currentAttempts = createdNotification.deliveryAttempts || 0;
+        await storage.updateNotificationDelivery(createdNotification.id, {
+          deliveryAttempts: currentAttempts + 1,
+          lastAttemptAt: /* @__PURE__ */ new Date(),
+          pendingPush: true,
+          pushError: pushError.message || "Unknown push error"
+        });
+      }
+    }
+    return createdNotification;
+  } catch (error) {
+    console.error("Error in notifyUser:", error);
+    throw error;
+  }
+}
+var VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, ENABLE_PUSH_NOTIFICATIONS;
+var init_notifications = __esm({
+  "server/notifications.ts"() {
+    "use strict";
+    init_storage();
+    VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, "").replace(/"$/, "");
+    VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, "").replace(/}$/, "").replace(/"$/, "");
+    VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:support@xnrt.org";
+    if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+      webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    }
+    ENABLE_PUSH_NOTIFICATIONS = process.env.ENABLE_PUSH_NOTIFICATIONS !== "false";
+  }
+});
 
 // server/storage.ts
 import { PrismaClient, Prisma } from "@prisma/client";
-var prisma = new PrismaClient();
+import crypto from "crypto";
+import { nanoid } from "nanoid";
 function generateReferralCode() {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
+  return `XNRT${nanoid(8).toUpperCase()}`;
+}
+function generateAnonymizedHandle(userId) {
+  const hash = crypto.createHash("sha256").update(userId).digest("hex");
+  return `Player-${hash.substring(0, 4).toUpperCase()}`;
 }
 function decimalToString(value) {
   if (value === null || value === void 0) return "0";
@@ -99,781 +226,1522 @@ function convertPrismaNotification(notification) {
     metadata: notification.metadata || void 0
   };
 }
-var DatabaseStorage = class {
-  // User operations (IMPORTANT: mandatory for Replit Auth)
-  async getUser(id) {
-    const user = await prisma.user.findUnique({
-      where: { id }
-    });
-    return user ? convertPrismaUser(user) : void 0;
-  }
-  async upsertUser(userData, refCode) {
-    const existingUser = await this.getUser(userData.id);
-    if (existingUser) {
-      const updateData = {};
-      if (userData.email !== void 0 && userData.email !== null) updateData.email = userData.email;
-      if (userData.username !== void 0 && userData.username !== null) updateData.username = userData.username;
-      if (userData.isAdmin !== void 0) updateData.isAdmin = userData.isAdmin;
-      if (userData.xp !== void 0) updateData.xp = userData.xp;
-      if (userData.level !== void 0) updateData.level = userData.level;
-      if (userData.streak !== void 0) updateData.streak = userData.streak;
-      if (userData.lastCheckIn !== void 0) updateData.lastCheckIn = userData.lastCheckIn;
-      updateData.updatedAt = /* @__PURE__ */ new Date();
-      const user2 = await prisma.user.update({
-        where: { id: userData.id },
-        data: updateData
-      });
-      return convertPrismaUser(user2);
-    }
-    const referralCode = generateReferralCode();
-    const user = await prisma.user.create({
-      data: {
-        id: userData.id,
-        email: userData.email || "",
-        username: userData.username || userData.email?.split("@")[0] || `user${Date.now()}`,
-        passwordHash: userData.passwordHash || "",
-        referralCode,
-        referredBy: refCode || null,
-        isAdmin: userData.isAdmin || false,
-        xp: userData.xp || 0,
-        level: userData.level || 1,
-        streak: userData.streak || 0,
-        lastCheckIn: userData.lastCheckIn || null
-      }
-    });
-    await this.createBalance({
-      userId: user.id,
-      xnrtBalance: "0",
-      stakingBalance: "0",
-      miningBalance: "0",
-      referralBalance: "0",
-      totalEarned: "0"
-    });
-    if (refCode) {
-      const referrer = await prisma.user.findUnique({
-        where: { referralCode: refCode }
-      });
-      if (referrer) {
-        await this.createReferral({
-          referrerId: referrer.id,
-          referredUserId: user.id,
-          level: 1,
-          totalCommission: "0"
+function convertPrismaPushSubscription(subscription) {
+  return {
+    ...subscription,
+    expirationTime: subscription.expirationTime || void 0
+  };
+}
+var prisma, DatabaseStorage, storage;
+var init_storage = __esm({
+  "server/storage.ts"() {
+    "use strict";
+    prisma = new PrismaClient();
+    DatabaseStorage = class {
+      // User operations (IMPORTANT: mandatory for Replit Auth)
+      async getUser(id) {
+        const user = await prisma.user.findUnique({
+          where: { id }
         });
-        await this.createNotification({
-          userId: referrer.id,
-          type: "new_referral",
-          title: "\u{1F389} New Referral!",
-          message: `${user.username || "A new user"} just joined using your referral code!`,
-          metadata: {
-            referredUserId: user.id,
-            referredUsername: user.username
+        return user ? convertPrismaUser(user) : void 0;
+      }
+      async upsertUser(userData, refCode) {
+        const existingUser = await this.getUser(userData.id);
+        if (existingUser) {
+          const updateData = {};
+          if (userData.email !== void 0 && userData.email !== null) updateData.email = userData.email;
+          if (userData.username !== void 0 && userData.username !== null) updateData.username = userData.username;
+          if (userData.isAdmin !== void 0) updateData.isAdmin = userData.isAdmin;
+          if (userData.xp !== void 0) updateData.xp = userData.xp;
+          if (userData.level !== void 0) updateData.level = userData.level;
+          if (userData.streak !== void 0) updateData.streak = userData.streak;
+          if (userData.lastCheckIn !== void 0) updateData.lastCheckIn = userData.lastCheckIn;
+          updateData.updatedAt = /* @__PURE__ */ new Date();
+          const user2 = await prisma.user.update({
+            where: { id: userData.id },
+            data: updateData
+          });
+          return convertPrismaUser(user2);
+        }
+        const referralCode = generateReferralCode();
+        const user = await prisma.user.create({
+          data: {
+            id: userData.id,
+            email: userData.email || "",
+            username: userData.username || userData.email?.split("@")[0] || `user${Date.now()}`,
+            passwordHash: userData.passwordHash || "",
+            referralCode,
+            referredBy: refCode || null,
+            isAdmin: userData.isAdmin || false,
+            xp: userData.xp || 0,
+            level: userData.level || 1,
+            streak: userData.streak || 0,
+            lastCheckIn: userData.lastCheckIn || null
           }
         });
-        await this.checkAndUnlockAchievements(referrer.id);
-      }
-    }
-    return convertPrismaUser(user);
-  }
-  async updateUser(userId, updates) {
-    const updateData = {};
-    if (updates.email !== void 0) updateData.email = updates.email;
-    if (updates.username !== void 0) updateData.username = updates.username;
-    if (updates.isAdmin !== void 0) updateData.isAdmin = updates.isAdmin;
-    if (updates.xp !== void 0) updateData.xp = updates.xp;
-    if (updates.level !== void 0) updateData.level = updates.level;
-    if (updates.streak !== void 0) updateData.streak = updates.streak;
-    if (updates.lastCheckIn !== void 0) updateData.lastCheckIn = updates.lastCheckIn;
-    updateData.updatedAt = /* @__PURE__ */ new Date();
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: updateData
-    });
-    return convertPrismaUser(user);
-  }
-  async getAllUsers() {
-    const users2 = await prisma.user.findMany();
-    return users2.map(convertPrismaUser);
-  }
-  // Balance operations
-  async getBalance(userId) {
-    const balance = await prisma.balance.findUnique({
-      where: { userId }
-    });
-    return balance ? convertPrismaBalance(balance) : void 0;
-  }
-  async createBalance(balance) {
-    const newBalance = await prisma.balance.create({
-      data: {
-        userId: balance.userId,
-        xnrtBalance: new Prisma.Decimal(balance.xnrtBalance || "0"),
-        stakingBalance: new Prisma.Decimal(balance.stakingBalance || "0"),
-        miningBalance: new Prisma.Decimal(balance.miningBalance || "0"),
-        referralBalance: new Prisma.Decimal(balance.referralBalance || "0"),
-        totalEarned: new Prisma.Decimal(balance.totalEarned || "0")
-      }
-    });
-    return convertPrismaBalance(newBalance);
-  }
-  async updateBalance(userId, updates) {
-    const data = { updatedAt: /* @__PURE__ */ new Date() };
-    if (updates.xnrtBalance !== void 0) data.xnrtBalance = new Prisma.Decimal(updates.xnrtBalance);
-    if (updates.stakingBalance !== void 0) data.stakingBalance = new Prisma.Decimal(updates.stakingBalance);
-    if (updates.miningBalance !== void 0) data.miningBalance = new Prisma.Decimal(updates.miningBalance);
-    if (updates.referralBalance !== void 0) data.referralBalance = new Prisma.Decimal(updates.referralBalance);
-    if (updates.totalEarned !== void 0) data.totalEarned = new Prisma.Decimal(updates.totalEarned);
-    const balance = await prisma.balance.update({
-      where: { userId },
-      data
-    });
-    return convertPrismaBalance(balance);
-  }
-  // Staking operations
-  async getStakes(userId) {
-    const stakes2 = await prisma.stake.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" }
-    });
-    return stakes2.map(convertPrismaStake);
-  }
-  async getStakeById(id) {
-    const stake = await prisma.stake.findUnique({
-      where: { id }
-    });
-    return stake ? convertPrismaStake(stake) : void 0;
-  }
-  async createStake(stake) {
-    const newStake = await prisma.stake.create({
-      data: {
-        userId: stake.userId,
-        tier: stake.tier,
-        amount: new Prisma.Decimal(stake.amount),
-        dailyRate: new Prisma.Decimal(stake.dailyRate),
-        duration: stake.duration,
-        startDate: stake.startDate || /* @__PURE__ */ new Date(),
-        endDate: stake.endDate,
-        totalProfit: new Prisma.Decimal(stake.totalProfit || "0"),
-        lastProfitDate: stake.lastProfitDate,
-        status: stake.status || "active"
-      }
-    });
-    return convertPrismaStake(newStake);
-  }
-  async updateStake(id, updates) {
-    const data = {};
-    if (updates.totalProfit !== void 0) data.totalProfit = new Prisma.Decimal(updates.totalProfit);
-    if (updates.lastProfitDate !== void 0) data.lastProfitDate = updates.lastProfitDate;
-    if (updates.status !== void 0) data.status = updates.status;
-    const stake = await prisma.stake.update({
-      where: { id },
-      data
-    });
-    return convertPrismaStake(stake);
-  }
-  async atomicWithdrawStake(id, totalProfit) {
-    try {
-      const stake = await prisma.stake.updateMany({
-        where: {
-          id,
-          OR: [
-            { status: "completed" },
-            { status: "active" }
-          ]
-        },
-        data: {
-          status: "withdrawn",
-          totalProfit: new Prisma.Decimal(totalProfit)
-        }
-      });
-      if (stake.count === 0) return null;
-      const updatedStake = await prisma.stake.findUnique({
-        where: { id }
-      });
-      return updatedStake ? convertPrismaStake(updatedStake) : null;
-    } catch (error) {
-      return null;
-    }
-  }
-  async getAllActiveStakes() {
-    const stakes2 = await prisma.stake.findMany({
-      where: { status: "active" }
-    });
-    return stakes2.map(convertPrismaStake);
-  }
-  async processStakingRewards() {
-    const activeStakes = await this.getAllActiveStakes();
-    const now = /* @__PURE__ */ new Date();
-    const DAY_MS = 24 * 60 * 60 * 1e3;
-    for (const stake of activeStakes) {
-      const lastProfitDate = new Date(stake.lastProfitDate || stake.startDate);
-      const endDate = new Date(stake.endDate);
-      const daysSinceLastProfit = Math.floor((now.getTime() - lastProfitDate.getTime()) / DAY_MS);
-      const daysUntilEnd = Math.floor((endDate.getTime() - lastProfitDate.getTime()) / DAY_MS);
-      const creditedDays = Math.max(0, Math.min(daysSinceLastProfit, daysUntilEnd));
-      if (creditedDays >= 1) {
-        const dailyProfit = parseFloat(stake.amount) * parseFloat(stake.dailyRate) / 100;
-        const profitToAdd = dailyProfit * creditedDays;
-        const newTotalProfit = parseFloat(stake.totalProfit) + profitToAdd;
-        const calculatedLastProfitDate = new Date(lastProfitDate.getTime() + creditedDays * DAY_MS);
-        const newLastProfitDate = calculatedLastProfitDate > endDate ? endDate : calculatedLastProfitDate;
-        await this.updateStake(stake.id, {
-          totalProfit: newTotalProfit.toString(),
-          lastProfitDate: newLastProfitDate
+        await this.createBalance({
+          userId: user.id,
+          xnrtBalance: "0",
+          stakingBalance: "0",
+          miningBalance: "0",
+          referralBalance: "0",
+          totalEarned: "0"
         });
-        const balance = await this.getBalance(stake.userId);
-        if (balance) {
-          await this.updateBalance(stake.userId, {
-            stakingBalance: (parseFloat(balance.stakingBalance) + profitToAdd).toString(),
-            totalEarned: (parseFloat(balance.totalEarned) + profitToAdd).toString()
+        if (refCode) {
+          const referrer = await prisma.user.findUnique({
+            where: { referralCode: refCode }
           });
+          if (referrer) {
+            await this.createReferral({
+              referrerId: referrer.id,
+              referredUserId: user.id,
+              level: 1,
+              totalCommission: "0"
+            });
+            await this.createNotification({
+              userId: referrer.id,
+              type: "new_referral",
+              title: "\u{1F389} New Referral!",
+              message: `${user.username || "A new user"} just joined using your referral code!`,
+              metadata: {
+                referredUserId: user.id,
+                referredUsername: user.username
+              }
+            });
+            await this.checkAndUnlockAchievements(referrer.id);
+          }
         }
-        await this.createActivity({
-          userId: stake.userId,
-          type: "staking_reward",
-          description: `Earned ${profitToAdd.toFixed(2)} XNRT from staking (${creditedDays} day${creditedDays > 1 ? "s" : ""})`
+        return convertPrismaUser(user);
+      }
+      async updateUser(userId, updates) {
+        const updateData = {};
+        if (updates.email !== void 0) updateData.email = updates.email;
+        if (updates.username !== void 0) updateData.username = updates.username;
+        if (updates.isAdmin !== void 0) updateData.isAdmin = updates.isAdmin;
+        if (updates.xp !== void 0) updateData.xp = updates.xp;
+        if (updates.level !== void 0) updateData.level = updates.level;
+        if (updates.streak !== void 0) updateData.streak = updates.streak;
+        if (updates.lastCheckIn !== void 0) updateData.lastCheckIn = updates.lastCheckIn;
+        updateData.updatedAt = /* @__PURE__ */ new Date();
+        const user = await prisma.user.update({
+          where: { id: userId },
+          data: updateData
         });
-        await this.checkAndUnlockAchievements(stake.userId);
+        return convertPrismaUser(user);
       }
-      if (now >= endDate) {
-        await this.updateStake(stake.id, {
-          status: "completed"
+      async getAllUsers() {
+        const users2 = await prisma.user.findMany();
+        return users2.map(convertPrismaUser);
+      }
+      // Balance operations
+      async getBalance(userId) {
+        const balance = await prisma.balance.findUnique({
+          where: { userId }
         });
+        return balance ? convertPrismaBalance(balance) : void 0;
       }
-    }
-  }
-  // Mining operations
-  async getCurrentMiningSession(userId) {
-    const session = await prisma.miningSession.findFirst({
-      where: {
-        userId,
-        status: "active"
-      },
-      orderBy: { createdAt: "desc" }
-    });
-    if (session && session.endTime && /* @__PURE__ */ new Date() >= new Date(session.endTime)) {
-      const baseReward = session.baseReward || 10;
-      const boostPercentage = session.boostPercentage || 0;
-      const finalReward = baseReward + Math.floor(baseReward * boostPercentage / 100);
-      const xpReward = finalReward;
-      const xnrtReward = finalReward * 0.5;
-      await this.updateMiningSession(session.id, {
-        status: "completed",
-        finalReward,
-        endTime: /* @__PURE__ */ new Date()
-      });
-      const user = await this.getUser(userId);
-      if (user) {
-        await this.updateUser(userId, {
-          xp: (user.xp || 0) + xpReward
+      async createBalance(balance) {
+        const newBalance = await prisma.balance.create({
+          data: {
+            userId: balance.userId,
+            xnrtBalance: new Prisma.Decimal(balance.xnrtBalance || "0"),
+            stakingBalance: new Prisma.Decimal(balance.stakingBalance || "0"),
+            miningBalance: new Prisma.Decimal(balance.miningBalance || "0"),
+            referralBalance: new Prisma.Decimal(balance.referralBalance || "0"),
+            totalEarned: new Prisma.Decimal(balance.totalEarned || "0")
+          }
         });
+        return convertPrismaBalance(newBalance);
       }
-      const balance = await this.getBalance(userId);
-      if (balance) {
-        await this.updateBalance(userId, {
-          miningBalance: (parseFloat(balance.miningBalance) + xnrtReward).toString(),
-          totalEarned: (parseFloat(balance.totalEarned) + xnrtReward).toString()
+      async updateBalance(userId, updates) {
+        const data = { updatedAt: /* @__PURE__ */ new Date() };
+        if (updates.xnrtBalance !== void 0) data.xnrtBalance = new Prisma.Decimal(updates.xnrtBalance);
+        if (updates.stakingBalance !== void 0) data.stakingBalance = new Prisma.Decimal(updates.stakingBalance);
+        if (updates.miningBalance !== void 0) data.miningBalance = new Prisma.Decimal(updates.miningBalance);
+        if (updates.referralBalance !== void 0) data.referralBalance = new Prisma.Decimal(updates.referralBalance);
+        if (updates.totalEarned !== void 0) data.totalEarned = new Prisma.Decimal(updates.totalEarned);
+        const balance = await prisma.balance.update({
+          where: { userId },
+          data
         });
+        return convertPrismaBalance(balance);
       }
-      await this.createActivity({
-        userId,
-        type: "mining_completed",
-        description: `Completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`
-      });
-      await this.checkAndUnlockAchievements(userId);
-      return void 0;
-    }
-    return session || void 0;
-  }
-  async getMiningHistory(userId) {
-    const sessions2 = await prisma.miningSession.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: 50
-    });
-    return sessions2;
-  }
-  async createMiningSession(session) {
-    const newSession = await prisma.miningSession.create({
-      data: {
-        userId: session.userId,
-        baseReward: session.baseReward || 10,
-        adBoostCount: session.adBoostCount || 0,
-        boostPercentage: session.boostPercentage || 0,
-        finalReward: session.finalReward || 10,
-        startTime: session.startTime || /* @__PURE__ */ new Date(),
-        endTime: session.endTime,
-        nextAvailable: session.nextAvailable,
-        status: session.status || "active"
+      // Staking operations
+      async getStakes(userId) {
+        const stakes2 = await prisma.stake.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" }
+        });
+        return stakes2.map(convertPrismaStake);
       }
-    });
-    return newSession;
-  }
-  async updateMiningSession(id, updates) {
-    const data = {};
-    if (updates.baseReward !== void 0) data.baseReward = updates.baseReward;
-    if (updates.adBoostCount !== void 0) data.adBoostCount = updates.adBoostCount;
-    if (updates.boostPercentage !== void 0) data.boostPercentage = updates.boostPercentage;
-    if (updates.finalReward !== void 0) data.finalReward = updates.finalReward;
-    if (updates.endTime !== void 0) data.endTime = updates.endTime;
-    if (updates.status !== void 0) data.status = updates.status;
-    const session = await prisma.miningSession.update({
-      where: { id },
-      data
-    });
-    return session;
-  }
-  // Referral operations
-  async getReferralsByReferrer(referrerId) {
-    const referrals2 = await prisma.referral.findMany({
-      where: { referrerId }
-    });
-    return referrals2.map(convertPrismaReferral);
-  }
-  async createReferral(referral) {
-    const newReferral = await prisma.referral.create({
-      data: {
-        referrerId: referral.referrerId,
-        referredUserId: referral.referredUserId,
-        level: referral.level,
-        totalCommission: new Prisma.Decimal(referral.totalCommission || "0")
+      async getStakeById(id) {
+        const stake = await prisma.stake.findUnique({
+          where: { id }
+        });
+        return stake ? convertPrismaStake(stake) : void 0;
       }
-    });
-    return convertPrismaReferral(newReferral);
-  }
-  async updateReferral(id, updates) {
-    const data = {};
-    if (updates.totalCommission !== void 0) {
-      data.totalCommission = new Prisma.Decimal(updates.totalCommission);
-    }
-    const referral = await prisma.referral.update({
-      where: { id },
-      data
-    });
-    return convertPrismaReferral(referral);
-  }
-  async distributeReferralCommissions(userId, amount) {
-    console.log(`[REFERRAL] Starting distribution for userId: ${userId}, amount: ${amount}`);
-    const COMMISSION_RATES = {
-      1: 0.06,
-      2: 0.03,
-      3: 0.01
-    };
-    const referrerChain = await this.getReferrerChain(userId, 3);
-    console.log(`[REFERRAL] Referrer chain length: ${referrerChain.length}`, referrerChain.map((r) => ({ id: r?.id, email: r?.email })));
-    for (let level = 1; level <= 3; level++) {
-      const referrer = referrerChain[level - 1];
-      const commission = amount * COMMISSION_RATES[level];
-      console.log(`[REFERRAL] Level ${level}: referrer=${referrer?.email || "null"}, commission=${commission}`);
-      if (!referrer) {
-        const COMPANY_ADMIN_EMAIL = "noahkeaneowen@hotmail.com";
-        console.log(`[REFERRAL] No referrer at level ${level}, using company fallback: ${COMPANY_ADMIN_EMAIL}`);
-        const companyAccount = await prisma.user.findFirst({
+      async createStake(stake) {
+        const newStake = await prisma.stake.create({
+          data: {
+            userId: stake.userId,
+            tier: stake.tier,
+            amount: new Prisma.Decimal(stake.amount),
+            dailyRate: new Prisma.Decimal(stake.dailyRate),
+            duration: stake.duration,
+            startDate: stake.startDate || /* @__PURE__ */ new Date(),
+            endDate: stake.endDate,
+            totalProfit: new Prisma.Decimal(stake.totalProfit || "0"),
+            lastProfitDate: stake.lastProfitDate,
+            status: stake.status || "active"
+          }
+        });
+        return convertPrismaStake(newStake);
+      }
+      async updateStake(id, updates) {
+        const data = {};
+        if (updates.totalProfit !== void 0) data.totalProfit = new Prisma.Decimal(updates.totalProfit);
+        if (updates.lastProfitDate !== void 0) data.lastProfitDate = updates.lastProfitDate;
+        if (updates.status !== void 0) data.status = updates.status;
+        const stake = await prisma.stake.update({
+          where: { id },
+          data
+        });
+        return convertPrismaStake(stake);
+      }
+      async atomicWithdrawStake(id, totalProfit) {
+        try {
+          const stake = await prisma.stake.updateMany({
+            where: {
+              id,
+              OR: [
+                { status: "completed" },
+                { status: "active" }
+              ]
+            },
+            data: {
+              status: "withdrawn",
+              totalProfit: new Prisma.Decimal(totalProfit)
+            }
+          });
+          if (stake.count === 0) return null;
+          const updatedStake = await prisma.stake.findUnique({
+            where: { id }
+          });
+          return updatedStake ? convertPrismaStake(updatedStake) : null;
+        } catch (error) {
+          return null;
+        }
+      }
+      async getAllActiveStakes() {
+        const stakes2 = await prisma.stake.findMany({
+          where: { status: "active" }
+        });
+        return stakes2.map(convertPrismaStake);
+      }
+      async processStakingRewards() {
+        const activeStakes = await this.getAllActiveStakes();
+        const now = /* @__PURE__ */ new Date();
+        const DAY_MS = 24 * 60 * 60 * 1e3;
+        for (const stake of activeStakes) {
+          const lastProfitDate = new Date(stake.lastProfitDate || stake.startDate);
+          const endDate = new Date(stake.endDate);
+          const daysSinceLastProfit = Math.floor((now.getTime() - lastProfitDate.getTime()) / DAY_MS);
+          const daysUntilEnd = Math.floor((endDate.getTime() - lastProfitDate.getTime()) / DAY_MS);
+          const creditedDays = Math.max(0, Math.min(daysSinceLastProfit, daysUntilEnd));
+          if (creditedDays >= 1) {
+            const dailyProfit = parseFloat(stake.amount) * parseFloat(stake.dailyRate) / 100;
+            const profitToAdd = dailyProfit * creditedDays;
+            const newTotalProfit = parseFloat(stake.totalProfit) + profitToAdd;
+            const calculatedLastProfitDate = new Date(lastProfitDate.getTime() + creditedDays * DAY_MS);
+            const newLastProfitDate = calculatedLastProfitDate > endDate ? endDate : calculatedLastProfitDate;
+            await this.updateStake(stake.id, {
+              totalProfit: newTotalProfit.toString(),
+              lastProfitDate: newLastProfitDate
+            });
+            const balance = await this.getBalance(stake.userId);
+            if (balance) {
+              await this.updateBalance(stake.userId, {
+                stakingBalance: (parseFloat(balance.stakingBalance) + profitToAdd).toString(),
+                totalEarned: (parseFloat(balance.totalEarned) + profitToAdd).toString()
+              });
+            }
+            await this.createActivity({
+              userId: stake.userId,
+              type: "staking_reward",
+              description: `Earned ${profitToAdd.toFixed(2)} XNRT from staking (${creditedDays} day${creditedDays > 1 ? "s" : ""})`
+            });
+            const { notifyUser: notifyUser2 } = await Promise.resolve().then(() => (init_notifications(), notifications_exports));
+            void notifyUser2(stake.userId, {
+              type: "staking_reward",
+              title: "\u{1F48E} Staking Rewards!",
+              message: `You earned ${profitToAdd.toFixed(2)} XNRT from ${creditedDays} day${creditedDays > 1 ? "s" : ""} of staking`,
+              url: "/staking",
+              metadata: {
+                amount: profitToAdd.toString(),
+                days: creditedDays,
+                stakeId: stake.id
+              }
+            }).catch((err) => {
+              console.error("Error sending staking reward notification (non-blocking):", err);
+            });
+            await this.checkAndUnlockAchievements(stake.userId);
+          }
+          if (now >= endDate) {
+            await this.updateStake(stake.id, {
+              status: "completed"
+            });
+          }
+        }
+      }
+      async processMiningRewards() {
+        const activeSessions = await prisma.miningSession.findMany({
+          where: { status: "active" }
+        });
+        const now = /* @__PURE__ */ new Date();
+        for (const session of activeSessions) {
+          if (!session.endTime) continue;
+          const endTime = new Date(session.endTime);
+          if (now >= endTime) {
+            const xpReward = session.finalReward;
+            const xnrtReward = session.finalReward * 0.5;
+            await this.updateMiningSession(session.id, {
+              status: "completed",
+              endTime: now
+            });
+            const user = await this.getUser(session.userId);
+            if (user) {
+              await this.updateUser(session.userId, {
+                xp: (user.xp || 0) + xpReward
+              });
+            }
+            const balance = await this.getBalance(session.userId);
+            if (balance) {
+              await this.updateBalance(session.userId, {
+                miningBalance: (parseFloat(balance.miningBalance) + xnrtReward).toString(),
+                totalEarned: (parseFloat(balance.totalEarned) + xnrtReward).toString()
+              });
+            }
+            await this.createActivity({
+              userId: session.userId,
+              type: "mining_completed",
+              description: `Auto-completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`
+            });
+            const { notifyUser: notifyUser2 } = await Promise.resolve().then(() => (init_notifications(), notifications_exports));
+            void notifyUser2(session.userId, {
+              type: "mining_completed",
+              title: "\u26CF\uFE0F Mining Complete!",
+              message: `You earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT from your 24-hour mining session`,
+              url: "/mining",
+              metadata: {
+                xpReward,
+                xnrtReward: xnrtReward.toString(),
+                sessionId: session.id
+              }
+            }).catch((err) => {
+              console.error("Error sending mining notification (non-blocking):", err);
+            });
+            await this.checkAndUnlockAchievements(session.userId);
+          }
+        }
+      }
+      // Mining operations
+      async getCurrentMiningSession(userId) {
+        const session = await prisma.miningSession.findFirst({
           where: {
-            email: COMPANY_ADMIN_EMAIL,
-            isAdmin: true
-          }
+            userId,
+            status: "active"
+          },
+          orderBy: { createdAt: "desc" }
         });
-        if (!companyAccount) {
-          console.error(`[REFERRAL] Company admin account not found: ${COMPANY_ADMIN_EMAIL}`);
-          throw new Error(`Company admin account (${COMPANY_ADMIN_EMAIL}) not found - cannot process commission fallback`);
-        }
-        console.log(`[REFERRAL] Company account found: ${companyAccount.id}, crediting ${commission} XNRT`);
-        const companyBalance = await this.getBalance(companyAccount.id);
-        if (companyBalance) {
-          const newReferralBalance = (parseFloat(companyBalance.referralBalance) + commission).toString();
-          const newTotalEarned = (parseFloat(companyBalance.totalEarned) + commission).toString();
-          console.log(`[REFERRAL] Updating company balance: referral ${companyBalance.referralBalance} \u2192 ${newReferralBalance}`);
-          await this.updateBalance(companyAccount.id, {
-            referralBalance: newReferralBalance,
-            totalEarned: newTotalEarned
+        if (session && session.endTime && /* @__PURE__ */ new Date() >= new Date(session.endTime)) {
+          const baseReward = session.baseReward || 10;
+          const boostPercentage = session.boostPercentage || 0;
+          const finalReward = baseReward + Math.floor(baseReward * boostPercentage / 100);
+          const xpReward = finalReward;
+          const xnrtReward = finalReward * 0.5;
+          await this.updateMiningSession(session.id, {
+            status: "completed",
+            finalReward,
+            endTime: /* @__PURE__ */ new Date()
           });
+          const user = await this.getUser(userId);
+          if (user) {
+            await this.updateUser(userId, {
+              xp: (user.xp || 0) + xpReward
+            });
+          }
+          const balance = await this.getBalance(userId);
+          if (balance) {
+            await this.updateBalance(userId, {
+              miningBalance: (parseFloat(balance.miningBalance) + xnrtReward).toString(),
+              totalEarned: (parseFloat(balance.totalEarned) + xnrtReward).toString()
+            });
+          }
           await this.createActivity({
-            userId: companyAccount.id,
-            type: "company_commission",
-            description: `Received ${commission.toFixed(2)} XNRT company commission from missing level ${level} referrer`
+            userId,
+            type: "mining_completed",
+            description: `Completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`
           });
+          await this.checkAndUnlockAchievements(userId);
+          return void 0;
         }
-        continue;
+        return session || void 0;
       }
-      const existingReferral = await prisma.referral.findFirst({
-        where: {
-          referrerId: referrer.id,
-          referredUserId: userId
+      async getMiningHistory(userId) {
+        const sessions2 = await prisma.miningSession.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          take: 50
+        });
+        return sessions2;
+      }
+      async createMiningSession(session) {
+        const newSession = await prisma.miningSession.create({
+          data: {
+            userId: session.userId,
+            baseReward: session.baseReward || 10,
+            adBoostCount: session.adBoostCount || 0,
+            boostPercentage: session.boostPercentage || 0,
+            finalReward: session.finalReward || 10,
+            startTime: session.startTime || /* @__PURE__ */ new Date(),
+            endTime: session.endTime,
+            nextAvailable: session.nextAvailable,
+            status: session.status || "active"
+          }
+        });
+        return newSession;
+      }
+      async updateMiningSession(id, updates) {
+        const data = {};
+        if (updates.baseReward !== void 0) data.baseReward = updates.baseReward;
+        if (updates.adBoostCount !== void 0) data.adBoostCount = updates.adBoostCount;
+        if (updates.boostPercentage !== void 0) data.boostPercentage = updates.boostPercentage;
+        if (updates.finalReward !== void 0) data.finalReward = updates.finalReward;
+        if (updates.endTime !== void 0) data.endTime = updates.endTime;
+        if (updates.status !== void 0) data.status = updates.status;
+        const session = await prisma.miningSession.update({
+          where: { id },
+          data
+        });
+        return session;
+      }
+      // Referral operations
+      async getReferralsByReferrer(referrerId) {
+        const referrals2 = await prisma.referral.findMany({
+          where: { referrerId }
+        });
+        return referrals2.map(convertPrismaReferral);
+      }
+      async createReferral(referral) {
+        const newReferral = await prisma.referral.create({
+          data: {
+            referrerId: referral.referrerId,
+            referredUserId: referral.referredUserId,
+            level: referral.level,
+            totalCommission: new Prisma.Decimal(referral.totalCommission || "0")
+          }
+        });
+        return convertPrismaReferral(newReferral);
+      }
+      async updateReferral(id, updates) {
+        const data = {};
+        if (updates.totalCommission !== void 0) {
+          data.totalCommission = new Prisma.Decimal(updates.totalCommission);
         }
-      });
-      if (existingReferral) {
-        const newCommission = parseFloat(decimalToString(existingReferral.totalCommission)) + commission;
-        await this.updateReferral(existingReferral.id, {
-          totalCommission: newCommission.toString()
+        const referral = await prisma.referral.update({
+          where: { id },
+          data
         });
-      } else {
-        await this.createReferral({
-          referrerId: referrer.id,
-          referredUserId: userId,
-          level,
-          totalCommission: commission.toString()
-        });
+        return convertPrismaReferral(referral);
       }
-      const referrerBalance = await this.getBalance(referrer.id);
-      if (referrerBalance) {
-        const newReferralBalance = (parseFloat(referrerBalance.referralBalance) + commission).toString();
-        const newTotalEarned = (parseFloat(referrerBalance.totalEarned) + commission).toString();
-        console.log(`[REFERRAL] Updating referrer ${referrer.email} balance: referral ${referrerBalance.referralBalance} \u2192 ${newReferralBalance}`);
-        await this.updateBalance(referrer.id, {
-          referralBalance: newReferralBalance,
-          totalEarned: newTotalEarned
-        });
-      } else {
-        console.warn(`[REFERRAL] No balance found for referrer ${referrer.email} (${referrer.id})`);
-      }
-      await this.createActivity({
-        userId: referrer.id,
-        type: "referral_commission",
-        description: `Earned ${commission.toFixed(2)} XNRT commission from level ${level} referral`
-      });
-      await this.createNotification({
-        userId: referrer.id,
-        type: "referral_commission",
-        title: "\u{1F4B0} Commission Earned!",
-        message: `You earned ${commission.toFixed(2)} XNRT commission from a level ${level} referral`,
-        metadata: {
-          amount: commission.toString(),
-          level,
-          referredUserId: userId
+      async distributeReferralCommissions(userId, amount) {
+        console.log(`[REFERRAL] Starting distribution for userId: ${userId}, amount: ${amount}`);
+        const COMMISSION_RATES = {
+          1: 0.06,
+          2: 0.03,
+          3: 0.01
+        };
+        const referrerChain = await this.getReferrerChain(userId, 3);
+        console.log(`[REFERRAL] Referrer chain length: ${referrerChain.length}`, referrerChain.map((r) => ({ id: r?.id, email: r?.email })));
+        for (let level = 1; level <= 3; level++) {
+          const referrer = referrerChain[level - 1];
+          const commission = amount * COMMISSION_RATES[level];
+          console.log(`[REFERRAL] Level ${level}: referrer=${referrer?.email || "null"}, commission=${commission}`);
+          if (!referrer) {
+            const COMPANY_ADMIN_EMAIL = "noahkeaneowen@hotmail.com";
+            console.log(`[REFERRAL] No referrer at level ${level}, using company fallback: ${COMPANY_ADMIN_EMAIL}`);
+            const companyAccount = await prisma.user.findFirst({
+              where: {
+                email: COMPANY_ADMIN_EMAIL,
+                isAdmin: true
+              }
+            });
+            if (!companyAccount) {
+              console.error(`[REFERRAL] Company admin account not found: ${COMPANY_ADMIN_EMAIL}`);
+              throw new Error(`Company admin account (${COMPANY_ADMIN_EMAIL}) not found - cannot process commission fallback`);
+            }
+            console.log(`[REFERRAL] Company account found: ${companyAccount.id}, crediting ${commission} XNRT`);
+            const companyBalance = await this.getBalance(companyAccount.id);
+            if (companyBalance) {
+              const newReferralBalance = (parseFloat(companyBalance.referralBalance) + commission).toString();
+              const newTotalEarned = (parseFloat(companyBalance.totalEarned) + commission).toString();
+              console.log(`[REFERRAL] Updating company balance: referral ${companyBalance.referralBalance} \u2192 ${newReferralBalance}`);
+              await this.updateBalance(companyAccount.id, {
+                referralBalance: newReferralBalance,
+                totalEarned: newTotalEarned
+              });
+              await this.createActivity({
+                userId: companyAccount.id,
+                type: "company_commission",
+                description: `Received ${commission.toFixed(2)} XNRT company commission from missing level ${level} referrer`
+              });
+            }
+            continue;
+          }
+          const existingReferral = await prisma.referral.findFirst({
+            where: {
+              referrerId: referrer.id,
+              referredUserId: userId
+            }
+          });
+          if (existingReferral) {
+            const newCommission = parseFloat(decimalToString(existingReferral.totalCommission)) + commission;
+            await this.updateReferral(existingReferral.id, {
+              totalCommission: newCommission.toString()
+            });
+          } else {
+            await this.createReferral({
+              referrerId: referrer.id,
+              referredUserId: userId,
+              level,
+              totalCommission: commission.toString()
+            });
+          }
+          const referrerBalance = await this.getBalance(referrer.id);
+          if (referrerBalance) {
+            const newReferralBalance = (parseFloat(referrerBalance.referralBalance) + commission).toString();
+            const newTotalEarned = (parseFloat(referrerBalance.totalEarned) + commission).toString();
+            console.log(`[REFERRAL] Updating referrer ${referrer.email} balance: referral ${referrerBalance.referralBalance} \u2192 ${newReferralBalance}`);
+            await this.updateBalance(referrer.id, {
+              referralBalance: newReferralBalance,
+              totalEarned: newTotalEarned
+            });
+          } else {
+            console.warn(`[REFERRAL] No balance found for referrer ${referrer.email} (${referrer.id})`);
+          }
+          await this.createActivity({
+            userId: referrer.id,
+            type: "referral_commission",
+            description: `Earned ${commission.toFixed(2)} XNRT commission from level ${level} referral`
+          });
+          const { notifyUser: notifyUser2 } = await Promise.resolve().then(() => (init_notifications(), notifications_exports));
+          void notifyUser2(referrer.id, {
+            type: "referral_commission",
+            title: "\u{1F4B0} Referral Bonus!",
+            message: `You earned ${commission.toFixed(2)} XNRT commission from a level ${level} referral`,
+            url: "/referrals",
+            metadata: {
+              amount: commission.toString(),
+              level,
+              referredUserId: userId
+            }
+          }).catch((err) => {
+            console.error("Error sending referral commission notification (non-blocking):", err);
+          });
+          console.log(`[REFERRAL] Level ${level} commission complete for ${referrer.email}`);
         }
-      });
-      console.log(`[REFERRAL] Level ${level} commission complete for ${referrer.email}`);
-    }
-    console.log(`[REFERRAL] Distribution complete for user ${userId}`);
-  }
-  async getReferrerChain(userId, maxLevels) {
-    const chain = [];
-    let currentUserId = userId;
-    for (let i = 0; i < maxLevels; i++) {
-      const currentUser = await prisma.user.findUnique({
-        where: { id: currentUserId }
-      });
-      if (!currentUser || !currentUser.referredBy) break;
-      const referrer = await prisma.user.findUnique({
-        where: { id: currentUser.referredBy }
-      });
-      if (!referrer) break;
-      chain.push(convertPrismaUser(referrer));
-      currentUserId = referrer.id;
-    }
-    return chain;
-  }
-  // Transaction operations
-  async getTransactionsByUser(userId, type) {
-    const where = { userId };
-    if (type) {
-      where.type = type;
-    }
-    const transactions2 = await prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: "desc" }
-    });
-    return transactions2.map(convertPrismaTransaction);
-  }
-  async getTransactionById(id) {
-    const transaction = await prisma.transaction.findUnique({
-      where: { id }
-    });
-    return transaction ? convertPrismaTransaction(transaction) : void 0;
-  }
-  async createTransaction(transaction) {
-    const data = {
-      userId: transaction.userId,
-      type: transaction.type,
-      amount: new Prisma.Decimal(transaction.amount),
-      status: transaction.status || "pending"
-    };
-    if (transaction.usdtAmount !== void 0 && transaction.usdtAmount !== null) {
-      data.usdtAmount = new Prisma.Decimal(transaction.usdtAmount);
-    }
-    if (transaction.source !== void 0 && transaction.source !== null) data.source = transaction.source;
-    if (transaction.walletAddress !== void 0 && transaction.walletAddress !== null) {
-      data.walletAddress = transaction.walletAddress;
-    }
-    if (transaction.transactionHash !== void 0 && transaction.transactionHash !== null) {
-      data.transactionHash = transaction.transactionHash;
-    }
-    if (transaction.proofImageUrl !== void 0 && transaction.proofImageUrl !== null) {
-      data.proofImageUrl = transaction.proofImageUrl;
-    }
-    if (transaction.adminNotes !== void 0 && transaction.adminNotes !== null) {
-      data.adminNotes = transaction.adminNotes;
-    }
-    if (transaction.fee !== void 0 && transaction.fee !== null) {
-      data.fee = new Prisma.Decimal(transaction.fee);
-    }
-    if (transaction.netAmount !== void 0 && transaction.netAmount !== null) {
-      data.netAmount = new Prisma.Decimal(transaction.netAmount);
-    }
-    if (transaction.approvedBy !== void 0 && transaction.approvedBy !== null) {
-      data.approvedBy = transaction.approvedBy;
-    }
-    if (transaction.approvedAt !== void 0 && transaction.approvedAt !== null) {
-      data.approvedAt = transaction.approvedAt;
-    }
-    const newTransaction = await prisma.transaction.create({ data });
-    return convertPrismaTransaction(newTransaction);
-  }
-  async updateTransaction(id, updates) {
-    const data = {};
-    if (updates.amount !== void 0 && updates.amount !== null) {
-      data.amount = new Prisma.Decimal(updates.amount);
-    }
-    if (updates.usdtAmount !== void 0 && updates.usdtAmount !== null) {
-      data.usdtAmount = new Prisma.Decimal(updates.usdtAmount);
-    }
-    if (updates.status !== void 0) data.status = updates.status;
-    if (updates.adminNotes !== void 0 && updates.adminNotes !== null) {
-      data.adminNotes = updates.adminNotes;
-    }
-    if (updates.fee !== void 0 && updates.fee !== null) {
-      data.fee = new Prisma.Decimal(updates.fee);
-    }
-    if (updates.netAmount !== void 0 && updates.netAmount !== null) {
-      data.netAmount = new Prisma.Decimal(updates.netAmount);
-    }
-    if (updates.approvedBy !== void 0 && updates.approvedBy !== null) {
-      data.approvedBy = updates.approvedBy;
-    }
-    if (updates.approvedAt !== void 0 && updates.approvedAt !== null) {
-      data.approvedAt = updates.approvedAt;
-    }
-    const transaction = await prisma.transaction.update({
-      where: { id },
-      data
-    });
-    return convertPrismaTransaction(transaction);
-  }
-  async getAllTransactions(type) {
-    const where = {};
-    if (type) {
-      where.type = type;
-    }
-    const transactions2 = await prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: "desc" }
-    });
-    return transactions2.map(convertPrismaTransaction);
-  }
-  async getPendingTransactions(type) {
-    const transactions2 = await prisma.transaction.findMany({
-      where: {
-        type,
-        status: "pending"
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            username: true
+        console.log(`[REFERRAL] Distribution complete for user ${userId}`);
+      }
+      async getReferrerChain(userId, maxLevels) {
+        const chain = [];
+        let currentUserId = userId;
+        for (let i = 0; i < maxLevels; i++) {
+          const currentUser = await prisma.user.findUnique({
+            where: { id: currentUserId }
+          });
+          if (!currentUser || !currentUser.referredBy) break;
+          const referrer = await prisma.user.findUnique({
+            where: { id: currentUser.referredBy }
+          });
+          if (!referrer) break;
+          chain.push(convertPrismaUser(referrer));
+          currentUserId = referrer.id;
+        }
+        return chain;
+      }
+      // Transaction operations
+      async getTransactionsByUser(userId, type) {
+        const where = { userId };
+        if (type) {
+          where.type = type;
+        }
+        const transactions2 = await prisma.transaction.findMany({
+          where,
+          orderBy: { createdAt: "desc" }
+        });
+        return transactions2.map(convertPrismaTransaction);
+      }
+      async getTransactionById(id) {
+        const transaction = await prisma.transaction.findUnique({
+          where: { id }
+        });
+        return transaction ? convertPrismaTransaction(transaction) : void 0;
+      }
+      async createTransaction(transaction) {
+        const data = {
+          userId: transaction.userId,
+          type: transaction.type,
+          amount: new Prisma.Decimal(transaction.amount),
+          status: transaction.status || "pending"
+        };
+        if (transaction.usdtAmount !== void 0 && transaction.usdtAmount !== null) {
+          data.usdtAmount = new Prisma.Decimal(transaction.usdtAmount);
+        }
+        if (transaction.source !== void 0 && transaction.source !== null) data.source = transaction.source;
+        if (transaction.walletAddress !== void 0 && transaction.walletAddress !== null) {
+          data.walletAddress = transaction.walletAddress;
+        }
+        if (transaction.transactionHash !== void 0 && transaction.transactionHash !== null) {
+          data.transactionHash = transaction.transactionHash;
+        }
+        if (transaction.proofImageUrl !== void 0 && transaction.proofImageUrl !== null) {
+          data.proofImageUrl = transaction.proofImageUrl;
+        }
+        if (transaction.adminNotes !== void 0 && transaction.adminNotes !== null) {
+          data.adminNotes = transaction.adminNotes;
+        }
+        if (transaction.fee !== void 0 && transaction.fee !== null) {
+          data.fee = new Prisma.Decimal(transaction.fee);
+        }
+        if (transaction.netAmount !== void 0 && transaction.netAmount !== null) {
+          data.netAmount = new Prisma.Decimal(transaction.netAmount);
+        }
+        if (transaction.approvedBy !== void 0 && transaction.approvedBy !== null) {
+          data.approvedBy = transaction.approvedBy;
+        }
+        if (transaction.approvedAt !== void 0 && transaction.approvedAt !== null) {
+          data.approvedAt = transaction.approvedAt;
+        }
+        if (transaction.verified !== void 0) {
+          data.verified = transaction.verified;
+        }
+        if (transaction.confirmations !== void 0) {
+          data.confirmations = transaction.confirmations;
+        }
+        if (transaction.verificationData !== void 0 && transaction.verificationData !== null) {
+          data.verificationData = transaction.verificationData;
+        }
+        const newTransaction = await prisma.transaction.create({ data });
+        return convertPrismaTransaction(newTransaction);
+      }
+      async updateTransaction(id, updates) {
+        const data = {};
+        if (updates.amount !== void 0 && updates.amount !== null) {
+          data.amount = new Prisma.Decimal(updates.amount);
+        }
+        if (updates.usdtAmount !== void 0 && updates.usdtAmount !== null) {
+          data.usdtAmount = new Prisma.Decimal(updates.usdtAmount);
+        }
+        if (updates.status !== void 0) data.status = updates.status;
+        if (updates.adminNotes !== void 0 && updates.adminNotes !== null) {
+          data.adminNotes = updates.adminNotes;
+        }
+        if (updates.fee !== void 0 && updates.fee !== null) {
+          data.fee = new Prisma.Decimal(updates.fee);
+        }
+        if (updates.netAmount !== void 0 && updates.netAmount !== null) {
+          data.netAmount = new Prisma.Decimal(updates.netAmount);
+        }
+        if (updates.approvedBy !== void 0 && updates.approvedBy !== null) {
+          data.approvedBy = updates.approvedBy;
+        }
+        if (updates.approvedAt !== void 0 && updates.approvedAt !== null) {
+          data.approvedAt = updates.approvedAt;
+        }
+        if (updates.verified !== void 0) {
+          data.verified = updates.verified;
+        }
+        if (updates.confirmations !== void 0) {
+          data.confirmations = updates.confirmations;
+        }
+        if (updates.verificationData !== void 0 && updates.verificationData !== null) {
+          data.verificationData = updates.verificationData;
+        }
+        const transaction = await prisma.transaction.update({
+          where: { id },
+          data
+        });
+        return convertPrismaTransaction(transaction);
+      }
+      async getAllTransactions(type) {
+        const where = {};
+        if (type) {
+          where.type = type;
+        }
+        const transactions2 = await prisma.transaction.findMany({
+          where,
+          orderBy: { createdAt: "desc" }
+        });
+        return transactions2.map(convertPrismaTransaction);
+      }
+      async getPendingTransactions(type) {
+        const transactions2 = await prisma.transaction.findMany({
+          where: {
+            type,
+            status: "pending"
+          },
+          include: {
+            user: {
+              select: {
+                email: true,
+                username: true
+              }
+            }
+          },
+          orderBy: { createdAt: "desc" }
+        });
+        return transactions2.map(convertPrismaTransaction);
+      }
+      // Task operations
+      async getAllTasks() {
+        const tasks2 = await prisma.task.findMany({
+          where: { isActive: true }
+        });
+        return tasks2.map(convertPrismaTask);
+      }
+      async getUserTasks(userId) {
+        const userTasks2 = await prisma.userTask.findMany({
+          where: { userId }
+        });
+        return userTasks2.map(convertPrismaUserTask);
+      }
+      async createUserTask(userTask) {
+        const newUserTask = await prisma.userTask.create({
+          data: {
+            userId: userTask.userId,
+            taskId: userTask.taskId,
+            progress: userTask.progress || 0,
+            maxProgress: userTask.maxProgress || 1,
+            completed: userTask.completed || false,
+            completedAt: userTask.completedAt
+          }
+        });
+        return convertPrismaUserTask(newUserTask);
+      }
+      async updateUserTask(id, updates) {
+        const data = {};
+        if (updates.progress !== void 0) data.progress = updates.progress;
+        if (updates.maxProgress !== void 0) data.maxProgress = updates.maxProgress;
+        if (updates.completed !== void 0) data.completed = updates.completed;
+        if (updates.completedAt !== void 0) data.completedAt = updates.completedAt;
+        const userTask = await prisma.userTask.update({
+          where: { id },
+          data
+        });
+        return convertPrismaUserTask(userTask);
+      }
+      // Achievement operations
+      async getAllAchievements() {
+        return await prisma.achievement.findMany();
+      }
+      async getUserAchievements(userId) {
+        return await prisma.userAchievement.findMany({
+          where: { userId }
+        });
+      }
+      async createUserAchievement(userAchievement) {
+        const newUserAchievement = await prisma.userAchievement.create({
+          data: {
+            userId: userAchievement.userId,
+            achievementId: userAchievement.achievementId
+          }
+        });
+        return newUserAchievement;
+      }
+      async checkAndUnlockAchievements(userId) {
+        const user = await this.getUser(userId);
+        if (!user) return;
+        const balance = await this.getBalance(userId);
+        if (!balance) return;
+        const allAchievements = await this.getAllAchievements();
+        const userAchievementsList = await this.getUserAchievements(userId);
+        const unlockedIds = new Set(userAchievementsList.map((ua) => ua.achievementId));
+        const totalEarned = parseFloat(balance.totalEarned);
+        const userReferrals = await this.getReferralsByReferrer(userId);
+        const directReferrals = userReferrals.filter((r) => r.level === 1);
+        const miningSessions2 = await this.getMiningHistory(userId);
+        const completedMining = miningSessions2.filter((s) => s.status === "completed");
+        let totalXpReward = 0;
+        const unlockedAchievements = [];
+        for (const achievement of allAchievements) {
+          if (unlockedIds.has(achievement.id)) continue;
+          let shouldUnlock = false;
+          switch (achievement.category) {
+            case "earnings":
+              shouldUnlock = totalEarned >= achievement.requirement;
+              break;
+            case "referrals":
+              shouldUnlock = directReferrals.length >= achievement.requirement;
+              break;
+            case "streaks":
+              shouldUnlock = (user.streak || 0) >= achievement.requirement;
+              break;
+            case "mining":
+              shouldUnlock = completedMining.length >= achievement.requirement;
+              break;
+          }
+          if (shouldUnlock) {
+            await this.createUserAchievement({
+              userId,
+              achievementId: achievement.id
+            });
+            totalXpReward += achievement.xpReward;
+            unlockedAchievements.push(achievement);
+            await this.createActivity({
+              userId,
+              type: "achievement_unlocked",
+              description: `Unlocked achievement: ${achievement.title} (+${achievement.xpReward} XP)`
+            });
+            const { notifyUser: notifyUser2 } = await Promise.resolve().then(() => (init_notifications(), notifications_exports));
+            void notifyUser2(userId, {
+              type: "achievement_unlocked",
+              title: "\u{1F3C6} Achievement Unlocked!",
+              message: `${achievement.title} - You earned ${achievement.xpReward} XP!`,
+              url: "/achievements",
+              metadata: {
+                achievementId: achievement.id,
+                achievementTitle: achievement.title,
+                xpReward: achievement.xpReward
+              }
+            }).catch((err) => {
+              console.error("Error sending achievement notification (non-blocking):", err);
+            });
           }
         }
-      },
-      orderBy: { createdAt: "desc" }
-    });
-    return transactions2.map(convertPrismaTransaction);
-  }
-  // Task operations
-  async getAllTasks() {
-    const tasks2 = await prisma.task.findMany({
-      where: { isActive: true }
-    });
-    return tasks2.map(convertPrismaTask);
-  }
-  async getUserTasks(userId) {
-    const userTasks2 = await prisma.userTask.findMany({
-      where: { userId }
-    });
-    return userTasks2.map(convertPrismaUserTask);
-  }
-  async createUserTask(userTask) {
-    const newUserTask = await prisma.userTask.create({
-      data: {
-        userId: userTask.userId,
-        taskId: userTask.taskId,
-        progress: userTask.progress || 0,
-        maxProgress: userTask.maxProgress || 1,
-        completed: userTask.completed || false,
-        completedAt: userTask.completedAt
+        if (totalXpReward > 0) {
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              xp: (user.xp || 0) + totalXpReward
+            }
+          });
+        }
       }
-    });
-    return convertPrismaUserTask(newUserTask);
-  }
-  async updateUserTask(id, updates) {
-    const data = {};
-    if (updates.progress !== void 0) data.progress = updates.progress;
-    if (updates.maxProgress !== void 0) data.maxProgress = updates.maxProgress;
-    if (updates.completed !== void 0) data.completed = updates.completed;
-    if (updates.completedAt !== void 0) data.completedAt = updates.completedAt;
-    const userTask = await prisma.userTask.update({
-      where: { id },
-      data
-    });
-    return convertPrismaUserTask(userTask);
-  }
-  // Achievement operations
-  async getAllAchievements() {
-    return await prisma.achievement.findMany();
-  }
-  async getUserAchievements(userId) {
-    return await prisma.userAchievement.findMany({
-      where: { userId }
-    });
-  }
-  async createUserAchievement(userAchievement) {
-    const newUserAchievement = await prisma.userAchievement.create({
-      data: {
-        userId: userAchievement.userId,
-        achievementId: userAchievement.achievementId
+      // Activity operations
+      async createActivity(activity) {
+        const data = {
+          userId: activity.userId,
+          type: activity.type,
+          description: activity.description
+        };
+        if (activity.metadata !== void 0 && activity.metadata !== null) {
+          data.metadata = activity.metadata;
+        }
+        const newActivity = await prisma.activity.create({ data });
+        return convertPrismaActivity(newActivity);
       }
-    });
-    return newUserAchievement;
-  }
-  async checkAndUnlockAchievements(userId) {
-    const user = await this.getUser(userId);
-    if (!user) return;
-    const balance = await this.getBalance(userId);
-    if (!balance) return;
-    const allAchievements = await this.getAllAchievements();
-    const userAchievementsList = await this.getUserAchievements(userId);
-    const unlockedIds = new Set(userAchievementsList.map((ua) => ua.achievementId));
-    const totalEarned = parseFloat(balance.totalEarned);
-    const userReferrals = await this.getReferralsByReferrer(userId);
-    const directReferrals = userReferrals.filter((r) => r.level === 1);
-    const miningSessions2 = await this.getMiningHistory(userId);
-    const completedMining = miningSessions2.filter((s) => s.status === "completed");
-    let totalXpReward = 0;
-    const unlockedAchievements = [];
-    for (const achievement of allAchievements) {
-      if (unlockedIds.has(achievement.id)) continue;
-      let shouldUnlock = false;
-      switch (achievement.category) {
-        case "earnings":
-          shouldUnlock = totalEarned >= achievement.requirement;
-          break;
-        case "referrals":
-          shouldUnlock = directReferrals.length >= achievement.requirement;
-          break;
-        case "streaks":
-          shouldUnlock = (user.streak || 0) >= achievement.requirement;
-          break;
-        case "mining":
-          shouldUnlock = completedMining.length >= achievement.requirement;
-          break;
-      }
-      if (shouldUnlock) {
-        await this.createUserAchievement({
-          userId,
-          achievementId: achievement.id
+      async getActivities(userId, limit = 10) {
+        const activities2 = await prisma.activity.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          take: limit
         });
-        totalXpReward += achievement.xpReward;
-        unlockedAchievements.push(achievement);
-        await this.createActivity({
-          userId,
-          type: "achievement_unlocked",
-          description: `Unlocked achievement: ${achievement.title} (+${achievement.xpReward} XP)`
+        return activities2.map(convertPrismaActivity);
+      }
+      // Notification operations
+      async createNotification(notification) {
+        const data = {
+          userId: notification.userId,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          read: notification.read || false
+        };
+        if (notification.metadata !== void 0 && notification.metadata !== null) {
+          data.metadata = JSON.stringify(notification.metadata);
+        }
+        const newNotification = await prisma.notification.create({ data });
+        return convertPrismaNotification(newNotification);
+      }
+      async getNotifications(userId, limit = 20) {
+        const notifications2 = await prisma.notification.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          take: limit
         });
+        return notifications2.map(convertPrismaNotification);
+      }
+      async getUnreadNotificationCount(userId) {
+        return await prisma.notification.count({
+          where: {
+            userId,
+            read: false
+          }
+        });
+      }
+      async markNotificationAsRead(id) {
+        const notification = await prisma.notification.update({
+          where: { id },
+          data: { read: true }
+        });
+        return convertPrismaNotification(notification);
+      }
+      async markAllNotificationsAsRead(userId) {
+        await prisma.notification.updateMany({
+          where: {
+            userId,
+            read: false
+          },
+          data: { read: true }
+        });
+      }
+      async getNotificationsPendingPush(limit = 50) {
+        const notifications2 = await prisma.notification.findMany({
+          where: {
+            pendingPush: true,
+            deliveryAttempts: {
+              lt: 5
+            }
+          },
+          orderBy: { createdAt: "asc" },
+          take: limit
+        });
+        return notifications2.map(convertPrismaNotification);
+      }
+      async updateNotificationDelivery(id, updates) {
+        const data = {};
+        if (updates.deliveredAt !== void 0) data.deliveredAt = updates.deliveredAt;
+        if (updates.deliveryAttempts !== void 0) data.deliveryAttempts = updates.deliveryAttempts;
+        if (updates.lastAttemptAt !== void 0) data.lastAttemptAt = updates.lastAttemptAt;
+        if (updates.pendingPush !== void 0) data.pendingPush = updates.pendingPush;
+        if (updates.pushError !== void 0) data.pushError = updates.pushError;
+        const notification = await prisma.notification.update({
+          where: { id },
+          data
+        });
+        return convertPrismaNotification(notification);
+      }
+      // Push Subscription operations
+      async getPushSubscription(userId, endpoint) {
+        try {
+          const subscription = await prisma.pushSubscription.findFirst({
+            where: { userId, endpoint }
+          });
+          return subscription ? convertPrismaPushSubscription(subscription) : null;
+        } catch (error) {
+          console.error("Error getting push subscription:", error);
+          return null;
+        }
+      }
+      async createPushSubscription(data) {
+        try {
+          const subscription = await prisma.pushSubscription.upsert({
+            where: {
+              userId_endpoint: {
+                userId: data.userId,
+                endpoint: data.endpoint
+              }
+            },
+            update: {
+              p256dh: data.p256dh,
+              auth: data.auth,
+              expirationTime: data.expirationTime || null,
+              enabled: true,
+              updatedAt: /* @__PURE__ */ new Date()
+            },
+            create: {
+              userId: data.userId,
+              endpoint: data.endpoint,
+              p256dh: data.p256dh,
+              auth: data.auth,
+              expirationTime: data.expirationTime || null,
+              enabled: true
+            }
+          });
+          return convertPrismaPushSubscription(subscription);
+        } catch (error) {
+          console.error("Error creating push subscription:", error);
+          throw new Error("Failed to create push subscription");
+        }
+      }
+      async deletePushSubscription(userId, endpoint) {
+        try {
+          await prisma.pushSubscription.deleteMany({
+            where: { userId, endpoint }
+          });
+        } catch (error) {
+          console.error("Error deleting push subscription:", error);
+          throw new Error("Failed to delete push subscription");
+        }
+      }
+      async getUserPushSubscriptions(userId) {
+        try {
+          const subscriptions = await prisma.pushSubscription.findMany({
+            where: { userId, enabled: true },
+            orderBy: { createdAt: "desc" }
+          });
+          return subscriptions.map(convertPrismaPushSubscription);
+        } catch (error) {
+          console.error("Error getting user push subscriptions:", error);
+          return [];
+        }
+      }
+      async disablePushSubscription(endpoint) {
+        try {
+          await prisma.pushSubscription.updateMany({
+            where: { endpoint },
+            data: { enabled: false, updatedAt: /* @__PURE__ */ new Date() }
+          });
+        } catch (error) {
+          console.error("Error disabling push subscription:", error);
+        }
+      }
+      // XP Leaderboard operations
+      async getXPLeaderboard(currentUserId, period, category, isAdmin = false) {
+        const now = /* @__PURE__ */ new Date();
+        let startDate = null;
+        switch (period) {
+          case "daily":
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            break;
+          case "weekly":
+            const dayOfWeek = now.getDay();
+            startDate = new Date(now.getTime() - dayOfWeek * 24 * 60 * 60 * 1e3);
+            startDate.setHours(0, 0, 0, 0);
+            break;
+          case "monthly":
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+          case "all-time":
+          default:
+            startDate = null;
+            break;
+        }
+        if (category === "overall") {
+          const users2 = await prisma.user.findMany({
+            select: {
+              id: true,
+              username: true,
+              email: true,
+              xp: true
+            },
+            orderBy: { xp: "desc" },
+            take: 100
+            // Get top 100 to find current user
+          });
+          const leaderboard = users2.slice(0, 10).map((user, index2) => {
+            const baseData = {
+              xp: user.xp,
+              categoryXp: user.xp,
+              rank: index2 + 1
+            };
+            if (isAdmin) {
+              return {
+                ...baseData,
+                userId: user.id,
+                username: user.username,
+                email: user.email,
+                displayName: user.username || user.email
+              };
+            } else {
+              return {
+                ...baseData,
+                displayName: generateAnonymizedHandle(user.id)
+              };
+            }
+          });
+          const currentUserRank = users2.findIndex((u) => u.id === currentUserId);
+          let userPosition = null;
+          if (currentUserRank > 9) {
+            const currentUser = users2[currentUserRank];
+            const baseData = {
+              xp: currentUser.xp,
+              categoryXp: currentUser.xp,
+              rank: currentUserRank + 1
+            };
+            if (isAdmin) {
+              userPosition = {
+                ...baseData,
+                userId: currentUser.id,
+                username: currentUser.username,
+                email: currentUser.email,
+                displayName: currentUser.username || currentUser.email
+              };
+            } else {
+              userPosition = {
+                ...baseData,
+                displayName: "You"
+              };
+            }
+          }
+          return { leaderboard, userPosition };
+        } else {
+          const typeFilter = category === "mining" ? "mining" : category === "staking" ? "stak" : "referral";
+          const users2 = await prisma.user.findMany({
+            select: {
+              id: true,
+              username: true,
+              email: true,
+              xp: true
+            }
+          });
+          const userXPData = await Promise.all(
+            users2.map(async (user) => {
+              const whereClause = {
+                userId: user.id,
+                type: { contains: typeFilter }
+              };
+              if (startDate) {
+                whereClause.createdAt = { gte: startDate };
+              }
+              const activities2 = await prisma.activity.findMany({
+                where: whereClause
+              });
+              let categoryXp = 0;
+              activities2.forEach((activity) => {
+                const xpMatch = activity.description.match(/(\d+)\s*XP/i);
+                if (xpMatch) {
+                  categoryXp += parseInt(xpMatch[1]);
+                }
+              });
+              return {
+                userId: user.id,
+                username: user.username,
+                email: user.email,
+                xp: user.xp,
+                categoryXp
+              };
+            })
+          );
+          userXPData.sort((a, b) => b.categoryXp - a.categoryXp);
+          const leaderboard = userXPData.slice(0, 10).map((user, index2) => {
+            const baseData = {
+              xp: user.xp,
+              categoryXp: user.categoryXp,
+              rank: index2 + 1
+            };
+            if (isAdmin) {
+              return {
+                ...baseData,
+                userId: user.userId,
+                username: user.username,
+                email: user.email,
+                displayName: user.username || user.email
+              };
+            } else {
+              return {
+                ...baseData,
+                displayName: generateAnonymizedHandle(user.userId)
+              };
+            }
+          });
+          const currentUserRank = userXPData.findIndex((u) => u.userId === currentUserId);
+          let userPosition = null;
+          if (currentUserRank > 9) {
+            const currentUser = userXPData[currentUserRank];
+            const baseData = {
+              xp: currentUser.xp,
+              categoryXp: currentUser.categoryXp,
+              rank: currentUserRank + 1
+            };
+            if (isAdmin) {
+              userPosition = {
+                ...baseData,
+                userId: currentUser.userId,
+                username: currentUser.username,
+                email: currentUser.email,
+                displayName: currentUser.username || currentUser.email
+              };
+            } else {
+              userPosition = {
+                ...baseData,
+                displayName: "You"
+              };
+            }
+          }
+          return { leaderboard, userPosition };
+        }
+      }
+      // Raw query support
+      async raw(query, params = []) {
+        return await prisma.$queryRawUnsafe(query, ...params);
+      }
+    };
+    storage = new DatabaseStorage();
+  }
+});
+
+// server/services/verifyBscUsdt.ts
+var verifyBscUsdt_exports = {};
+__export(verifyBscUsdt_exports, {
+  verifyBscUsdtDeposit: () => verifyBscUsdtDeposit
+});
+import { ethers } from "ethers";
+async function verifyBscUsdtDeposit(params) {
+  try {
+    const { txHash, expectedTo } = params;
+    const need = params.requiredConf ?? Number(process.env.BSC_CONFIRMATIONS ?? 12);
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return { verified: false, confirmations: 0, reason: "Transaction not found" };
+    }
+    if (receipt.status !== 1) {
+      const conf2 = await provider.getBlockNumber() - (receipt.blockNumber ?? 0);
+      return { verified: false, confirmations: conf2, reason: "Transaction failed" };
+    }
+    let totalToExpected = BigInt(0);
+    for (const log2 of receipt.logs) {
+      if (log2.address.toLowerCase() !== process.env.USDT_BSC_ADDRESS.toLowerCase()) continue;
+      try {
+        const parsed = usdt.interface.parseLog({ topics: log2.topics, data: log2.data });
+        if (parsed?.name !== "Transfer") continue;
+        const to = parsed.args.to;
+        const value = parsed.args.value;
+        if (to.toLowerCase() === expectedTo.toLowerCase()) {
+          totalToExpected += value;
+        }
+      } catch {
       }
     }
-    if (totalXpReward > 0) {
-      await prisma.user.update({
-        where: { id: userId },
+    const conf = await provider.getBlockNumber() - (receipt.blockNumber ?? 0);
+    if (totalToExpected === BigInt(0)) {
+      return {
+        verified: false,
+        confirmations: conf,
+        reason: "No USDT transfer to expected address"
+      };
+    }
+    const amountFloat = Number(ethers.formatUnits(totalToExpected, 18));
+    if (typeof params.minAmount === "number" && amountFloat + 1e-10 < params.minAmount) {
+      return {
+        verified: false,
+        confirmations: conf,
+        reason: `On-chain ${amountFloat} USDT < claimed ${params.minAmount} USDT`
+      };
+    }
+    if (conf < need) {
+      return {
+        verified: false,
+        confirmations: conf,
+        amountOnChain: amountFloat,
+        reason: `Only ${conf}/${need} confirmations`
+      };
+    }
+    return { verified: true, confirmations: conf, amountOnChain: amountFloat };
+  } catch (e) {
+    return {
+      verified: false,
+      confirmations: 0,
+      reason: e?.message ?? "Verify error"
+    };
+  }
+}
+var provider, USDT_ABI, usdt;
+var init_verifyBscUsdt = __esm({
+  "server/services/verifyBscUsdt.ts"() {
+    "use strict";
+    provider = new ethers.JsonRpcProvider(process.env.RPC_BSC_URL);
+    USDT_ABI = [
+      "event Transfer(address indexed from, address indexed to, uint256 value)"
+    ];
+    usdt = new ethers.Contract(
+      process.env.USDT_BSC_ADDRESS,
+      USDT_ABI,
+      provider
+    );
+  }
+});
+
+// server/services/depositScanner.ts
+var depositScanner_exports = {};
+__export(depositScanner_exports, {
+  scanForDeposits: () => scanForDeposits,
+  sendDepositNotification: () => sendDepositNotification,
+  startDepositScanner: () => startDepositScanner
+});
+import { ethers as ethers3 } from "ethers";
+import { PrismaClient as PrismaClient4, Prisma as Prisma2 } from "@prisma/client";
+async function startDepositScanner() {
+  if (!AUTO_DEPOSIT_ENABLED) {
+    console.log("[DepositScanner] AUTO_DEPOSIT not enabled, scanner disabled");
+    return;
+  }
+  const scanInterval = 60 * 1e3;
+  console.log("[DepositScanner] Starting scanner service...");
+  console.log(`[DepositScanner] Treasury (legacy): ${TREASURY_ADDRESS}`);
+  console.log(`[DepositScanner] USDT: ${USDT_ADDRESS}`);
+  console.log(`[DepositScanner] Required confirmations: ${REQUIRED_CONFIRMATIONS}`);
+  console.log(`[DepositScanner] Scan batch size: ${SCAN_BATCH}`);
+  console.log(`[DepositScanner] Watching user deposit addresses...`);
+  await scanForDeposits().catch((err) => {
+    console.error("[DepositScanner] Initial scan error:", err);
+  });
+  setInterval(async () => {
+    if (!isScanning) {
+      await scanForDeposits().catch((err) => {
+        console.error("[DepositScanner] Scan error:", err);
+      });
+    }
+  }, scanInterval);
+}
+async function scanForDeposits() {
+  if (isScanning) return;
+  isScanning = true;
+  const startTime = Date.now();
+  try {
+    let state = await prisma4.scannerState.findFirst();
+    const currentBlock = await provider2.getBlockNumber();
+    if (!state) {
+      let startBlock = currentBlock - 100;
+      if (process.env.BSC_START_FROM === "latest") {
+        startBlock = Math.max(0, currentBlock - REQUIRED_CONFIRMATIONS - 3);
+        console.log(`[DepositScanner] Starting from latest (block ${startBlock})`);
+      }
+      state = await prisma4.scannerState.create({
         data: {
-          xp: (user.xp || 0) + totalXpReward
+          lastBlock: Math.max(0, startBlock),
+          lastScanAt: /* @__PURE__ */ new Date(),
+          isScanning: true
         }
       });
     }
-  }
-  // Activity operations
-  async createActivity(activity) {
-    const data = {
-      userId: activity.userId,
-      type: activity.type,
-      description: activity.description
-    };
-    if (activity.metadata !== void 0 && activity.metadata !== null) {
-      data.metadata = activity.metadata;
+    const fromBlock = state.lastBlock + 1;
+    const toBlock = Math.min(currentBlock - REQUIRED_CONFIRMATIONS, fromBlock + SCAN_BATCH - 1);
+    if (fromBlock > toBlock) {
+      console.log(`[DepositScanner] No new blocks to scan`);
+      await prisma4.scannerState.update({
+        where: { id: state.id },
+        data: { isScanning: false, lastScanAt: /* @__PURE__ */ new Date() }
+      });
+      return;
     }
-    const newActivity = await prisma.activity.create({ data });
-    return convertPrismaActivity(newActivity);
-  }
-  async getActivities(userId, limit = 10) {
-    const activities2 = await prisma.activity.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: limit
+    console.log(`[DepositScanner] Scanning blocks ${fromBlock} to ${toBlock}...`);
+    const users2 = await prisma4.user.findMany({
+      where: { depositAddress: { not: null } },
+      select: { id: true, depositAddress: true }
     });
-    return activities2.map(convertPrismaActivity);
-  }
-  // Notification operations
-  async createNotification(notification) {
-    const data = {
-      userId: notification.userId,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      read: notification.read || false
-    };
-    if (notification.metadata !== void 0 && notification.metadata !== null) {
-      data.metadata = JSON.stringify(notification.metadata);
-    }
-    const newNotification = await prisma.notification.create({ data });
-    return convertPrismaNotification(newNotification);
-  }
-  async getNotifications(userId, limit = 20) {
-    const notifications2 = await prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: limit
-    });
-    return notifications2.map(convertPrismaNotification);
-  }
-  async getUnreadNotificationCount(userId) {
-    return await prisma.notification.count({
-      where: {
-        userId,
-        read: false
+    const addressToUserId = /* @__PURE__ */ new Map();
+    users2.forEach((user) => {
+      if (user.depositAddress) {
+        addressToUserId.set(user.depositAddress.toLowerCase(), user.id);
       }
     });
-  }
-  async markNotificationAsRead(id) {
-    const notification = await prisma.notification.update({
-      where: { id },
-      data: { read: true }
+    console.log(`[DepositScanner] Watching ${users2.length} deposit addresses`);
+    const filter = usdtContract.filters.Transfer();
+    const events = await usdtContract.queryFilter(filter, fromBlock, toBlock);
+    console.log(`[DepositScanner] Found ${events.length} transfer events`);
+    for (const event of events) {
+      if (event instanceof ethers3.EventLog) {
+        await processDepositEvent(event, currentBlock, addressToUserId);
+      }
+    }
+    await prisma4.scannerState.update({
+      where: { id: state.id },
+      data: {
+        lastBlock: toBlock,
+        lastScanAt: /* @__PURE__ */ new Date(),
+        isScanning: false,
+        errorCount: 0,
+        lastError: null
+      }
     });
-    return convertPrismaNotification(notification);
+    const duration = Date.now() - startTime;
+    console.log(`[DepositScanner] Scan completed in ${duration}ms`);
+  } catch (error) {
+    console.error("[DepositScanner] Scan failed:", error);
+    const state = await prisma4.scannerState.findFirst();
+    if (state) {
+      await prisma4.scannerState.update({
+        where: { id: state.id },
+        data: {
+          isScanning: false,
+          errorCount: state.errorCount + 1,
+          lastError: error.message,
+          lastScanAt: /* @__PURE__ */ new Date()
+        }
+      });
+    }
+  } finally {
+    isScanning = false;
   }
-  async markAllNotificationsAsRead(userId) {
-    await prisma.notification.updateMany({
-      where: {
-        userId,
-        read: false
-      },
-      data: { read: true }
+}
+async function processDepositEvent(event, currentBlock, addressToUserId) {
+  try {
+    const txHash = event.transactionHash.toLowerCase();
+    const from = event.args.from.toLowerCase();
+    const to = event.args.to.toLowerCase();
+    const value = event.args.value;
+    const blockNumber = event.blockNumber;
+    const confirmations = currentBlock - blockNumber;
+    const usdtAmount = Number(ethers3.formatUnits(value, 18));
+    const userId = addressToUserId.get(to);
+    if (!userId) {
+      if (to === TREASURY_ADDRESS) {
+        const linkedWallet = await prisma4.linkedWallet.findFirst({
+          where: { address: from, active: true }
+        });
+        if (linkedWallet) {
+          const existing = await prisma4.transaction.findFirst({
+            where: { transactionHash: txHash }
+          });
+          if (existing) return;
+          await processUserDeposit(
+            linkedWallet.userId,
+            to,
+            from,
+            usdtAmount,
+            txHash,
+            blockNumber,
+            confirmations
+          );
+        }
+      }
+      return;
+    }
+    const existingTx = await prisma4.transaction.findFirst({
+      where: { transactionHash: txHash }
     });
+    if (existingTx) {
+      return;
+    }
+    console.log(`[DepositScanner] New deposit: ${usdtAmount} USDT to user deposit address ${to}`);
+    await processUserDeposit(
+      userId,
+      to,
+      from,
+      usdtAmount,
+      txHash,
+      blockNumber,
+      confirmations
+    );
+  } catch (error) {
+    console.error("[DepositScanner] Event processing error:", error);
   }
-  // Raw query support
-  async raw(query, params = []) {
-    return await prisma.$queryRawUnsafe(query, ...params);
+}
+async function processUserDeposit(userId, toAddress, fromAddress, usdtAmount, txHash, blockNumber, confirmations) {
+  try {
+    const netUsdt = usdtAmount * (1 - PLATFORM_FEE_BPS / 1e4);
+    const xnrtAmount = netUsdt * XNRT_RATE;
+    if (confirmations >= REQUIRED_CONFIRMATIONS) {
+      await prisma4.$transaction(async (tx) => {
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: "deposit",
+            amount: new Prisma2.Decimal(xnrtAmount),
+            usdtAmount: new Prisma2.Decimal(usdtAmount),
+            transactionHash: txHash,
+            walletAddress: toAddress,
+            // User's deposit address
+            status: "approved",
+            verified: true,
+            confirmations,
+            verificationData: {
+              autoDeposit: true,
+              blockNumber,
+              scannedAt: (/* @__PURE__ */ new Date()).toISOString()
+            }
+          }
+        });
+        await tx.balance.upsert({
+          where: { userId },
+          create: {
+            userId,
+            xnrtBalance: new Prisma2.Decimal(xnrtAmount),
+            totalEarned: new Prisma2.Decimal(xnrtAmount)
+          },
+          update: {
+            xnrtBalance: { increment: new Prisma2.Decimal(xnrtAmount) },
+            totalEarned: { increment: new Prisma2.Decimal(xnrtAmount) }
+          }
+        });
+      });
+      console.log(`[DepositScanner] Auto-credited ${xnrtAmount} XNRT to user ${userId}`);
+      void sendDepositNotification(userId, xnrtAmount, txHash).catch((err) => {
+        console.error("[DepositScanner] Notification error:", err);
+      });
+    } else {
+      await prisma4.transaction.create({
+        data: {
+          userId,
+          type: "deposit",
+          amount: new Prisma2.Decimal(xnrtAmount),
+          usdtAmount: new Prisma2.Decimal(usdtAmount),
+          transactionHash: txHash,
+          walletAddress: toAddress,
+          // User's deposit address
+          status: "pending",
+          verified: true,
+          confirmations,
+          verificationData: {
+            autoDeposit: true,
+            blockNumber,
+            scannedAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        }
+      });
+      console.log(`[DepositScanner] Pending deposit (${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations)`);
+    }
+  } catch (error) {
+    console.error("[DepositScanner] Linked deposit processing error:", error);
   }
-};
-var storage = new DatabaseStorage();
+}
+async function sendDepositNotification(userId, amount, txHash) {
+  const { notifyUser: notifyUser2 } = await Promise.resolve().then(() => (init_notifications(), notifications_exports));
+  await notifyUser2(userId, {
+    type: "deposit_approved",
+    title: "\u{1F4B0} Deposit Auto-Credited!",
+    message: `Your deposit of ${amount.toLocaleString()} XNRT has been automatically credited to your account`,
+    url: "/wallet",
+    metadata: {
+      amount: amount.toString(),
+      transactionHash: txHash,
+      autoDeposit: true
+    }
+  });
+}
+var prisma4, RPC_URL, USDT_ADDRESS, TREASURY_ADDRESS, REQUIRED_CONFIRMATIONS, XNRT_RATE, PLATFORM_FEE_BPS, SCAN_BATCH, AUTO_DEPOSIT_ENABLED, provider2, USDT_ABI2, usdtContract, isScanning;
+var init_depositScanner = __esm({
+  "server/services/depositScanner.ts"() {
+    "use strict";
+    prisma4 = new PrismaClient4();
+    RPC_URL = process.env.RPC_BSC_URL || "";
+    USDT_ADDRESS = (process.env.USDT_BSC_ADDRESS || "").toLowerCase();
+    TREASURY_ADDRESS = (process.env.XNRT_WALLET || "").toLowerCase();
+    REQUIRED_CONFIRMATIONS = Number(process.env.BSC_CONFIRMATIONS || 12);
+    XNRT_RATE = Number(process.env.XNRT_RATE_USDT || 100);
+    PLATFORM_FEE_BPS = Number(process.env.PLATFORM_FEE_BPS || 0);
+    SCAN_BATCH = Number(process.env.BSC_SCAN_BATCH || 300);
+    AUTO_DEPOSIT_ENABLED = process.env.AUTO_DEPOSIT === "true";
+    provider2 = new ethers3.JsonRpcProvider(RPC_URL);
+    USDT_ABI2 = [
+      "event Transfer(address indexed from, address indexed to, uint256 value)"
+    ];
+    usdtContract = new ethers3.Contract(USDT_ADDRESS, USDT_ABI2, provider2);
+    isScanning = false;
+  }
+});
+
+// server/index.ts
+import express2 from "express";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import helmet from "helmet";
+
+// server/routes.ts
+init_storage();
+import { createServer } from "http";
 
 // server/auth/middleware.ts
 import { PrismaClient as PrismaClient2 } from "@prisma/client";
 
 // server/auth/jwt.ts
 import jwt from "jsonwebtoken";
-import { nanoid } from "nanoid";
+import { nanoid as nanoid2 } from "nanoid";
 var JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 var JWT_EXPIRES_IN = "7d";
 function signToken(payload) {
-  const jwtId = nanoid();
+  const jwtId = nanoid2();
   const token = jwt.sign(
     { ...payload, jwtId },
     JWT_SECRET,
@@ -891,9 +1759,9 @@ function verifyToken(token) {
 }
 
 // server/auth/csrf.ts
-import { nanoid as nanoid2 } from "nanoid";
+import { nanoid as nanoid3 } from "nanoid";
 function generateCSRFToken() {
-  return nanoid2(32);
+  return nanoid3(32);
 }
 function validateCSRFToken(headerToken, cookieToken) {
   if (!headerToken || !cookieToken) {
@@ -965,17 +1833,22 @@ var loginRateLimiter = rateLimit({
   // 5 requests per minute
   message: "Too many login attempts, please try again later",
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skip: (req) => {
+    return process.env.NODE_ENV === "development";
+  }
 });
 
 // server/auth/routes.ts
 import { Router } from "express";
 import { z } from "zod";
 import { PrismaClient as PrismaClient3 } from "@prisma/client";
+import { nanoid as nanoid4 } from "nanoid";
+import crypto3 from "crypto";
 
 // server/auth/password.ts
 import bcrypt from "bcrypt";
-import crypto from "crypto";
+import crypto2 from "crypto";
 var SALT_ROUNDS = 12;
 async function hashPassword(password) {
   return bcrypt.hash(password, SALT_ROUNDS);
@@ -984,11 +1857,191 @@ async function comparePassword(password, hash) {
   return bcrypt.compare(password, hash);
 }
 function generateResetToken() {
-  return crypto.randomBytes(32).toString("hex");
+  return crypto2.randomBytes(32).toString("hex");
 }
 
 // server/auth/routes.ts
 import rateLimit2 from "express-rate-limit";
+
+// server/services/email.ts
+import nodemailer from "nodemailer";
+var SMTP_HOST = "smtp-relay.brevo.com";
+var SMTP_PORT = 587;
+var SMTP_USER = "95624d002@smtp-brevo.com";
+var SMTP_PASS = process.env.SMTP_PASSWORD;
+var FROM_EMAIL = "NextGen Rise Foundation <noreply@xnrt.org>";
+var transporter = null;
+function getTransporter() {
+  if (!transporter) {
+    if (!SMTP_PASS) {
+      throw new Error("SMTP_PASSWORD environment variable is not set");
+    }
+    transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: false,
+      // use STARTTLS
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS
+      }
+    });
+  }
+  return transporter;
+}
+async function sendEmail(options) {
+  const transport = getTransporter();
+  await transport.sendMail({
+    from: FROM_EMAIL,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
+    text: options.text || options.html.replace(/<[^>]*>/g, "")
+    // Strip HTML for text version
+  });
+}
+function generateVerificationEmailHTML(username, verificationLink) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Verify Your Email - XNRT</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #0a0a0a;">
+        <tr>
+          <td style="padding: 40px 20px; text-align: center; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);">
+            <h1 style="color: #d4a72c; font-size: 32px; margin: 0; font-weight: 700; letter-spacing: 1px;">XNRT</h1>
+            <p style="color: #888; font-size: 14px; margin: 5px 0 0 0;">NextGen Gamification Platform</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px 30px; background-color: #1a1a1a;">
+            <h2 style="color: #ffffff; font-size: 24px; margin: 0 0 20px 0; font-weight: 600;">Welcome to XNRT, ${username}! \u{1F680}</h2>
+            <p style="color: #cccccc; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Thank you for joining the XNRT community! We're excited to have you on board.
+            </p>
+            <p style="color: #cccccc; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+              To get started and access all the amazing features of our platform, please verify your email address by clicking the button below:
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationLink}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #d4a72c 0%, #f4c542 100%); color: #000000; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(212, 167, 44, 0.3);">
+                Verify Email Address
+              </a>
+            </div>
+            <p style="color: #888; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+              Or copy and paste this link into your browser:<br>
+              <a href="${verificationLink}" style="color: #d4a72c; word-break: break-all;">${verificationLink}</a>
+            </p>
+            <p style="color: #888; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
+              This verification link will expire in 24 hours.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #0a0a0a; border-top: 1px solid #2a2a2a;">
+            <p style="color: #666; font-size: 14px; line-height: 1.6; margin: 0;">
+              <strong style="color: #888;">Start Earning:</strong> Stake, mine, refer friends, and complete tasks to earn XNRT tokens!
+            </p>
+            <p style="color: #666; font-size: 12px; margin: 20px 0 0 0;">
+              If you didn't create an account with XNRT, please ignore this email.
+            </p>
+            <p style="color: #444; font-size: 12px; margin: 15px 0 0 0; text-align: center;">
+              \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} NextGen Rise Foundation. All rights reserved.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+}
+function generatePasswordResetEmailHTML(username, resetLink) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Reset Your Password - XNRT</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #0a0a0a;">
+        <tr>
+          <td style="padding: 40px 20px; text-align: center; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);">
+            <h1 style="color: #d4a72c; font-size: 32px; margin: 0; font-weight: 700; letter-spacing: 1px;">XNRT</h1>
+            <p style="color: #888; font-size: 14px; margin: 5px 0 0 0;">NextGen Gamification Platform</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px 30px; background-color: #1a1a1a;">
+            <h2 style="color: #ffffff; font-size: 24px; margin: 0 0 20px 0; font-weight: 600;">Password Reset Request</h2>
+            <p style="color: #cccccc; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Hi ${username},
+            </p>
+            <p style="color: #cccccc; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              We received a request to reset your password for your XNRT account. If you made this request, click the button below to reset your password:
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #d4a72c 0%, #f4c542 100%); color: #000000; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(212, 167, 44, 0.3);">
+                Reset Password
+              </a>
+            </div>
+            <p style="color: #888; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+              Or copy and paste this link into your browser:<br>
+              <a href="${resetLink}" style="color: #d4a72c; word-break: break-all;">${resetLink}</a>
+            </p>
+            <p style="color: #888; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
+              This password reset link will expire in 1 hour for security reasons.
+            </p>
+            <div style="margin: 30px 0; padding: 15px; background-color: #2a1a0a; border-left: 4px solid #d4a72c; border-radius: 4px;">
+              <p style="color: #f4c542; font-size: 14px; margin: 0; font-weight: 600;">
+                \u26A0\uFE0F Security Notice
+              </p>
+              <p style="color: #cccccc; font-size: 14px; line-height: 1.6; margin: 10px 0 0 0;">
+                If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
+              </p>
+            </p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #0a0a0a; border-top: 1px solid #2a2a2a;">
+            <p style="color: #666; font-size: 12px; margin: 0;">
+              For security reasons, never share your password with anyone. XNRT staff will never ask for your password.
+            </p>
+            <p style="color: #444; font-size: 12px; margin: 15px 0 0 0; text-align: center;">
+              \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} NextGen Rise Foundation. All rights reserved.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+}
+async function sendVerificationEmail(email, username, token) {
+  const baseUrl = process.env.APP_URL || "https://xnrt.org";
+  const verificationLink = `${baseUrl}/verify-email?token=${token}`;
+  await sendEmail({
+    to: email,
+    subject: "Verify Your Email - XNRT Platform",
+    html: generateVerificationEmailHTML(username, verificationLink)
+  });
+}
+async function sendPasswordResetEmail(email, username, token) {
+  const baseUrl = process.env.APP_URL || "https://xnrt.org";
+  const resetLink = `${baseUrl}/reset-password?token=${token}`;
+  await sendEmail({
+    to: email,
+    subject: "Reset Your Password - XNRT Platform",
+    html: generatePasswordResetEmailHTML(username, resetLink)
+  });
+}
+
+// server/auth/routes.ts
 var router = Router();
 var prisma3 = new PrismaClient3();
 var registerSchema = z.object({
@@ -1011,12 +2064,21 @@ var resetPasswordSchema = z.object({
 var verifyTokenSchema = z.object({
   token: z.string()
 });
+var verifyEmailSchema = z.object({
+  token: z.string()
+});
+var resendVerificationSchema = z.object({
+  email: z.string().email()
+});
 var forgotPasswordRateLimiter = rateLimit2({
   windowMs: 15 * 60 * 1e3,
   max: 3,
   message: "Too many password reset attempts, please try again later",
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skip: (req) => {
+    return process.env.NODE_ENV === "development";
+  }
 });
 router.post("/register", async (req, res) => {
   try {
@@ -1035,7 +2097,7 @@ router.post("/register", async (req, res) => {
       });
     }
     const passwordHash = await hashPassword(data.password);
-    const userReferralCode = `REF${data.username.substring(0, 4).toUpperCase()}${Date.now().toString().slice(-4)}`;
+    const userReferralCode = `XNRT${nanoid4(8).toUpperCase()}`;
     let referredBy = null;
     if (data.referralCode) {
       const referrer = await prisma3.user.findUnique({
@@ -1045,13 +2107,18 @@ router.post("/register", async (req, res) => {
         referredBy = referrer.id;
       }
     }
+    const emailVerificationToken = crypto3.randomBytes(32).toString("hex");
+    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1e3);
     const user = await prisma3.user.create({
       data: {
         email: data.email,
         username: data.username,
         passwordHash,
         referralCode: userReferralCode,
-        referredBy
+        referredBy,
+        emailVerified: false,
+        emailVerificationToken,
+        emailVerificationExpires
       }
     });
     await prisma3.balance.create({
@@ -1071,29 +2138,18 @@ router.post("/register", async (req, res) => {
         });
       }
     }
-    const { token, jwtId } = signToken({
-      userId: user.id,
-      email: user.email
-    });
-    await prisma3.session.create({
-      data: {
-        jwtId,
-        userId: user.id
-      }
-    });
-    res.cookie("sid", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1e3
-      // 7 days
-    });
+    try {
+      await sendVerificationEmail(user.email, user.username, emailVerificationToken);
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+    }
     res.status(201).json({
-      message: "User registered successfully",
+      message: "Registration successful! Please check your email to verify your account.",
       user: {
         id: user.id,
         email: user.email,
-        username: user.username
+        username: user.username,
+        emailVerified: false
       }
     });
   } catch (error) {
@@ -1117,6 +2173,12 @@ router.post("/login", loginRateLimiter, async (req, res) => {
     if (!isValid) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        message: "Please verify your email address before logging in. Check your inbox for the verification link.",
+        emailVerified: false
+      });
+    }
     const { token, jwtId } = signToken({
       userId: user.id,
       email: user.email
@@ -1127,10 +2189,11 @@ router.post("/login", loginRateLimiter, async (req, res) => {
         userId: user.id
       }
     });
+    const isProd = process.env.NODE_ENV === "production";
     res.cookie("sid", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1e3
       // 7 days
     });
@@ -1147,6 +2210,102 @@ router.post("/login", loginRateLimiter, async (req, res) => {
       return res.status(400).json({ message: "Invalid input", errors: error.errors });
     }
     console.error("Login error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+router.post("/verify-email", async (req, res) => {
+  try {
+    const data = verifyEmailSchema.parse(req.body);
+    const user = await prisma3.user.findFirst({
+      where: {
+        emailVerificationToken: data.token
+      }
+    });
+    if (!user) {
+      return res.status(400).json({ message: "Invalid verification token" });
+    }
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "Email already verified" });
+    }
+    if (user.emailVerificationExpires && /* @__PURE__ */ new Date() > user.emailVerificationExpires) {
+      return res.status(400).json({ message: "Verification token has expired. Please request a new one." });
+    }
+    await prisma3.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null
+      }
+    });
+    const { token, jwtId } = signToken({
+      userId: user.id,
+      email: user.email
+    });
+    await prisma3.session.create({
+      data: {
+        jwtId,
+        userId: user.id
+      }
+    });
+    const isProd = process.env.NODE_ENV === "production";
+    res.cookie("sid", token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1e3
+      // 7 days
+    });
+    res.json({
+      message: "Email verified successfully!",
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        emailVerified: true
+      }
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid input", errors: error.errors });
+    }
+    console.error("Verify email error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+router.post("/resend-verification", forgotPasswordRateLimiter, async (req, res) => {
+  try {
+    const data = resendVerificationSchema.parse(req.body);
+    const user = await prisma3.user.findUnique({
+      where: { email: data.email }
+    });
+    const uniformResponse = { message: "If an account exists with this email and is not yet verified, a verification link has been sent" };
+    if (!user) {
+      return res.json(uniformResponse);
+    }
+    if (user.emailVerified) {
+      return res.json(uniformResponse);
+    }
+    const emailVerificationToken = crypto3.randomBytes(32).toString("hex");
+    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1e3);
+    await prisma3.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationToken,
+        emailVerificationExpires
+      }
+    });
+    try {
+      await sendVerificationEmail(user.email, user.username, emailVerificationToken);
+    } catch (emailError) {
+      console.error("Failed to resend verification email:", emailError);
+    }
+    res.json(uniformResponse);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid input", errors: error.errors });
+    }
+    console.error("Resend verification error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
@@ -1175,6 +2334,7 @@ router.get("/me", requireAuth, async (req, res) => {
         email: true,
         username: true,
         referralCode: true,
+        emailVerified: true,
         isAdmin: true,
         xp: true,
         level: true,
@@ -1194,10 +2354,11 @@ router.get("/me", requireAuth, async (req, res) => {
 });
 router.get("/csrf", (req, res) => {
   const csrfToken = generateCSRFToken();
+  const isProd = process.env.NODE_ENV === "production";
   res.cookie("csrfToken", csrfToken, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
     maxAge: 24 * 60 * 60 * 1e3
     // 24 hours
   });
@@ -1221,7 +2382,11 @@ router.post("/forgot-password", forgotPasswordRateLimiter, async (req, res) => {
         expiresAt
       }
     });
-    console.log("Password reset requested for user:", { userId: user.id, timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+    try {
+      await sendPasswordResetEmail(user.email, user.username, token);
+    } catch (emailError) {
+      console.error("Failed to send password reset email:", emailError);
+    }
     res.json({ message: "If an account exists with this email, a password reset link has been sent" });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -1322,132 +2487,161 @@ import {
   integer,
   decimal,
   text,
-  boolean
+  boolean,
+  unique
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-var sessions = pgTable(
-  "sessions",
-  {
-    sid: varchar("sid").primaryKey(),
-    sess: jsonb("sess").notNull(),
-    expire: timestamp("expire").notNull()
-  },
-  (table) => [index("IDX_session_expire").on(table.expire)]
-);
-var users = pgTable("users", {
+var sessions = pgTable("Session", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
-  profileImageUrl: varchar("profile_image_url"),
-  username: varchar("username").unique(),
-  referralCode: varchar("referral_code").unique().notNull(),
-  referredBy: varchar("referred_by"),
-  isAdmin: boolean("is_admin").default(false).notNull(),
+  jwtId: varchar("jwtId").unique().notNull(),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt")
+}, (table) => [
+  index("sessions_userId_idx").on(table.userId),
+  index("sessions_jwtId_idx").on(table.jwtId)
+]);
+var users = pgTable("User", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique().notNull(),
+  username: varchar("username").unique().notNull(),
+  passwordHash: varchar("passwordHash").notNull(),
+  referralCode: varchar("referralCode").unique().notNull(),
+  referredBy: varchar("referredBy"),
+  emailVerified: boolean("emailVerified").default(false).notNull(),
+  emailVerificationToken: varchar("emailVerificationToken"),
+  emailVerificationExpires: timestamp("emailVerificationExpires"),
+  isAdmin: boolean("isAdmin").default(false).notNull(),
   xp: integer("xp").default(0).notNull(),
   level: integer("level").default(1).notNull(),
   streak: integer("streak").default(0).notNull(),
-  lastCheckIn: timestamp("last_check_in"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow()
+  lastCheckIn: timestamp("lastCheckIn"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull()
 });
-var balances = pgTable("balances", {
+var balances = pgTable("Balance", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  xnrtBalance: decimal("xnrt_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  stakingBalance: decimal("staking_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  miningBalance: decimal("mining_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  referralBalance: decimal("referral_balance", { precision: 18, scale: 2 }).default("0").notNull(),
-  totalEarned: decimal("total_earned", { precision: 18, scale: 2 }).default("0").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow()
+  userId: varchar("userId").unique().notNull().references(() => users.id, { onDelete: "cascade" }),
+  xnrtBalance: decimal("xnrtBalance", { precision: 38, scale: 18 }).default("0").notNull(),
+  stakingBalance: decimal("stakingBalance", { precision: 38, scale: 18 }).default("0").notNull(),
+  miningBalance: decimal("miningBalance", { precision: 38, scale: 18 }).default("0").notNull(),
+  referralBalance: decimal("referralBalance", { precision: 38, scale: 18 }).default("0").notNull(),
+  totalEarned: decimal("totalEarned", { precision: 38, scale: 18 }).default("0").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull()
 });
-var stakes = pgTable("stakes", {
+var stakes = pgTable("Stake", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   tier: varchar("tier").notNull(),
   // royal_sapphire, legendary_emerald, imperial_platinum, mythic_diamond
-  amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
-  dailyRate: decimal("daily_rate", { precision: 5, scale: 3 }).notNull(),
+  amount: decimal("amount", { precision: 38, scale: 18 }).notNull(),
+  dailyRate: decimal("dailyRate", { precision: 8, scale: 6 }).notNull(),
   // 1.1, 1.4, 1.5, 2.0
   duration: integer("duration").notNull(),
   // 15, 30, 45, 90 days
-  startDate: timestamp("start_date").defaultNow().notNull(),
-  endDate: timestamp("end_date").notNull(),
-  totalProfit: decimal("total_profit", { precision: 18, scale: 2 }).default("0").notNull(),
-  lastProfitDate: timestamp("last_profit_date"),
+  startDate: timestamp("startDate").defaultNow().notNull(),
+  endDate: timestamp("endDate").notNull(),
+  totalProfit: decimal("totalProfit", { precision: 38, scale: 18 }).default("0").notNull(),
+  lastProfitDate: timestamp("lastProfitDate"),
   status: varchar("status").default("active").notNull(),
   // active, completed, withdrawn
-  createdAt: timestamp("created_at").defaultNow()
-});
-var miningSessions = pgTable("mining_sessions", {
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  index("stakes_userId_idx").on(table.userId),
+  index("stakes_status_idx").on(table.status),
+  index("stakes_userId_createdAt_idx").on(table.userId, table.createdAt)
+]);
+var miningSessions = pgTable("MiningSession", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  baseReward: integer("base_reward").default(10).notNull(),
-  adBoostCount: integer("ad_boost_count").default(0).notNull(),
-  boostPercentage: integer("boost_percentage").default(0).notNull(),
-  finalReward: integer("final_reward").default(10).notNull(),
-  startTime: timestamp("start_time").defaultNow().notNull(),
-  endTime: timestamp("end_time"),
-  nextAvailable: timestamp("next_available").notNull(),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  baseReward: integer("baseReward").default(10).notNull(),
+  adBoostCount: integer("adBoostCount").default(0).notNull(),
+  boostPercentage: integer("boostPercentage").default(0).notNull(),
+  finalReward: integer("finalReward").default(10).notNull(),
+  startTime: timestamp("startTime").defaultNow().notNull(),
+  endTime: timestamp("endTime"),
+  nextAvailable: timestamp("nextAvailable").notNull(),
   status: varchar("status").default("active").notNull(),
   // active, completed
-  createdAt: timestamp("created_at").defaultNow()
-});
-var referrals = pgTable("referrals", {
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  index("mining_sessions_userId_idx").on(table.userId),
+  index("mining_sessions_status_idx").on(table.status)
+]);
+var referrals = pgTable("Referral", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  referrerId: varchar("referrer_id").notNull().references(() => users.id),
-  referredUserId: varchar("referred_user_id").notNull().references(() => users.id),
+  referrerId: varchar("referrerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  referredUserId: varchar("referredUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
   level: integer("level").notNull(),
   // 1, 2, 3
-  totalCommission: decimal("total_commission", { precision: 18, scale: 2 }).default("0").notNull(),
-  createdAt: timestamp("created_at").defaultNow()
-});
-var transactions = pgTable("transactions", {
+  totalCommission: decimal("totalCommission", { precision: 38, scale: 18 }).default("0").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  index("referrals_referrerId_idx").on(table.referrerId),
+  index("referrals_referredUserId_idx").on(table.referredUserId)
+]);
+var transactions = pgTable("Transaction", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(),
   // deposit, withdrawal
-  amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
-  usdtAmount: decimal("usdt_amount", { precision: 18, scale: 2 }),
+  amount: decimal("amount", { precision: 38, scale: 18 }).notNull(),
+  usdtAmount: decimal("usdtAmount", { precision: 38, scale: 18 }),
   source: varchar("source"),
   // For withdrawals: main, referral
-  walletAddress: varchar("wallet_address"),
-  transactionHash: varchar("transaction_hash"),
-  proofImageUrl: varchar("proof_image_url"),
+  walletAddress: text("walletAddress"),
+  transactionHash: text("transactionHash"),
+  proofImageUrl: varchar("proofImageUrl"),
   status: varchar("status").default("pending").notNull(),
   // pending, approved, rejected, paid
-  adminNotes: text("admin_notes"),
-  fee: decimal("fee", { precision: 18, scale: 2 }),
-  netAmount: decimal("net_amount", { precision: 18, scale: 2 }),
-  approvedBy: varchar("approved_by"),
-  approvedAt: timestamp("approved_at"),
-  createdAt: timestamp("created_at").defaultNow()
-});
-var tasks = pgTable("tasks", {
+  adminNotes: text("adminNotes"),
+  fee: decimal("fee", { precision: 38, scale: 18 }),
+  netAmount: decimal("netAmount", { precision: 38, scale: 18 }),
+  approvedBy: varchar("approvedBy"),
+  approvedAt: timestamp("approvedAt"),
+  verified: boolean("verified").default(false).notNull(),
+  confirmations: integer("confirmations").default(0).notNull(),
+  verificationData: jsonb("verificationData"),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  index("transactions_userId_idx").on(table.userId),
+  index("transactions_type_idx").on(table.type),
+  index("transactions_status_idx").on(table.status),
+  index("transactions_createdAt_idx").on(table.createdAt),
+  index("transactions_userId_createdAt_idx").on(table.userId, table.createdAt),
+  unique("transactions_txhash_unique").on(table.transactionHash)
+]);
+var tasks = pgTable("Task", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: varchar("title").notNull(),
   description: text("description").notNull(),
-  xpReward: integer("xp_reward").notNull(),
-  xnrtReward: decimal("xnrt_reward", { precision: 18, scale: 2 }).default("0").notNull(),
+  xpReward: integer("xpReward").notNull(),
+  xnrtReward: decimal("xnrtReward", { precision: 38, scale: 18 }).default("0").notNull(),
   category: varchar("category").notNull(),
   // daily, weekly, special
   requirements: text("requirements"),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow()
-});
-var userTasks = pgTable("user_tasks", {
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  unique("tasks_title_unique").on(table.title)
+]);
+var userTasks = pgTable("UserTask", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  taskId: varchar("task_id").notNull().references(() => tasks.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: varchar("taskId").notNull().references(() => tasks.id, { onDelete: "cascade" }),
   progress: integer("progress").default(0).notNull(),
-  maxProgress: integer("max_progress").default(1).notNull(),
+  maxProgress: integer("maxProgress").default(1).notNull(),
   completed: boolean("completed").default(false).notNull(),
-  completedAt: timestamp("completed_at"),
-  createdAt: timestamp("created_at").defaultNow()
-});
-var achievements = pgTable("achievements", {
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  index("user_tasks_userId_idx").on(table.userId),
+  index("user_tasks_taskId_idx").on(table.taskId),
+  unique("user_tasks_user_task_unique").on(table.userId, table.taskId)
+]);
+var achievements = pgTable("Achievement", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: varchar("title").notNull(),
   description: text("description").notNull(),
@@ -1455,41 +2649,79 @@ var achievements = pgTable("achievements", {
   category: varchar("category").notNull(),
   // earnings, referrals, streaks, mining
   requirement: integer("requirement").notNull(),
-  xpReward: integer("xp_reward").notNull(),
-  createdAt: timestamp("created_at").defaultNow()
-});
-var userAchievements = pgTable("user_achievements", {
+  xpReward: integer("xpReward").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  unique("achievements_title_unique").on(table.title)
+]);
+var userAchievements = pgTable("UserAchievement", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  achievementId: varchar("achievement_id").notNull().references(() => achievements.id),
-  unlockedAt: timestamp("unlocked_at").defaultNow().notNull()
-});
-var activities = pgTable("activities", {
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  achievementId: varchar("achievementId").notNull().references(() => achievements.id, { onDelete: "cascade" }),
+  unlockedAt: timestamp("unlockedAt").defaultNow().notNull()
+}, (table) => [
+  index("user_achievements_userId_idx").on(table.userId),
+  index("user_achievements_achievementId_idx").on(table.achievementId)
+]);
+var activities = pgTable("Activity", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(),
   // stake_created, mining_completed, referral_earned, task_completed, etc.
   description: text("description").notNull(),
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at").defaultNow()
+  metadata: varchar("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
 }, (table) => [
   index("activities_user_id_idx").on(table.userId),
-  index("activities_created_at_idx").on(table.createdAt)
+  index("activities_created_at_idx").on(table.createdAt),
+  index("activities_userId_createdAt_idx").on(table.userId, table.createdAt)
 ]);
-var notifications = pgTable("notifications", {
+var notifications = pgTable("Notification", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(),
   // referral_commission, new_referral, achievement_unlocked, etc.
   title: varchar("title").notNull(),
   message: text("message").notNull(),
-  metadata: jsonb("metadata"),
+  metadata: varchar("metadata"),
   read: boolean("read").default(false).notNull(),
-  createdAt: timestamp("created_at").defaultNow()
+  deliveryAttempts: integer("deliveryAttempts"),
+  deliveredAt: timestamp("deliveredAt"),
+  lastAttemptAt: timestamp("lastAttemptAt"),
+  pendingPush: boolean("pendingPush").default(false).notNull(),
+  pushError: text("pushError"),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
 }, (table) => [
   index("notifications_user_id_idx").on(table.userId),
   index("notifications_read_idx").on(table.read),
-  index("notifications_created_at_idx").on(table.createdAt)
+  index("notifications_created_at_idx").on(table.createdAt),
+  index("notifications_pending_push_idx").on(table.pendingPush)
+]);
+var pushSubscriptions = pgTable("PushSubscription", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  expirationTime: timestamp("expirationTime"),
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull()
+}, (table) => [
+  index("push_subscriptions_user_id_idx").on(table.userId),
+  index("push_subscriptions_endpoint_idx").on(table.endpoint),
+  unique("push_subscriptions_user_endpoint_unique").on(table.userId, table.endpoint)
+]);
+var passwordResets = pgTable("PasswordReset", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  token: varchar("token").unique().notNull(),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull()
+}, (table) => [
+  index("password_resets_userId_idx").on(table.userId),
+  index("password_resets_token_idx").on(table.token)
 ]);
 var usersRelations = relations(users, ({ one, many }) => ({
   balance: one(balances, {
@@ -1504,7 +2736,10 @@ var usersRelations = relations(users, ({ one, many }) => ({
   userTasks: many(userTasks),
   userAchievements: many(userAchievements),
   activities: many(activities),
-  notifications: many(notifications)
+  notifications: many(notifications),
+  pushSubscriptions: many(pushSubscriptions),
+  sessions: many(sessions),
+  passwordResets: many(passwordResets)
 }));
 var balancesRelations = relations(balances, ({ one }) => ({
   user: one(users, {
@@ -1574,6 +2809,24 @@ var notificationsRelations = relations(notifications, ({ one }) => ({
     references: [users.id]
   })
 }));
+var pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [pushSubscriptions.userId],
+    references: [users.id]
+  })
+}));
+var sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id]
+  })
+}));
+var passwordResetsRelations = relations(passwordResets, ({ one }) => ({
+  user: one(users, {
+    fields: [passwordResets.userId],
+    references: [users.id]
+  })
+}));
 var insertStakeSchema = createInsertSchema(stakes).omit({ id: true, createdAt: true });
 var insertMiningSessionSchema = createInsertSchema(miningSessions).omit({ id: true, createdAt: true });
 var insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, createdAt: true });
@@ -1613,8 +2866,56 @@ var STAKING_TIERS = {
 };
 
 // server/routes.ts
-import { PrismaClient as PrismaClient4 } from "@prisma/client";
-var prisma4 = new PrismaClient4();
+init_notifications();
+init_verifyBscUsdt();
+import { PrismaClient as PrismaClient5, Prisma as Prisma3 } from "@prisma/client";
+import webpush2 from "web-push";
+import rateLimit3 from "express-rate-limit";
+import { ethers as ethers4 } from "ethers";
+import { nanoid as nanoid5 } from "nanoid";
+
+// server/services/hdWallet.ts
+import { ethers as ethers2 } from "ethers";
+var MASTER_SEED_ENV = "MASTER_SEED";
+var BSC_DERIVATION_PATH = "m/44'/714'/0'/0";
+function deriveDepositAddress(derivationIndex) {
+  const masterSeed = process.env[MASTER_SEED_ENV];
+  if (!masterSeed) {
+    throw new Error("MASTER_SEED environment variable not set");
+  }
+  let mnemonic;
+  try {
+    if (masterSeed.split(" ").length >= 12) {
+      mnemonic = ethers2.Mnemonic.fromPhrase(masterSeed);
+    } else {
+      throw new Error("MASTER_SEED must be a 12 or 24 word mnemonic phrase");
+    }
+  } catch (error) {
+    throw new Error("Invalid MASTER_SEED format. Must be 12/24 word mnemonic");
+  }
+  const derivationPath = `${BSC_DERIVATION_PATH}/${derivationIndex}`;
+  const hdNode = ethers2.HDNodeWallet.fromMnemonic(mnemonic, derivationPath);
+  return hdNode.address.toLowerCase();
+}
+
+// server/routes.ts
+var prisma5 = new PrismaClient5();
+var VAPID_PUBLIC_KEY2 = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, "").replace(/"$/, "");
+var VAPID_PRIVATE_KEY2 = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, "").replace(/}$/, "").replace(/"$/, "");
+var VAPID_SUBJECT2 = process.env.VAPID_SUBJECT || "mailto:support@xnrt.org";
+if (VAPID_PUBLIC_KEY2 && VAPID_PRIVATE_KEY2) {
+  webpush2.setVapidDetails(VAPID_SUBJECT2, VAPID_PUBLIC_KEY2, VAPID_PRIVATE_KEY2);
+}
+var pushSubscriptionLimiter = rateLimit3({
+  windowMs: 60 * 1e3,
+  max: 10,
+  message: { message: "Too many subscription requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    return process.env.NODE_ENV === "development";
+  }
+});
 async function registerRoutes(app2) {
   app2.post("/csp-report", (req, res) => {
     console.log("[CSP Violation]", JSON.stringify(req.body, null, 2));
@@ -1794,14 +3095,12 @@ async function registerRoutes(app2) {
   app2.post("/api/mining/start", requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser.id;
-      const history = await storage.getMiningHistory(userId);
-      const lastSession = history[0];
-      if (lastSession && new Date(lastSession.nextAvailable) > /* @__PURE__ */ new Date()) {
-        return res.status(400).json({ message: "Please wait 24 hours between mining sessions" });
+      const currentSession = await storage.getCurrentMiningSession(userId);
+      if (currentSession && currentSession.status === "active") {
+        return res.status(400).json({ message: "You already have an active mining session" });
       }
       const startTime = /* @__PURE__ */ new Date();
       const endTime = new Date(Date.now() + 24 * 60 * 60 * 1e3);
-      const nextAvailable = new Date(Date.now() + 24 * 60 * 60 * 1e3);
       const session = await storage.createMiningSession({
         userId,
         baseReward: 10,
@@ -1810,7 +3109,8 @@ async function registerRoutes(app2) {
         finalReward: 10,
         startTime,
         endTime,
-        nextAvailable,
+        nextAvailable: /* @__PURE__ */ new Date(),
+        // Set to now so user can restart immediately after completion
         status: "active"
       });
       res.json(session);
@@ -1819,28 +3119,13 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to start mining" });
     }
   });
-  app2.post("/api/mining/watch-ad", requireAuth, validateCSRF, async (req, res) => {
+  app2.post("/api/mining/process-rewards", requireAuth, validateCSRF, async (req, res) => {
     try {
-      const userId = req.authUser.id;
-      const session = await storage.getCurrentMiningSession(userId);
-      if (!session || session.status !== "active") {
-        return res.status(400).json({ message: "No active mining session" });
-      }
-      if (session.adBoostCount >= 5) {
-        return res.status(400).json({ message: "Maximum ad boosts reached" });
-      }
-      const newAdBoostCount = session.adBoostCount + 1;
-      const newBoostPercentage = newAdBoostCount * 10;
-      const newFinalReward = session.baseReward + Math.floor(session.baseReward * newBoostPercentage / 100);
-      await storage.updateMiningSession(session.id, {
-        adBoostCount: newAdBoostCount,
-        boostPercentage: newBoostPercentage,
-        finalReward: newFinalReward
-      });
-      res.json({ success: true, boost: newBoostPercentage });
+      await storage.processMiningRewards();
+      res.json({ success: true, message: "Mining rewards processed successfully" });
     } catch (error) {
-      console.error("Error watching ad:", error);
-      res.status(500).json({ message: "Failed to watch ad" });
+      console.error("Error processing mining rewards:", error);
+      res.status(500).json({ message: "Failed to process mining rewards" });
     }
   });
   app2.post("/api/mining/stop", requireAuth, validateCSRF, async (req, res) => {
@@ -1873,6 +3158,19 @@ async function registerRoutes(app2) {
         userId,
         type: "mining_completed",
         description: `Completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT`
+      });
+      void notifyUser(userId, {
+        type: "mining_completed",
+        title: "\u26CF\uFE0F Mining Complete!",
+        message: `You earned ${xpReward} XP and ${xnrtReward.toFixed(1)} XNRT from your mining session`,
+        url: "/mining",
+        metadata: {
+          xpReward,
+          xnrtReward: xnrtReward.toString(),
+          sessionId: session.id
+        }
+      }).catch((err) => {
+        console.error("Error sending mining notification (non-blocking):", err);
       });
       await storage.checkAndUnlockAchievements(userId);
       res.json({ xpReward, xnrtReward });
@@ -1966,11 +3264,92 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to mark all notifications as read" });
     }
   });
+  app2.get("/api/push/vapid-public-key", async (req, res) => {
+    try {
+      res.json({ publicKey: VAPID_PUBLIC_KEY2 });
+    } catch (error) {
+      console.error("Error getting VAPID public key:", error);
+      res.status(500).json({ message: "Failed to get VAPID public key" });
+    }
+  });
+  app2.post("/api/push/subscribe", requireAuth, pushSubscriptionLimiter, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const { endpoint, keys, expirationTime } = req.body;
+      if (!endpoint || typeof endpoint !== "string") {
+        return res.status(400).json({ message: "Invalid endpoint" });
+      }
+      if (!keys || typeof keys.p256dh !== "string" || typeof keys.auth !== "string") {
+        return res.status(400).json({ message: "Invalid subscription keys" });
+      }
+      if (!endpoint.startsWith("https://")) {
+        return res.status(400).json({ message: "Endpoint must be HTTPS URL" });
+      }
+      const base64Regex = /^[A-Za-z0-9+/=_-]+$/;
+      if (!base64Regex.test(keys.p256dh) || !base64Regex.test(keys.auth)) {
+        return res.status(400).json({ message: "Keys must be valid base64 strings" });
+      }
+      const subscription = await storage.createPushSubscription({
+        userId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        expirationTime: expirationTime || null
+      });
+      res.json(subscription);
+    } catch (error) {
+      console.error("Error creating push subscription:", error);
+      res.status(500).json({ message: "Failed to create push subscription" });
+    }
+  });
+  app2.delete("/api/push/unsubscribe", requireAuth, pushSubscriptionLimiter, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const { endpoint } = req.body;
+      if (!endpoint || typeof endpoint !== "string") {
+        return res.status(400).json({ message: "Invalid endpoint" });
+      }
+      await storage.deletePushSubscription(userId, endpoint);
+      res.json({ message: "Successfully unsubscribed from push notifications" });
+    } catch (error) {
+      console.error("Error deleting push subscription:", error);
+      res.status(500).json({ message: "Failed to delete push subscription" });
+    }
+  });
+  app2.get("/api/push/subscriptions", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const subscriptions = await storage.getUserPushSubscriptions(userId);
+      res.json(subscriptions);
+    } catch (error) {
+      console.error("Error getting push subscriptions:", error);
+      res.status(500).json({ message: "Failed to get push subscriptions" });
+    }
+  });
+  app2.post("/api/admin/push/test", requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { userId, title, body } = req.body;
+      if (!userId || !title || !body) {
+        return res.status(400).json({ message: "userId, title, and body are required" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      await sendPushNotification(userId, { title, body });
+      res.json({ message: "Test push notification sent successfully" });
+    } catch (error) {
+      console.error("Error sending test push notification:", error);
+      res.status(500).json({ message: "Failed to send test push notification" });
+    }
+  });
   app2.get("/api/leaderboard/referrals", requireAuth, async (req, res) => {
     try {
       const period = req.query.period || "all-time";
       const limit = req.query.limit ? parseInt(req.query.limit) : 50;
       const currentUserId = req.authUser.id;
+      const currentUser = await storage.getUser(currentUserId);
+      const isAdmin = currentUser?.isAdmin || false;
       let dateFilter = null;
       const now = /* @__PURE__ */ new Date();
       if (period === "daily") {
@@ -2022,28 +3401,72 @@ async function registerRoutes(app2) {
       const userStats = dateFilter ? await storage.raw(userQuery, [dateFilter, currentUserId]) : await storage.raw(userQuery, [currentUserId]);
       const userPosition = leaderboard.findIndex((item) => item.userId === currentUserId);
       res.json({
-        leaderboard: leaderboard.map((item, index2) => ({
-          ...item,
-          totalReferrals: parseInt(item.totalReferrals),
-          totalCommission: item.totalCommission.toString(),
-          level1Count: parseInt(item.level1Count),
-          level2Count: parseInt(item.level2Count),
-          level3Count: parseInt(item.level3Count),
-          rank: index2 + 1
-        })),
-        userPosition: userPosition === -1 && userStats.length > 0 ? {
-          ...userStats[0],
-          totalReferrals: parseInt(userStats[0].totalReferrals),
-          totalCommission: userStats[0].totalCommission.toString(),
-          level1Count: parseInt(userStats[0].level1Count),
-          level2Count: parseInt(userStats[0].level2Count),
-          level3Count: parseInt(userStats[0].level3Count),
-          rank: userPosition + 1
-        } : null
+        leaderboard: leaderboard.map((item, index2) => {
+          const baseData = {
+            totalReferrals: parseInt(item.totalReferrals),
+            totalCommission: item.totalCommission.toString(),
+            level1Count: parseInt(item.level1Count),
+            level2Count: parseInt(item.level2Count),
+            level3Count: parseInt(item.level3Count),
+            rank: index2 + 1
+          };
+          if (isAdmin) {
+            return {
+              ...baseData,
+              userId: item.userId,
+              username: item.username,
+              email: item.email,
+              displayName: item.username || item.email
+            };
+          } else {
+            return {
+              ...baseData,
+              displayName: generateAnonymizedHandle(item.userId)
+            };
+          }
+        }),
+        userPosition: userPosition === -1 && userStats.length > 0 ? (() => {
+          const baseData = {
+            totalReferrals: parseInt(userStats[0].totalReferrals),
+            totalCommission: userStats[0].totalCommission.toString(),
+            level1Count: parseInt(userStats[0].level1Count),
+            level2Count: parseInt(userStats[0].level2Count),
+            level3Count: parseInt(userStats[0].level3Count),
+            rank: userPosition + 1
+          };
+          if (isAdmin) {
+            return {
+              ...baseData,
+              userId: userStats[0].userId,
+              username: userStats[0].username,
+              email: userStats[0].email,
+              displayName: userStats[0].username || userStats[0].email
+            };
+          } else {
+            return {
+              ...baseData,
+              displayName: "You"
+            };
+          }
+        })() : null
       });
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
       res.status(500).json({ message: "Failed to fetch leaderboard" });
+    }
+  });
+  app2.get("/api/leaderboard/xp", requireAuth, async (req, res) => {
+    try {
+      const period = req.query.period || "all-time";
+      const category = req.query.category || "overall";
+      const currentUserId = req.authUser.id;
+      const currentUser = await storage.getUser(currentUserId);
+      const isAdmin = currentUser?.isAdmin || false;
+      const result = await storage.getXPLeaderboard(currentUserId, period, category, isAdmin);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching XP leaderboard:", error);
+      res.status(500).json({ message: "Failed to fetch XP leaderboard" });
     }
   });
   app2.get("/api/transactions", requireAuth, async (req, res) => {
@@ -2076,24 +3499,341 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to fetch withdrawals" });
     }
   });
+  app2.get("/api/wallet/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const wallets = await prisma5.linkedWallet.findMany({
+        where: { userId, active: true },
+        select: { address: true, linkedAt: true },
+        orderBy: { linkedAt: "desc" }
+      });
+      res.json(wallets.map((w) => w.address));
+    } catch (error) {
+      console.error("Error fetching linked wallets:", error);
+      res.status(500).json({ message: "Failed to fetch wallets" });
+    }
+  });
+  app2.get("/api/wallet/link/challenge", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const address = String(req.query.address || "").toLowerCase();
+      if (!/^0x[a-f0-9]{40}$/.test(address)) {
+        return res.status(400).json({ message: "Invalid address format" });
+      }
+      const nonce = nanoid5(16);
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
+      const issuedAt = /* @__PURE__ */ new Date();
+      await prisma5.walletNonce.upsert({
+        where: { userId_address: { userId, address } },
+        update: { nonce, expiresAt, issuedAt },
+        create: { userId, address, nonce, expiresAt, issuedAt }
+      });
+      const message = `XNRT Wallet Link
+
+Address: ${address}
+Nonce: ${nonce}
+Issued: ${issuedAt.toISOString()}`;
+      res.json({ message, nonce, issuedAt: issuedAt.toISOString() });
+    } catch (error) {
+      console.error("Error generating challenge:", error);
+      res.status(500).json({ message: "Failed to generate challenge" });
+    }
+  });
+  app2.post("/api/wallet/link/confirm", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const { address, signature, nonce, issuedAt } = req.body;
+      const normalized = String(address || "").toLowerCase();
+      if (!address || !signature || !nonce || !issuedAt) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const rec = await prisma5.walletNonce.findUnique({
+        where: { userId_address: { userId, address: normalized } }
+      });
+      if (!rec || rec.nonce !== nonce || rec.expiresAt < /* @__PURE__ */ new Date()) {
+        return res.status(400).json({ message: "Invalid or expired challenge" });
+      }
+      const message = `XNRT Wallet Link
+
+Address: ${normalized}
+Nonce: ${nonce}
+Issued: ${issuedAt}`;
+      let recoveredAddress;
+      try {
+        recoveredAddress = ethers4.verifyMessage(message, signature).toLowerCase();
+      } catch {
+        return res.status(400).json({ message: "Invalid signature" });
+      }
+      if (recoveredAddress !== normalized) {
+        return res.status(400).json({ message: "Signature does not match address" });
+      }
+      const existing = await prisma5.linkedWallet.findFirst({
+        where: { address: normalized, active: true }
+      });
+      if (existing && existing.userId !== userId) {
+        return res.status(409).json({ message: "This wallet is already linked to another account" });
+      }
+      if (existing && existing.userId === userId) {
+        return res.json({ address: existing.address, alreadyLinked: true });
+      }
+      await prisma5.$transaction([
+        prisma5.walletNonce.delete({ where: { id: rec.id } }),
+        prisma5.linkedWallet.create({
+          data: {
+            userId,
+            address: normalized,
+            signature,
+            nonce
+          }
+        })
+      ]);
+      res.json({ address: normalized });
+    } catch (error) {
+      console.error("Error linking wallet:", error);
+      res.status(500).json({ message: "Failed to link wallet" });
+    }
+  });
+  app2.get("/api/wallet/deposit-address", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      let user = await prisma5.user.findUnique({
+        where: { id: userId },
+        select: { depositAddress: true, derivationIndex: true }
+      });
+      if (!user?.depositAddress || user?.derivationIndex === null) {
+        const maxIndexUser = await prisma5.user.findFirst({
+          where: { derivationIndex: { not: null } },
+          orderBy: { derivationIndex: "desc" },
+          select: { derivationIndex: true }
+        });
+        const nextIndex = (maxIndexUser?.derivationIndex ?? -1) + 1;
+        const address = deriveDepositAddress(nextIndex);
+        await prisma5.user.update({
+          where: { id: userId },
+          data: {
+            depositAddress: address,
+            derivationIndex: nextIndex
+          }
+        });
+        return res.json({
+          address,
+          network: "BSC (BEP-20)",
+          token: "USDT",
+          instructions: [
+            "Send USDT (BEP-20) from your exchange to this address",
+            "Deposits will be automatically detected and credited",
+            "No gas fees or wallet connection needed",
+            "Minimum 12 block confirmations required"
+          ]
+        });
+      }
+      res.json({
+        address: user.depositAddress,
+        network: "BSC (BEP-20)",
+        token: "USDT",
+        instructions: [
+          "Send USDT (BEP-20) from your exchange to this address",
+          "Deposits will be automatically detected and credited",
+          "No gas fees or wallet connection needed",
+          "Minimum 12 block confirmations required"
+        ]
+      });
+    } catch (error) {
+      console.error("Error getting deposit address:", error);
+      res.status(500).json({ message: "Failed to get deposit address" });
+    }
+  });
+  app2.post("/api/wallet/report-deposit", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      let { transactionHash, amount, description } = req.body;
+      if (!transactionHash || !amount) {
+        return res.status(400).json({ message: "Transaction hash and amount required" });
+      }
+      transactionHash = String(transactionHash).trim().toLowerCase();
+      if (!/^0x[a-f0-9]{64}$/.test(transactionHash)) {
+        return res.status(400).json({ message: "Invalid transaction hash format" });
+      }
+      const existingTx = await prisma5.transaction.findFirst({
+        where: { transactionHash }
+      });
+      if (existingTx) {
+        return res.status(409).json({
+          message: "This deposit has already been credited",
+          alreadyProcessed: true
+        });
+      }
+      const existingReport = await prisma5.depositReport.findFirst({
+        where: { txHash: transactionHash }
+      });
+      if (existingReport) {
+        return res.status(409).json({ message: "This deposit has already been reported" });
+      }
+      const { verifyBscUsdtDeposit: verifyBscUsdtDeposit2 } = await Promise.resolve().then(() => (init_verifyBscUsdt(), verifyBscUsdt_exports));
+      const treasuryAddress = process.env.XNRT_WALLET || "";
+      const verification = await verifyBscUsdtDeposit2({
+        txHash: transactionHash,
+        expectedTo: treasuryAddress,
+        minAmount: amount,
+        requiredConf: Number(process.env.BSC_CONFIRMATIONS || 12)
+      });
+      if (!verification.verified) {
+        const report = await prisma5.depositReport.create({
+          data: {
+            userId,
+            fromAddress: "",
+            txHash: transactionHash,
+            amount: new Prisma3.Decimal(amount),
+            notes: description || `Verification: ${verification.reason}`,
+            status: "open"
+          }
+        });
+        return res.json({
+          message: "Report submitted for admin review",
+          reportId: report.id,
+          reason: verification.reason
+        });
+      }
+      const provider3 = new (await import("ethers")).ethers.JsonRpcProvider(process.env.RPC_BSC_URL);
+      const receipt = await provider3.getTransactionReceipt(transactionHash);
+      const transaction = await provider3.getTransaction(transactionHash);
+      const fromAddress = transaction?.from?.toLowerCase() || "";
+      const linkedWallet = await prisma5.linkedWallet.findFirst({
+        where: {
+          userId,
+          address: fromAddress,
+          active: true
+        }
+      });
+      const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
+      const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
+      const usdtAmount = verification.amountOnChain || amount;
+      const netUsdt = usdtAmount * (1 - platformFeeBps / 1e4);
+      const xnrtAmount = netUsdt * xnrtRate;
+      if (linkedWallet) {
+        await prisma5.$transaction(async (tx) => {
+          await tx.transaction.create({
+            data: {
+              userId,
+              type: "deposit",
+              amount: new Prisma3.Decimal(xnrtAmount),
+              usdtAmount: new Prisma3.Decimal(usdtAmount),
+              transactionHash,
+              walletAddress: fromAddress,
+              status: "approved",
+              verified: true,
+              confirmations: verification.confirmations,
+              verificationData: {
+                autoVerified: true,
+                reportSubmitted: true,
+                verifiedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                blockNumber: receipt?.blockNumber
+              }
+            }
+          });
+          await tx.balance.upsert({
+            where: { userId },
+            create: {
+              userId,
+              xnrtBalance: new Prisma3.Decimal(xnrtAmount),
+              totalEarned: new Prisma3.Decimal(xnrtAmount)
+            },
+            update: {
+              xnrtBalance: { increment: new Prisma3.Decimal(xnrtAmount) },
+              totalEarned: { increment: new Prisma3.Decimal(xnrtAmount) }
+            }
+          });
+        });
+        console.log(`[ReportDeposit] Auto-credited ${xnrtAmount} XNRT to user ${userId}`);
+        const { sendDepositNotification: sendDepositNotification2 } = await Promise.resolve().then(() => (init_depositScanner(), depositScanner_exports));
+        void sendDepositNotification2(userId, xnrtAmount, transactionHash).catch((err) => {
+          console.error("[ReportDeposit] Notification error:", err);
+        });
+        return res.json({
+          message: "Deposit verified and credited automatically!",
+          credited: true,
+          amount: xnrtAmount
+        });
+      } else {
+        await prisma5.unmatchedDeposit.create({
+          data: {
+            fromAddress,
+            toAddress: treasuryAddress,
+            amount: new Prisma3.Decimal(usdtAmount),
+            transactionHash,
+            blockNumber: receipt?.blockNumber || 0,
+            confirmations: verification.confirmations,
+            reportedByUserId: userId,
+            matched: false
+          }
+        });
+        return res.json({
+          message: "Deposit verified on blockchain. Admin will credit your account shortly.",
+          verified: true,
+          pendingAdminReview: true
+        });
+      }
+    } catch (error) {
+      console.error("Error reporting deposit:", error);
+      if (error.code === "P2002" && error.meta?.target?.includes("transactionHash")) {
+        return res.status(409).json({
+          message: "This transaction has already been processed",
+          alreadyProcessed: true
+        });
+      }
+      res.status(500).json({ message: "Failed to process deposit report" });
+    }
+  });
   app2.post("/api/transactions/deposit", requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser.id;
-      const { usdtAmount, transactionHash } = req.body;
+      let { usdtAmount, transactionHash, proofImageUrl } = req.body;
       if (!usdtAmount || !transactionHash) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      const xnrtAmount = parseFloat(usdtAmount) * 100;
+      transactionHash = String(transactionHash).trim().toLowerCase();
+      if (!/^0x[a-f0-9]{64}$/.test(transactionHash)) {
+        return res.status(400).json({ message: "Invalid transaction hash format" });
+      }
+      const existing = await prisma5.transaction.findFirst({
+        where: { transactionHash }
+      });
+      if (existing) {
+        return res.status(409).json({
+          message: "This transaction hash was already used for a deposit."
+        });
+      }
+      if (proofImageUrl) {
+        const isBase64DataUrl = proofImageUrl.startsWith("data:image/");
+        const isValidUrl = /^https?:\/\//.test(proofImageUrl);
+        if (!isBase64DataUrl && !isValidUrl) {
+          return res.status(400).json({ message: "Invalid proof image URL format" });
+        }
+      }
+      const rate = Number(process.env.XNRT_RATE_USDT ?? 100);
+      const feeBps = Number(process.env.PLATFORM_FEE_BPS ?? 0);
+      const usdt2 = Number(usdtAmount);
+      const netUsdt = usdt2 * (1 - feeBps / 1e4);
+      const xnrtAmount = netUsdt * rate;
       const transaction = await storage.createTransaction({
         userId,
         type: "deposit",
         amount: xnrtAmount.toString(),
-        usdtAmount: usdtAmount.toString(),
+        usdtAmount: usdt2.toString(),
         transactionHash,
-        status: "pending"
+        walletAddress: process.env.XNRT_WALLET,
+        ...proofImageUrl && { proofImageUrl },
+        status: "pending",
+        verified: false,
+        confirmations: 0
       });
       res.json(transaction);
     } catch (error) {
+      if (error.code === "P2002" && error.meta?.target?.includes("transactionHash")) {
+        return res.status(409).json({
+          message: "This transaction hash was already used for a deposit."
+        });
+      }
       console.error("Error creating deposit:", error);
       res.status(500).json({ message: "Failed to create deposit" });
     }
@@ -2110,12 +3850,31 @@ async function registerRoutes(app2) {
       const netAmount = withdrawAmount - fee;
       const usdtAmount = netAmount / 100;
       const balance = await storage.getBalance(userId);
-      const availableBalance = source === "main" ? parseFloat(balance?.xnrtBalance || "0") : parseFloat(balance?.referralBalance || "0");
+      let availableBalance = 0;
+      switch (source) {
+        case "main":
+          availableBalance = parseFloat(balance?.xnrtBalance || "0");
+          break;
+        case "staking":
+          availableBalance = parseFloat(balance?.stakingBalance || "0");
+          break;
+        case "mining":
+          availableBalance = parseFloat(balance?.miningBalance || "0");
+          break;
+        case "referral":
+          availableBalance = parseFloat(balance?.referralBalance || "0");
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid source" });
+      }
       if (withdrawAmount > availableBalance) {
         return res.status(400).json({ message: "Insufficient balance" });
       }
       if (source === "referral" && withdrawAmount < 5e3) {
-        return res.status(400).json({ message: "Minimum withdrawal from referral balance is 5000 XNRT" });
+        return res.status(400).json({ message: "Minimum withdrawal from referral balance is 5,000 XNRT" });
+      }
+      if (source === "mining" && withdrawAmount < 5e3) {
+        return res.status(400).json({ message: "Minimum withdrawal from mining balance is 5,000 XNRT" });
       }
       const transaction = await storage.createTransaction({
         userId,
@@ -2293,6 +4052,40 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to check in" });
     }
   });
+  app2.get("/api/checkin/history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser.id;
+      const { year, month } = req.query;
+      const targetYear = year ? parseInt(year) : (/* @__PURE__ */ new Date()).getFullYear();
+      const targetMonth = month ? parseInt(month) : (/* @__PURE__ */ new Date()).getMonth();
+      const startDate = new Date(targetYear, targetMonth, 1);
+      const endDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+      const checkinActivities = await prisma5.activity.findMany({
+        where: {
+          userId,
+          type: "daily_checkin",
+          createdAt: {
+            gte: startDate,
+            lte: endDate
+          }
+        },
+        orderBy: {
+          createdAt: "asc"
+        }
+      });
+      const checkinDates = checkinActivities.map(
+        (activity) => new Date(activity.createdAt).toISOString().split("T")[0]
+      );
+      res.json({
+        dates: checkinDates,
+        year: targetYear,
+        month: targetMonth
+      });
+    } catch (error) {
+      console.error("Error fetching check-in history:", error);
+      res.status(500).json({ message: "Failed to fetch check-in history" });
+    }
+  });
   app2.get("/api/admin/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const allUsers = await storage.getAllUsers();
@@ -2343,9 +4136,37 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to fetch pending withdrawals" });
     }
   });
+  app2.post("/api/admin/deposits/:id/verify", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deposit = await storage.getTransactionById(id);
+      if (!deposit || deposit.type !== "deposit") {
+        return res.status(404).json({ message: "Deposit not found" });
+      }
+      if (!deposit.transactionHash) {
+        return res.status(400).json({ message: "No transaction hash provided" });
+      }
+      const result = await verifyBscUsdtDeposit({
+        txHash: deposit.transactionHash,
+        expectedTo: deposit.walletAddress || process.env.XNRT_WALLET,
+        minAmount: deposit.usdtAmount ? parseFloat(deposit.usdtAmount) : void 0,
+        requiredConf: Number(process.env.BSC_CONFIRMATIONS ?? 12)
+      });
+      await storage.updateTransaction(id, {
+        verified: result.verified,
+        confirmations: result.confirmations,
+        verificationData: result
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Error verifying deposit:", error);
+      res.status(500).json({ message: "Failed to verify deposit" });
+    }
+  });
   app2.post("/api/admin/deposits/:id/approve", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
     try {
       const { id } = req.params;
+      const { notes } = req.body;
       const deposit = await storage.getTransactionById(id);
       if (!deposit || deposit.type !== "deposit") {
         return res.status(404).json({ message: "Deposit not found" });
@@ -2353,19 +4174,49 @@ async function registerRoutes(app2) {
       if (deposit.status !== "pending") {
         return res.status(400).json({ message: "Deposit already processed" });
       }
-      await storage.updateTransaction(id, { status: "approved" });
-      const balance = await storage.getBalance(deposit.userId);
-      if (balance) {
-        await storage.updateBalance(deposit.userId, {
-          xnrtBalance: (parseFloat(balance.xnrtBalance) + parseFloat(deposit.amount)).toString(),
-          totalEarned: (parseFloat(balance.totalEarned) + parseFloat(deposit.amount)).toString()
-        });
+      if (!deposit.verified) {
+        return res.status(400).json({ message: "Deposit not verified on-chain yet" });
       }
+      await prisma5.$transaction(async (tx) => {
+        await tx.balance.upsert({
+          where: { userId: deposit.userId },
+          create: {
+            userId: deposit.userId,
+            xnrtBalance: new Prisma3.Decimal(deposit.amount),
+            totalEarned: new Prisma3.Decimal(deposit.amount)
+          },
+          update: {
+            xnrtBalance: { increment: new Prisma3.Decimal(deposit.amount) },
+            totalEarned: { increment: new Prisma3.Decimal(deposit.amount) }
+          }
+        });
+        await tx.transaction.update({
+          where: { id },
+          data: {
+            status: "approved",
+            adminNotes: notes || deposit.adminNotes,
+            approvedBy: req.authUser.id,
+            approvedAt: /* @__PURE__ */ new Date()
+          }
+        });
+      });
       await storage.distributeReferralCommissions(deposit.userId, parseFloat(deposit.amount));
       await storage.createActivity({
         userId: deposit.userId,
         type: "deposit_approved",
         description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT approved`
+      });
+      void notifyUser(deposit.userId, {
+        type: "deposit_approved",
+        title: "\u{1F4B0} Deposit Approved!",
+        message: `Your deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT has been approved and credited to your account`,
+        url: "/wallet",
+        metadata: {
+          amount: deposit.amount,
+          transactionId: id
+        }
+      }).catch((err) => {
+        console.error("Error sending deposit notification (non-blocking):", err);
       });
       res.json({ message: "Deposit approved successfully" });
     } catch (error) {
@@ -2393,6 +4244,318 @@ async function registerRoutes(app2) {
     } catch (error) {
       console.error("Error rejecting deposit:", error);
       res.status(500).json({ message: "Failed to reject deposit" });
+    }
+  });
+  app2.post("/api/admin/deposits/bulk-approve", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { depositIds, notes } = req.body;
+      if (!depositIds || !Array.isArray(depositIds) || depositIds.length === 0) {
+        return res.status(400).json({ message: "Invalid deposit IDs" });
+      }
+      const successful = [];
+      const failed = [];
+      const errors = [];
+      for (const id of depositIds) {
+        try {
+          const deposit = await storage.getTransactionById(id);
+          if (!deposit || deposit.type !== "deposit") {
+            throw new Error(`Deposit ${id} not found`);
+          }
+          if (deposit.status !== "pending") {
+            throw new Error(`Deposit ${id} already processed`);
+          }
+          if (!deposit.verified) {
+            throw new Error(`Deposit ${id} not verified on-chain yet`);
+          }
+          await prisma5.$transaction(async (tx) => {
+            await tx.balance.upsert({
+              where: { userId: deposit.userId },
+              create: {
+                userId: deposit.userId,
+                xnrtBalance: new Prisma3.Decimal(deposit.amount),
+                totalEarned: new Prisma3.Decimal(deposit.amount)
+              },
+              update: {
+                xnrtBalance: { increment: new Prisma3.Decimal(deposit.amount) },
+                totalEarned: { increment: new Prisma3.Decimal(deposit.amount) }
+              }
+            });
+            await tx.transaction.update({
+              where: { id },
+              data: {
+                status: "approved",
+                adminNotes: notes || deposit.adminNotes,
+                approvedBy: req.authUser.id,
+                approvedAt: /* @__PURE__ */ new Date()
+              }
+            });
+          });
+          await storage.distributeReferralCommissions(deposit.userId, parseFloat(deposit.amount));
+          await storage.createActivity({
+            userId: deposit.userId,
+            type: "deposit_approved",
+            description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT approved${notes ? ` - ${notes}` : ""}`
+          });
+          void notifyUser(deposit.userId, {
+            type: "deposit_approved",
+            title: "\u{1F4B0} Deposit Approved!",
+            message: `Your deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT has been approved and credited to your account`,
+            url: "/wallet",
+            metadata: {
+              amount: deposit.amount,
+              transactionId: id
+            }
+          }).catch((err) => {
+            console.error("Error sending bulk deposit notification (non-blocking):", err);
+          });
+          successful.push(id);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          failed.push({
+            id,
+            error: errorMessage
+          });
+          errors.push(`${id}: ${errorMessage}`);
+        }
+      }
+      res.json({
+        approved: successful.length,
+        failed: failed.length,
+        total: depositIds.length,
+        successful,
+        failures: failed,
+        errors
+      });
+    } catch (error) {
+      console.error("Error bulk approving deposits:", error);
+      res.status(500).json({ message: "Failed to process bulk approval" });
+    }
+  });
+  app2.post("/api/admin/deposits/bulk-reject", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { depositIds, notes } = req.body;
+      if (!depositIds || !Array.isArray(depositIds) || depositIds.length === 0) {
+        return res.status(400).json({ message: "Invalid deposit IDs" });
+      }
+      const successful = [];
+      const failed = [];
+      const errors = [];
+      for (const id of depositIds) {
+        try {
+          const deposit = await storage.getTransactionById(id);
+          if (!deposit || deposit.type !== "deposit") {
+            throw new Error(`Deposit ${id} not found`);
+          }
+          if (deposit.status !== "pending") {
+            throw new Error(`Deposit ${id} already processed`);
+          }
+          await storage.updateTransaction(id, {
+            status: "rejected",
+            adminNotes: notes || deposit.adminNotes,
+            approvedBy: req.authUser.id,
+            approvedAt: /* @__PURE__ */ new Date()
+          });
+          await storage.createActivity({
+            userId: deposit.userId,
+            type: "deposit_rejected",
+            description: `Deposit of ${parseFloat(deposit.amount).toLocaleString()} XNRT rejected${notes ? ` - ${notes}` : ""}`
+          });
+          successful.push(id);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          failed.push({
+            id,
+            error: errorMessage
+          });
+          errors.push(`${id}: ${errorMessage}`);
+        }
+      }
+      res.json({
+        rejected: successful.length,
+        failed: failed.length,
+        total: depositIds.length,
+        successful,
+        failures: failed,
+        errors
+      });
+    } catch (error) {
+      console.error("Error bulk rejecting deposits:", error);
+      res.status(500).json({ message: "Failed to process bulk rejection" });
+    }
+  });
+  app2.get("/api/admin/unmatched-deposits", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const unmatched = await prisma5.unmatchedDeposit.findMany({
+        where: { matched: false },
+        orderBy: { detectedAt: "desc" },
+        take: 100
+      });
+      res.json(unmatched);
+    } catch (error) {
+      console.error("Error fetching unmatched deposits:", error);
+      res.status(500).json({ message: "Failed to fetch unmatched deposits" });
+    }
+  });
+  app2.post("/api/admin/unmatched-deposits/:id/match", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ message: "User ID required" });
+      }
+      const unmatchedDeposit = await prisma5.unmatchedDeposit.findUnique({
+        where: { id }
+      });
+      if (!unmatchedDeposit) {
+        return res.status(404).json({ message: "Unmatched deposit not found" });
+      }
+      if (unmatchedDeposit.matched) {
+        return res.status(400).json({ message: "Deposit already matched" });
+      }
+      const usdtAmount = parseFloat(unmatchedDeposit.amount.toString());
+      const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
+      const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
+      const netUsdt = usdtAmount * (1 - platformFeeBps / 1e4);
+      const xnrtAmount = netUsdt * xnrtRate;
+      await prisma5.$transaction(async (tx) => {
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: "deposit",
+            amount: new Prisma3.Decimal(xnrtAmount),
+            usdtAmount: new Prisma3.Decimal(usdtAmount),
+            transactionHash: unmatchedDeposit.transactionHash,
+            walletAddress: unmatchedDeposit.fromAddress,
+            status: "approved",
+            verified: true,
+            confirmations: unmatchedDeposit.confirmations,
+            verificationData: {
+              manualMatch: true,
+              matchedBy: req.authUser.id,
+              matchedAt: (/* @__PURE__ */ new Date()).toISOString()
+            },
+            approvedBy: req.authUser.id,
+            approvedAt: /* @__PURE__ */ new Date()
+          }
+        });
+        await tx.balance.upsert({
+          where: { userId },
+          create: {
+            userId,
+            xnrtBalance: new Prisma3.Decimal(xnrtAmount),
+            totalEarned: new Prisma3.Decimal(xnrtAmount)
+          },
+          update: {
+            xnrtBalance: { increment: new Prisma3.Decimal(xnrtAmount) },
+            totalEarned: { increment: new Prisma3.Decimal(xnrtAmount) }
+          }
+        });
+        await tx.unmatchedDeposit.update({
+          where: { id },
+          data: {
+            matched: true,
+            matchedUserId: userId,
+            matchedAt: /* @__PURE__ */ new Date()
+          }
+        });
+      });
+      res.json({ message: "Deposit matched and credited successfully" });
+    } catch (error) {
+      console.error("Error matching deposit:", error);
+      res.status(500).json({ message: "Failed to match deposit" });
+    }
+  });
+  app2.get("/api/admin/deposit-reports", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const reports = await prisma5.depositReport.findMany({
+        where: { status: "pending" },
+        include: {
+          user: {
+            select: { email: true, username: true }
+          }
+        },
+        orderBy: { reportedAt: "desc" },
+        take: 100
+      });
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching deposit reports:", error);
+      res.status(500).json({ message: "Failed to fetch deposit reports" });
+    }
+  });
+  app2.post("/api/admin/deposit-reports/:id/resolve", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { resolution, adminNotes } = req.body;
+      if (!resolution || !["approved", "rejected"].includes(resolution)) {
+        return res.status(400).json({ message: "Invalid resolution" });
+      }
+      const report = await prisma5.depositReport.findUnique({
+        where: { id }
+      });
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+      if (report.status !== "pending") {
+        return res.status(400).json({ message: "Report already resolved" });
+      }
+      if (resolution === "approved") {
+        const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
+        const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
+        const usdtAmount = parseFloat(report.amount.toString());
+        const netUsdt = usdtAmount * (1 - platformFeeBps / 1e4);
+        const xnrtAmount = netUsdt * xnrtRate;
+        await prisma5.$transaction(async (tx) => {
+          await tx.transaction.create({
+            data: {
+              userId: report.userId,
+              type: "deposit",
+              amount: new Prisma3.Decimal(xnrtAmount),
+              usdtAmount: new Prisma3.Decimal(usdtAmount),
+              transactionHash: report.transactionHash,
+              status: "approved",
+              adminNotes: adminNotes || "Credited from deposit report",
+              approvedBy: req.authUser.id,
+              approvedAt: /* @__PURE__ */ new Date()
+            }
+          });
+          await tx.balance.upsert({
+            where: { userId: report.userId },
+            create: {
+              userId: report.userId,
+              xnrtBalance: new Prisma3.Decimal(xnrtAmount),
+              totalEarned: new Prisma3.Decimal(xnrtAmount)
+            },
+            update: {
+              xnrtBalance: { increment: new Prisma3.Decimal(xnrtAmount) },
+              totalEarned: { increment: new Prisma3.Decimal(xnrtAmount) }
+            }
+          });
+          await tx.depositReport.update({
+            where: { id },
+            data: {
+              status: "approved",
+              resolvedBy: req.authUser.id,
+              resolvedAt: /* @__PURE__ */ new Date(),
+              adminNotes: adminNotes || null
+            }
+          });
+        });
+      } else {
+        await prisma5.depositReport.update({
+          where: { id },
+          data: {
+            status: "rejected",
+            resolvedBy: req.authUser.id,
+            resolvedAt: /* @__PURE__ */ new Date(),
+            adminNotes: adminNotes || null
+          }
+        });
+      }
+      res.json({ message: `Report ${resolution} successfully` });
+    } catch (error) {
+      console.error("Error resolving deposit report:", error);
+      res.status(500).json({ message: "Failed to resolve report" });
     }
   });
   app2.post("/api/admin/reconcile-referrals", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
@@ -2439,7 +4602,23 @@ async function registerRoutes(app2) {
       await storage.updateTransaction(id, { status: "approved" });
       const balance = await storage.getBalance(withdrawal.userId);
       if (balance) {
-        const sourceBalance = withdrawal.source === "main" ? "xnrtBalance" : "referralBalance";
+        let sourceBalance;
+        switch (withdrawal.source) {
+          case "main":
+            sourceBalance = "xnrtBalance";
+            break;
+          case "staking":
+            sourceBalance = "stakingBalance";
+            break;
+          case "mining":
+            sourceBalance = "miningBalance";
+            break;
+          case "referral":
+            sourceBalance = "referralBalance";
+            break;
+          default:
+            sourceBalance = "xnrtBalance";
+        }
         await storage.updateBalance(withdrawal.userId, {
           [sourceBalance]: (parseFloat(balance[sourceBalance]) - parseFloat(withdrawal.amount)).toString()
         });
@@ -2573,13 +4752,13 @@ async function registerRoutes(app2) {
       });
       const [balancesAgg, referralsAgg] = await Promise.all([
         // Aggregate all user balances in one query
-        prisma4.balance.aggregate({
+        prisma5.balance.aggregate({
           _sum: {
             referralBalance: true
           }
         }),
         // Get referral counts
-        prisma4.referral.groupBy({
+        prisma5.referral.groupBy({
           by: ["referrerId"],
           _count: true
         })
@@ -2621,12 +4800,12 @@ async function registerRoutes(app2) {
   app2.get("/api/admin/activities", requireAuth, requireAdmin, async (req, res) => {
     try {
       const limit = parseInt(req.query.limit) || 50;
-      const adminUsers = await prisma4.user.findMany({
+      const adminUsers = await prisma5.user.findMany({
         where: { isAdmin: true },
         select: { id: true }
       });
       const adminUserIds = adminUsers.map((u) => u.id);
-      const activities2 = await prisma4.activity.findMany({
+      const activities2 = await prisma5.activity.findMany({
         where: {
           OR: [
             { userId: { in: adminUserIds } },
@@ -2661,11 +4840,11 @@ async function registerRoutes(app2) {
         totalStakes,
         totalActivities
       ] = await Promise.all([
-        prisma4.user.count(),
-        prisma4.transaction.count({ where: { type: "deposit" } }),
-        prisma4.transaction.count({ where: { type: "withdrawal" } }),
-        prisma4.stake.count(),
-        prisma4.activity.count()
+        prisma5.user.count(),
+        prisma5.transaction.count({ where: { type: "deposit" } }),
+        prisma5.transaction.count({ where: { type: "withdrawal" } }),
+        prisma5.stake.count(),
+        prisma5.activity.count()
       ]);
       const stakingTiers = [
         { name: "Royal Sapphire", min: 1e3, max: 9999, apy: 5, duration: 30 },
@@ -2696,6 +4875,368 @@ async function registerRoutes(app2) {
     } catch (error) {
       console.error("Error fetching platform info:", error);
       res.status(500).json({ message: "Failed to fetch platform info" });
+    }
+  });
+  app2.get("/api/admin/stakes", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const stakes2 = await prisma5.stake.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+      res.json(stakes2);
+    } catch (error) {
+      console.error("Error fetching stakes:", error);
+      res.status(500).json({ message: "Failed to fetch stakes" });
+    }
+  });
+  app2.post("/api/admin/stakes", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { userId, tier, amount, duration } = req.body;
+      if (!userId || !tier || !amount || !duration) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const dailyRates = {
+        "royal_sapphire": 1.1,
+        "legendary_emerald": 1.4,
+        "imperial_platinum": 1.5,
+        "mythic_diamond": 2
+      };
+      const dailyRate = dailyRates[tier] || 1.1;
+      const endDate = /* @__PURE__ */ new Date();
+      endDate.setDate(endDate.getDate() + parseInt(duration));
+      const stake = await prisma5.stake.create({
+        data: {
+          userId,
+          tier,
+          amount: new Prisma3.Decimal(amount),
+          dailyRate: new Prisma3.Decimal(dailyRate),
+          duration: parseInt(duration),
+          startDate: /* @__PURE__ */ new Date(),
+          endDate,
+          totalProfit: new Prisma3.Decimal(0),
+          status: "active"
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_stake_created",
+        description: `Admin created stake for ${stake.user.username}: ${amount} XNRT (${tier}, ${duration} days)`
+      });
+      res.json(stake);
+    } catch (error) {
+      console.error("Error creating stake:", error);
+      res.status(500).json({ message: "Failed to create stake" });
+    }
+  });
+  app2.put("/api/admin/stakes/:id", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, totalProfit } = req.body;
+      const data = {};
+      if (status !== void 0) data.status = status;
+      if (totalProfit !== void 0) {
+        const parsed = typeof totalProfit === "string" ? parseFloat(totalProfit) : totalProfit;
+        data.totalProfit = new Prisma3.Decimal(parsed);
+      }
+      const stake = await prisma5.stake.update({
+        where: { id },
+        data,
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_stake_updated",
+        description: `Admin updated stake for ${stake.user.username}`
+      });
+      res.json(stake);
+    } catch (error) {
+      console.error("Error updating stake:", error);
+      res.status(500).json({ message: "Failed to update stake" });
+    }
+  });
+  app2.delete("/api/admin/stakes/:id", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const stake = await prisma5.stake.findUnique({
+        where: { id },
+        include: {
+          user: {
+            select: {
+              username: true
+            }
+          }
+        }
+      });
+      if (!stake) {
+        return res.status(404).json({ message: "Stake not found" });
+      }
+      await prisma5.stake.delete({
+        where: { id }
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_stake_deleted",
+        description: `Admin deleted stake for ${stake.user.username}`
+      });
+      res.json({ message: "Stake deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting stake:", error);
+      res.status(500).json({ message: "Failed to delete stake" });
+    }
+  });
+  app2.get("/api/admin/tasks", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const tasks2 = await prisma5.task.findMany({
+        orderBy: { createdAt: "desc" }
+      });
+      const tasksWithStats = await Promise.all(
+        tasks2.map(async (task) => {
+          const completionCount = await prisma5.userTask.count({
+            where: {
+              taskId: task.id,
+              completed: true
+            }
+          });
+          return {
+            ...task,
+            completionCount
+          };
+        })
+      );
+      res.json(tasksWithStats);
+    } catch (error) {
+      console.error("Error fetching tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+  app2.post("/api/admin/tasks", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { title, description, xpReward, xnrtReward, category, requirements, isActive } = req.body;
+      if (!title || !description || xpReward === void 0 || !category) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const parsedXpReward = typeof xpReward === "string" ? parseInt(xpReward, 10) : xpReward;
+      const parsedXnrtReward = xnrtReward ? typeof xnrtReward === "string" ? parseFloat(xnrtReward) : xnrtReward : 0;
+      const task = await prisma5.task.create({
+        data: {
+          title,
+          description,
+          xpReward: parsedXpReward,
+          xnrtReward: new Prisma3.Decimal(parsedXnrtReward),
+          category,
+          requirements: requirements || null,
+          isActive: isActive !== void 0 ? isActive : true
+        }
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_task_created",
+        description: `Admin created task: ${title}`
+      });
+      res.json(task);
+    } catch (error) {
+      console.error("Error creating task:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+  app2.put("/api/admin/tasks/:id", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, xpReward, xnrtReward, category, requirements, isActive } = req.body;
+      const data = {};
+      if (title !== void 0) data.title = title;
+      if (description !== void 0) data.description = description;
+      if (xpReward !== void 0) {
+        data.xpReward = typeof xpReward === "string" ? parseInt(xpReward, 10) : xpReward;
+      }
+      if (xnrtReward !== void 0) {
+        const parsed = typeof xnrtReward === "string" ? parseFloat(xnrtReward) : xnrtReward;
+        data.xnrtReward = new Prisma3.Decimal(parsed);
+      }
+      if (category !== void 0) data.category = category;
+      if (requirements !== void 0) data.requirements = requirements;
+      if (isActive !== void 0) data.isActive = isActive;
+      const task = await prisma5.task.update({
+        where: { id },
+        data
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_task_updated",
+        description: `Admin updated task: ${task.title}`
+      });
+      res.json(task);
+    } catch (error) {
+      console.error("Error updating task:", error);
+      res.status(500).json({ message: "Failed to update task" });
+    }
+  });
+  app2.patch("/api/admin/tasks/:id/toggle", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const task = await prisma5.task.findUnique({ where: { id } });
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      const updatedTask = await prisma5.task.update({
+        where: { id },
+        data: { isActive: !task.isActive }
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_task_toggled",
+        description: `Admin ${updatedTask.isActive ? "activated" : "deactivated"} task: ${updatedTask.title}`
+      });
+      res.json(updatedTask);
+    } catch (error) {
+      console.error("Error toggling task:", error);
+      res.status(500).json({ message: "Failed to toggle task" });
+    }
+  });
+  app2.delete("/api/admin/tasks/:id", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const task = await prisma5.task.findUnique({ where: { id } });
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      await prisma5.userTask.deleteMany({ where: { taskId: id } });
+      await prisma5.task.delete({ where: { id } });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_task_deleted",
+        description: `Admin deleted task: ${task.title}`
+      });
+      res.json({ message: "Task deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+  app2.get("/api/admin/achievements", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const achievements2 = await prisma5.achievement.findMany({
+        orderBy: { createdAt: "desc" }
+      });
+      const achievementsWithStats = await Promise.all(
+        achievements2.map(async (achievement) => {
+          const unlockCount = await prisma5.userAchievement.count({
+            where: { achievementId: achievement.id }
+          });
+          return {
+            ...achievement,
+            unlockCount
+          };
+        })
+      );
+      res.json(achievementsWithStats);
+    } catch (error) {
+      console.error("Error fetching achievements:", error);
+      res.status(500).json({ message: "Failed to fetch achievements" });
+    }
+  });
+  app2.post("/api/admin/achievements", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { title, description, icon, category, requirement, xpReward } = req.body;
+      if (!title || !description || !icon || !category || requirement === void 0 || xpReward === void 0) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const parsedRequirement = typeof requirement === "string" ? parseInt(requirement, 10) : requirement;
+      const parsedXpReward = typeof xpReward === "string" ? parseInt(xpReward, 10) : xpReward;
+      const achievement = await prisma5.achievement.create({
+        data: {
+          title,
+          description,
+          icon,
+          category,
+          requirement: parsedRequirement,
+          xpReward: parsedXpReward
+        }
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_achievement_created",
+        description: `Admin created achievement: ${title}`
+      });
+      res.json(achievement);
+    } catch (error) {
+      console.error("Error creating achievement:", error);
+      res.status(500).json({ message: "Failed to create achievement" });
+    }
+  });
+  app2.put("/api/admin/achievements/:id", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, icon, category, requirement, xpReward } = req.body;
+      const data = {};
+      if (title !== void 0) data.title = title;
+      if (description !== void 0) data.description = description;
+      if (icon !== void 0) data.icon = icon;
+      if (category !== void 0) data.category = category;
+      if (requirement !== void 0) {
+        data.requirement = typeof requirement === "string" ? parseInt(requirement, 10) : requirement;
+      }
+      if (xpReward !== void 0) {
+        data.xpReward = typeof xpReward === "string" ? parseInt(xpReward, 10) : xpReward;
+      }
+      const achievement = await prisma5.achievement.update({
+        where: { id },
+        data
+      });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_achievement_updated",
+        description: `Admin updated achievement: ${achievement.title}`
+      });
+      res.json(achievement);
+    } catch (error) {
+      console.error("Error updating achievement:", error);
+      res.status(500).json({ message: "Failed to update achievement" });
+    }
+  });
+  app2.delete("/api/admin/achievements/:id", requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const achievement = await prisma5.achievement.findUnique({ where: { id } });
+      if (!achievement) {
+        return res.status(404).json({ message: "Achievement not found" });
+      }
+      await prisma5.userAchievement.deleteMany({ where: { achievementId: id } });
+      await prisma5.achievement.delete({ where: { id } });
+      await storage.createActivity({
+        userId: req.authUser.id,
+        type: "admin_achievement_deleted",
+        description: `Admin deleted achievement: ${achievement.title}`
+      });
+      res.json({ message: "Achievement deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting achievement:", error);
+      res.status(500).json({ message: "Failed to delete achievement" });
     }
   });
   const httpServer = createServer(app2);
@@ -2746,13 +5287,25 @@ var vite_config_default = defineConfig({
             src: "/icon-192.png",
             sizes: "192x192",
             type: "image/png",
-            purpose: "any maskable"
+            purpose: "any"
+          },
+          {
+            src: "/icon-256.png",
+            sizes: "256x256",
+            type: "image/png",
+            purpose: "any"
           },
           {
             src: "/icon-512.png",
             sizes: "512x512",
             type: "image/png",
-            purpose: "any maskable"
+            purpose: "any"
+          },
+          {
+            src: "/icon-512-maskable.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable"
           }
         ],
         shortcuts: [
@@ -2813,7 +5366,7 @@ var vite_config_default = defineConfig({
 });
 
 // server/vite.ts
-import { nanoid as nanoid3 } from "nanoid";
+import { nanoid as nanoid6 } from "nanoid";
 var viteLogger = createLogger();
 function log(message, source = "express") {
   const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
@@ -2860,7 +5413,7 @@ async function setupVite(app2, server) {
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid3()}"`
+        `src="/src/main.tsx?v=${nanoid6()}"`
       );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
@@ -2883,9 +5436,154 @@ function serveStatic(app2) {
   });
 }
 
+// server/retryWorker.ts
+init_storage();
+init_notifications();
+var retryWorkerInterval = null;
+var RETRY_INTERVAL_MS = 5 * 60 * 1e3;
+var MAX_RETRY_ATTEMPTS = 5;
+var EXPONENTIAL_BACKOFF_DELAYS = [
+  0,
+  // Attempt 1: Immediate (already tried)
+  5 * 60,
+  // Attempt 2: 5 min delay (in seconds)
+  15 * 60,
+  // Attempt 3: 15 min delay
+  30 * 60,
+  // Attempt 4: 30 min delay
+  60 * 60
+  // Attempt 5: 60 min delay (final attempt)
+];
+function shouldRetryNotification(notification) {
+  const attempts = notification.deliveryAttempts || 0;
+  if (attempts >= MAX_RETRY_ATTEMPTS) {
+    return false;
+  }
+  if (attempts === 0) {
+    return true;
+  }
+  const delaySeconds = EXPONENTIAL_BACKOFF_DELAYS[attempts] || EXPONENTIAL_BACKOFF_DELAYS[EXPONENTIAL_BACKOFF_DELAYS.length - 1];
+  const lastAttempt = notification.lastAttemptAt || notification.createdAt;
+  const lastAttemptTime = new Date(lastAttempt).getTime();
+  const now = Date.now();
+  const timeSinceLastAttempt = Math.floor((now - lastAttemptTime) / 1e3);
+  return timeSinceLastAttempt >= delaySeconds;
+}
+async function processRetryQueue() {
+  try {
+    const pendingNotifications = await storage.getNotificationsPendingPush(50);
+    if (pendingNotifications.length === 0) {
+      return;
+    }
+    console.log(`Processing retry queue: ${pendingNotifications.length} notifications pending push`);
+    for (const notification of pendingNotifications) {
+      if (!shouldRetryNotification(notification)) {
+        continue;
+      }
+      const currentAttempts = notification.deliveryAttempts || 0;
+      try {
+        const subscriptions = await storage.getUserPushSubscriptions(notification.userId);
+        if (subscriptions.length === 0) {
+          console.log(`No active subscriptions for user ${notification.userId}, marking notification ${notification.id} as failed`);
+          await storage.updateNotificationDelivery(notification.id, {
+            pendingPush: false,
+            deliveryAttempts: currentAttempts + 1,
+            lastAttemptAt: /* @__PURE__ */ new Date(),
+            pushError: "No active push subscriptions"
+          });
+          continue;
+        }
+        console.log(`Retrying push notification ${notification.id}, attempt ${currentAttempts + 1}/${MAX_RETRY_ATTEMPTS}`);
+        const pushPayload = {
+          title: notification.title,
+          body: notification.message,
+          data: {
+            url: "/",
+            type: notification.type,
+            id: notification.id,
+            ...notification.metadata || {}
+          }
+        };
+        const pushSuccess = await sendPushNotification(notification.userId, pushPayload);
+        if (pushSuccess) {
+          console.log(`Push notification retry successful for notification ${notification.id}`);
+          await storage.updateNotificationDelivery(notification.id, {
+            deliveredAt: /* @__PURE__ */ new Date(),
+            deliveryAttempts: currentAttempts + 1,
+            lastAttemptAt: /* @__PURE__ */ new Date(),
+            pendingPush: false
+          });
+        } else {
+          const newAttempts = currentAttempts + 1;
+          if (newAttempts >= MAX_RETRY_ATTEMPTS) {
+            console.error(`Push notification failed permanently for notification ${notification.id} after ${newAttempts} attempts`);
+            await storage.updateNotificationDelivery(notification.id, {
+              deliveryAttempts: newAttempts,
+              lastAttemptAt: /* @__PURE__ */ new Date(),
+              pendingPush: false,
+              pushError: "Max retry attempts reached"
+            });
+          } else {
+            console.log(`Push notification retry failed for notification ${notification.id}, will retry later (attempt ${newAttempts}/${MAX_RETRY_ATTEMPTS})`);
+            await storage.updateNotificationDelivery(notification.id, {
+              deliveryAttempts: newAttempts,
+              lastAttemptAt: /* @__PURE__ */ new Date(),
+              pushError: "Push delivery failed, will retry"
+            });
+          }
+        }
+      } catch (error) {
+        const newAttempts = currentAttempts + 1;
+        const errorMessage = error.message || "Unknown error during retry";
+        console.error(`Error processing notification ${notification.id}:`, error);
+        if (newAttempts >= MAX_RETRY_ATTEMPTS) {
+          console.error(`Push notification failed permanently for notification ${notification.id} after ${newAttempts} attempts`);
+          await storage.updateNotificationDelivery(notification.id, {
+            deliveryAttempts: newAttempts,
+            lastAttemptAt: /* @__PURE__ */ new Date(),
+            pendingPush: false,
+            pushError: `Max retries reached: ${errorMessage}`
+          });
+        } else {
+          await storage.updateNotificationDelivery(notification.id, {
+            deliveryAttempts: newAttempts,
+            lastAttemptAt: /* @__PURE__ */ new Date(),
+            pushError: errorMessage
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error in retry worker processRetryQueue:", error);
+  }
+}
+function startRetryWorker() {
+  if (retryWorkerInterval) {
+    console.log("Retry worker is already running");
+    return;
+  }
+  console.log(`Starting push notification retry worker (runs every ${RETRY_INTERVAL_MS / 1e3 / 60} minutes)`);
+  processRetryQueue().catch((err) => {
+    console.error("Error in initial retry queue process:", err);
+  });
+  retryWorkerInterval = setInterval(() => {
+    processRetryQueue().catch((err) => {
+      console.error("Error in retry queue process:", err);
+    });
+  }, RETRY_INTERVAL_MS);
+}
+function stopRetryWorker() {
+  if (retryWorkerInterval) {
+    console.log("Stopping push notification retry worker");
+    clearInterval(retryWorkerInterval);
+    retryWorkerInterval = null;
+  }
+}
+
 // server/index.ts
+init_depositScanner();
 var app = express2();
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 var isDevelopment = app.get("env") === "development";
 app.use(helmet({
   contentSecurityPolicy: isDevelopment ? false : {
@@ -2960,5 +5658,23 @@ app.use((req, res, next) => {
     reusePort: true
   }, () => {
     log(`serving on port ${port}`);
+    startRetryWorker();
+    startDepositScanner();
+  });
+  process.on("SIGTERM", () => {
+    log("SIGTERM received, shutting down gracefully");
+    stopRetryWorker();
+    server.close(() => {
+      log("Server closed");
+      process.exit(0);
+    });
+  });
+  process.on("SIGINT", () => {
+    log("SIGINT received, shutting down gracefully");
+    stopRetryWorker();
+    server.close(() => {
+      log("Server closed");
+      process.exit(0);
+    });
   });
 })();
