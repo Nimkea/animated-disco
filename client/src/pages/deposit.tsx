@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info, Upload, X } from "lucide-react";
+import { ArrowDownToLine, Copy, CheckCircle, Clock, XCircle, Info, Upload, X, QrCode } from "lucide-react";
 import type { Transaction } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { LinkWalletCard } from "@/components/link-wallet-card";
 import { ReportMissingDeposit } from "@/components/report-missing-deposit";
+import QRCode from "qrcode";
 
 const COMPANY_WALLET = "0x715C32deC9534d2fB34e0B567288AF8d895efB59";
 const USDT_TO_XNRT_RATE = 100;
@@ -24,10 +25,32 @@ export default function Deposit() {
   const [transactionHash, setTransactionHash] = useState("");
   const [proofImageUrl, setProofImageUrl] = useState("");
   const [proofImageFile, setProofImageFile] = useState<File | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [showQR, setShowQR] = useState(false);
 
   const { data: deposits } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions/deposits"],
   });
+
+  const { data: depositAddress, isLoading: isLoadingAddress } = useQuery<{ address: string }>({
+    queryKey: ["/api/wallet/deposit-address"],
+  });
+
+  // Generate QR code when deposit address is loaded
+  useEffect(() => {
+    if (depositAddress?.address) {
+      QRCode.toDataURL(depositAddress.address, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      })
+        .then(url => setQrCodeUrl(url))
+        .catch(err => console.error('QR Code generation failed:', err));
+    }
+  }, [depositAddress?.address]);
 
   const depositMutation = useMutation({
     mutationFn: async (data: { usdtAmount: string; transactionHash: string; proofImageUrl?: string }) => {
@@ -64,8 +87,8 @@ export default function Deposit() {
     },
   });
 
-  const copyWallet = () => {
-    navigator.clipboard.writeText(COMPANY_WALLET);
+  const copyWallet = (address: string) => {
+    navigator.clipboard.writeText(address);
     toast({
       title: "Copied!",
       description: "Wallet address copied to clipboard",
@@ -198,8 +221,8 @@ export default function Deposit() {
                   1
                 </div>
                 <div>
-                  <p className="font-semibold">Send USDT from Linked Wallet</p>
-                  <p className="text-sm text-muted-foreground">Use your linked MetaMask wallet via BEP20 network</p>
+                  <p className="font-semibold">Send USDT to Your Deposit Address</p>
+                  <p className="text-sm text-muted-foreground">Use any wallet or exchange via BEP20 network</p>
                 </div>
               </div>
 
@@ -225,37 +248,66 @@ export default function Deposit() {
 
               <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md space-y-2">
                 <p className="text-sm text-amber-600 dark:text-amber-400">
-                  ✨ <strong>Auto-Deposit:</strong> Deposits from linked wallets are detected and credited automatically. 
-                  No need to submit transaction hash manually!
+                  ✨ <strong>Easy Deposits:</strong> Send USDT directly from Binance, OKX, or any wallet to your personal deposit address below. 
+                  No wallet linking, gas fees, or blockchain interaction required!
                 </p>
                 <p className="text-sm text-amber-600 dark:text-amber-400">
-                  💡 <strong>From Exchange?</strong> Use "Report Missing Deposit" below with your TX hash for instant verification & credit.
+                  💡 <strong>Auto-Detection:</strong> Your deposits are automatically detected and credited after 12 confirmations.
                 </p>
               </div>
             </div>
 
-            <div className="p-4 bg-muted/50 rounded-md space-y-2">
+            <div className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/30 rounded-md space-y-2">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Info className="h-4 w-4 text-primary" />
-                <span>XNRT Wallet Address</span>
+                <span>Your Personal Deposit Address</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={COMPANY_WALLET}
-                  readOnly
-                  className="font-mono text-xs"
-                  data-testid="input-company-wallet"
-                />
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={copyWallet}
-                  data-testid="button-copy-wallet"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">Network: BEP20 (Binance Smart Chain)</p>
+              {isLoadingAddress ? (
+                <div className="h-10 bg-muted/50 rounded-md animate-pulse" />
+              ) : depositAddress?.address ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={depositAddress.address}
+                      readOnly
+                      className="font-mono text-xs bg-background"
+                      data-testid="input-deposit-address"
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => copyWallet(depositAddress.address)}
+                      data-testid="button-copy-deposit-address"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setShowQR(!showQR)}
+                      data-testid="button-toggle-qr"
+                    >
+                      <QrCode className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {showQR && qrCodeUrl && (
+                    <div className="flex justify-center p-4 bg-white rounded-md">
+                      <img 
+                        src={qrCodeUrl} 
+                        alt="Deposit Address QR Code" 
+                        className="w-48 h-48"
+                        data-testid="img-qr-code"
+                      />
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-muted-foreground">Network: BEP20 (Binance Smart Chain)</p>
+                  <p className="text-xs text-primary font-medium">⚡ This address is unique to you - deposits are auto-credited!</p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Failed to load deposit address</p>
+              )}
             </div>
           </CardContent>
         </Card>

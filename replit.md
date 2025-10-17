@@ -31,13 +31,15 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Database**: PostgreSQL (Neon) using Drizzle ORM for schema and session management, and Prisma ORM for database operations.
 - **Authentication**: Hybrid system supporting Replit OIDC (Passport.js) and traditional email/password, with secure password reset, email verification, and session management.
 - **PWA**: Full Progressive Web App capabilities via `vite-plugin-pwa` with a custom service worker for offline SPA routing, Workbox caching, and app shortcuts.
-- **Blockchain Integration**: On-chain verification for USDT deposits on Binance Smart Chain using ethers.js, including auto-deposit system with wallet linking and a blockchain scanner.
+- **Blockchain Integration**: On-chain verification for USDT deposits on Binance Smart Chain using ethers.js. Includes automated deposit system with unique personal deposit addresses (HD wallet derivation), blockchain scanner that auto-detects and credits deposits after 12 confirmations, and legacy support for wallet linking.
 - **Monitoring**: Optional Sentry integration for error tracking and Web Vitals monitoring.
 - **Charts**: Recharts for data visualization.
 
 **Feature Specifications:**
 - **Admin Dashboard**: Comprehensive management for Deposits, Withdrawals, Users, Analytics, and Settings, including bulk deposit approval.
-- **Deposit/Withdrawal Systems**: USDT to XNRT conversion (deposits) and XNRT to USDT conversion (withdrawals), both with admin approval and tracking. Enhanced with automated deposit scanning and smart deposit reporting with auto-verification.
+- **Deposit/Withdrawal Systems**: 
+    - **Deposits**: USDT to XNRT conversion with unique personal deposit addresses per user. Users can deposit directly from exchanges (Binance, OKX) without wallet linking, gas fees, or blockchain interaction. HD wallet derivation (BIP44 path m/44'/714'/0'/0/{index}) generates unique BSC addresses. Automated scanner watches all user addresses and auto-credits XNRT after 12 confirmations.
+    - **Withdrawals**: XNRT to USDT conversion with admin approval and tracking.
 - **Earning Systems**:
     - **Staking**: Four-tiered system with varying APY, real-time countdowns, and automated daily reward distribution.
     - **Mining**: Automated 24-hour sessions with XP to XNRT conversion and automatic reward deposit.
