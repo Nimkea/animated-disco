@@ -108,6 +108,52 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // React core libraries
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'vendor-react';
+          }
+          
+          // UI libraries (Radix UI, Lucide, etc.)
+          if (id.includes('node_modules/@radix-ui') || 
+              id.includes('node_modules/lucide-react') ||
+              id.includes('node_modules/framer-motion')) {
+            return 'vendor-ui';
+          }
+          
+          // Chart libraries
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
+            return 'vendor-charts';
+          }
+          
+          // Other vendor libraries
+          if (id.includes('node_modules')) {
+            return 'vendor-libs';
+          }
+          
+          // Admin pages - separate bundle (most users never see these)
+          if (id.includes('/pages/admin/')) {
+            return 'admin';
+          }
+          
+          // User pages - group by feature area
+          if (id.includes('/pages/staking') || id.includes('/pages/mining')) {
+            return 'earning';
+          }
+          
+          if (id.includes('/pages/referrals') || id.includes('/pages/leaderboard')) {
+            return 'social';
+          }
+          
+          if (id.includes('/pages/deposit') || id.includes('/pages/withdrawal')) {
+            return 'transactions';
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600, // Increase from default 500KB
   },
   server: {
     fs: {
