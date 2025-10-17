@@ -29,10 +29,11 @@ export async function startDepositScanner() {
   const scanInterval = 60 * 1000; // 1 minute
 
   console.log("[DepositScanner] Starting scanner service...");
-  console.log(`[DepositScanner] Treasury: ${TREASURY_ADDRESS}`);
+  console.log(`[DepositScanner] Treasury (legacy): ${TREASURY_ADDRESS}`);
   console.log(`[DepositScanner] USDT: ${USDT_ADDRESS}`);
   console.log(`[DepositScanner] Required confirmations: ${REQUIRED_CONFIRMATIONS}`);
   console.log(`[DepositScanner] Scan batch size: ${SCAN_BATCH}`);
+  console.log(`[DepositScanner] Watching user deposit addresses...`);
 
   // Run immediately
   await scanForDeposits().catch(err => {
@@ -93,15 +94,31 @@ async function scanForDeposits() {
 
     console.log(`[DepositScanner] Scanning blocks ${fromBlock} to ${toBlock}...`);
 
-    // Query USDT Transfer events to treasury
-    const filter = usdtContract.filters.Transfer(null, TREASURY_ADDRESS);
+    // Get all user deposit addresses
+    const users = await prisma.user.findMany({
+      where: { depositAddress: { not: null } },
+      select: { id: true, depositAddress: true }
+    });
+
+    // Create address-to-userId mapping
+    const addressToUserId = new Map<string, string>();
+    users.forEach(user => {
+      if (user.depositAddress) {
+        addressToUserId.set(user.depositAddress.toLowerCase(), user.id);
+      }
+    });
+
+    console.log(`[DepositScanner] Watching ${users.length} deposit addresses`);
+
+    // Query USDT Transfer events to any address (we'll filter by user addresses)
+    const filter = usdtContract.filters.Transfer();
     const events = await usdtContract.queryFilter(filter, fromBlock, toBlock);
 
     console.log(`[DepositScanner] Found ${events.length} transfer events`);
 
     for (const event of events) {
       if (event instanceof ethers.EventLog) {
-        await processDepositEvent(event, currentBlock);
+        await processDepositEvent(event, currentBlock, addressToUserId);
       }
     }
 
@@ -141,10 +158,15 @@ async function scanForDeposits() {
   }
 }
 
-async function processDepositEvent(event: ethers.EventLog, currentBlock: number) {
+async function processDepositEvent(
+  event: ethers.EventLog, 
+  currentBlock: number,
+  addressToUserId: Map<string, string>
+) {
   try {
     const txHash = event.transactionHash.toLowerCase();
     const from = ((event.args as any).from as string).toLowerCase();
+    const to = ((event.args as any).to as string).toLowerCase();
     const value = (event.args as any).value as bigint;
     const blockNumber = event.blockNumber;
     const confirmations = currentBlock - blockNumber;
@@ -152,59 +174,67 @@ async function processDepositEvent(event: ethers.EventLog, currentBlock: number)
     // USDT has 18 decimals on BSC
     const usdtAmount = Number(ethers.formatUnits(value, 18));
 
+    // Check if this transfer is to a user's deposit address
+    const userId = addressToUserId.get(to);
+    
+    if (!userId) {
+      // Not sent to a user deposit address, check if it's to treasury (legacy)
+      if (to === TREASURY_ADDRESS) {
+        // Legacy treasury deposit - check for linked wallet
+        const linkedWallet = await prisma.linkedWallet.findFirst({
+          where: { address: from, active: true }
+        });
+
+        if (linkedWallet) {
+          // Skip if already processed
+          const existing = await prisma.transaction.findFirst({
+            where: { transactionHash: txHash }
+          });
+          if (existing) return;
+
+          await processUserDeposit(
+            linkedWallet.userId,
+            to,
+            from,
+            usdtAmount,
+            txHash,
+            blockNumber,
+            confirmations
+          );
+        }
+      }
+      return; // Not a user deposit
+    }
+
     // Skip if already processed
     const existingTx = await prisma.transaction.findFirst({
       where: { transactionHash: txHash }
     });
 
-    const existingUnmatched = await prisma.unmatchedDeposit.findFirst({
-      where: { transactionHash: txHash }
-    });
-
-    if (existingTx || existingUnmatched) {
+    if (existingTx) {
       return; // Already processed
     }
 
-    console.log(`[DepositScanner] New deposit: ${usdtAmount} USDT from ${from}`);
+    console.log(`[DepositScanner] New deposit: ${usdtAmount} USDT to user deposit address ${to}`);
 
-    // Check if sender has a linked wallet
-    const linkedWallet = await prisma.linkedWallet.findFirst({
-      where: { address: from, active: true }
-    });
-
-    if (linkedWallet) {
-      // User found - process deposit
-      await processLinkedDeposit(
-        linkedWallet.userId,
-        from,
-        usdtAmount,
-        txHash,
-        blockNumber,
-        confirmations
-      );
-    } else {
-      // No linked wallet - store as unmatched
-      await prisma.unmatchedDeposit.create({
-        data: {
-          fromAddress: from,
-          toAddress: TREASURY_ADDRESS,
-          amount: new Prisma.Decimal(usdtAmount),
-          transactionHash: txHash,
-          blockNumber,
-          confirmations,
-          matched: false,
-        }
-      });
-      
-      console.log(`[DepositScanner] Unmatched deposit from ${from}`);
-    }
+    // Process user deposit
+    await processUserDeposit(
+      userId,
+      to,
+      from,
+      usdtAmount,
+      txHash,
+      blockNumber,
+      confirmations
+    );
   } catch (error) {
     console.error("[DepositScanner] Event processing error:", error);
   }
 }
 
-async function processLinkedDeposit(
+async function processUserDeposit(
   userId: string,
+  toAddress: string,
   fromAddress: string,
   usdtAmount: number,
   txHash: string,
@@ -227,7 +257,7 @@ async function processLinkedDeposit(
             amount: new Prisma.Decimal(xnrtAmount),
             usdtAmount: new Prisma.Decimal(usdtAmount),
             transactionHash: txHash,
-            walletAddress: fromAddress,
+            walletAddress: toAddress, // User's deposit address
             status: "approved",
             verified: true,
             confirmations,
@@ -270,7 +300,7 @@ async function processLinkedDeposit(
           amount: new Prisma.Decimal(xnrtAmount),
           usdtAmount: new Prisma.Decimal(usdtAmount),
           transactionHash: txHash,
-          walletAddress: fromAddress,
+          walletAddress: toAddress, // User's deposit address
           status: "pending",
           verified: true,
           confirmations,

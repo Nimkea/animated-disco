@@ -11,6 +11,7 @@ import rateLimit from "express-rate-limit";
 import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 import { ethers } from "ethers";
 import { nanoid } from "nanoid";
+import { deriveDepositAddress } from "./services/hdWallet";
 
 const prisma = new PrismaClient();
 
@@ -868,6 +869,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error linking wallet:", error);
       res.status(500).json({ message: "Failed to link wallet" });
+    }
+  });
+
+  // User Deposit Address API
+  app.get('/api/deposit-address', requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      
+      // Get user with deposit address
+      let user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { depositAddress: true, derivationIndex: true }
+      });
+
+      // If user doesn't have a deposit address, generate one
+      if (!user?.depositAddress || user?.derivationIndex === null) {
+        // Get next available index
+        const maxIndexUser = await prisma.user.findFirst({
+          where: { derivationIndex: { not: null } },
+          orderBy: { derivationIndex: 'desc' },
+          select: { derivationIndex: true }
+        });
+        
+        const nextIndex = (maxIndexUser?.derivationIndex ?? -1) + 1;
+        const address = deriveDepositAddress(nextIndex);
+
+        // Update user with new address
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            depositAddress: address,
+            derivationIndex: nextIndex
+          }
+        });
+
+        return res.json({
+          address,
+          network: 'BSC (BEP-20)',
+          token: 'USDT',
+          instructions: [
+            'Send USDT (BEP-20) from your exchange to this address',
+            'Deposits will be automatically detected and credited',
+            'No gas fees or wallet connection needed',
+            'Minimum 12 block confirmations required'
+          ]
+        });
+      }
+
+      res.json({
+        address: user.depositAddress,
+        network: 'BSC (BEP-20)',
+        token: 'USDT',
+        instructions: [
+          'Send USDT (BEP-20) from your exchange to this address',
+          'Deposits will be automatically detected and credited',
+          'No gas fees or wallet connection needed',
+          'Minimum 12 block confirmations required'
+        ]
+      });
+    } catch (error) {
+      console.error("Error getting deposit address:", error);
+      res.status(500).json({ message: "Failed to get deposit address" });
     }
   });
 
