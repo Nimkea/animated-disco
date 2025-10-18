@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
-import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
+import { cleanupOutdatedCaches, createHandlerBoundToURL, matchPrecache, precacheAndRoute } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
-import { NavigationRoute, registerRoute } from 'workbox-routing';
+import { NavigationRoute, registerRoute, setCatchHandler } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -9,7 +9,7 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_PREFIX = 'xnrt';
 
 // Take control immediately
@@ -17,39 +17,42 @@ clientsClaim();
 self.skipWaiting();
 
 // Precache all assets from the build
-// Note: Workbox manages its own cache names, but our activate handler will clean old versions
+// Workbox manages its own precache names - we NEVER delete them manually
 precacheAndRoute(self.__WB_MANIFEST, {
   ignoreURLParametersMatching: [/.*/]
 });
 
-// Custom activate event to AGGRESSIVELY delete ALL old caches
+// Activate event - Let Workbox handle precache cleanup, only delete our custom runtime caches
 self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    (async () => {
+      // Enable navigation preload for faster first navigation
+      try {
+        await self.registration.navigationPreload?.enable();
+      } catch (e) {
+        // Navigation preload not supported, continue without it
+      }
+
+      // Let Workbox handle its own precache migrations (DO NOT delete manually!)
+      await cleanupOutdatedCaches();
+
+      // Only prune OUR custom versioned runtime caches (xnrt-*)
+      const cacheNames = await caches.keys();
+      await Promise.all(
         cacheNames
-          .filter((cacheName) => {
-            // Delete ALL workbox precaches that don't match our version
-            if (cacheName.startsWith('workbox-precache') || cacheName.includes('precache')) {
-              if (!cacheName.includes(CACHE_VERSION)) {
-                console.log('[SW] Deleting old Workbox precache:', cacheName);
-                return true;
-              }
-            }
-            // Delete all our custom caches that don't match current version
-            if (cacheName.startsWith(CACHE_PREFIX) && !cacheName.includes(CACHE_VERSION)) {
-              console.log('[SW] Deleting old versioned cache:', cacheName);
-              return true;
-            }
-            return false;
+          .filter(cacheName => 
+            cacheName.startsWith(`${CACHE_PREFIX}-`) && 
+            !cacheName.endsWith(`-${CACHE_VERSION}`)
+          )
+          .map(cacheName => {
+            console.log('[SW] Deleting old runtime cache:', cacheName);
+            return caches.delete(cacheName);
           })
-          .map((cacheName) => caches.delete(cacheName))
       );
-    }).then(() => {
-      console.log('[SW] Complete cache cleanup finished, version:', CACHE_VERSION);
-      // Force all clients to reload with fresh service worker
-      return self.clients.claim();
-    })
+
+      console.log('[SW] Activation complete, version:', CACHE_VERSION);
+      await self.clients.claim();
+    })()
   );
 });
 
@@ -174,6 +177,31 @@ registerRoute(
   }),
   'GET'
 );
+
+// Global catch handler - Ensures FetchEvents NEVER reject
+// Provides graceful fallback to cached shell for failed navigations
+setCatchHandler(async ({ request }) => {
+  // For navigation requests (page loads), fallback to cached /index.html
+  if (request.mode === 'navigate') {
+    const cachedShell = await matchPrecache('/index.html');
+    if (cachedShell) {
+      console.log('[SW] Network failed, serving cached shell');
+      return cachedShell;
+    }
+    // If somehow /index.html isn't in precache, return offline page
+    return new Response('Offline - Unable to load app shell', { 
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+  
+  // For other requests, return empty response with timeout status
+  return new Response('', { 
+    status: 504, 
+    statusText: 'Gateway Timeout' 
+  });
+});
 
 // Listen for skip waiting message
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
