@@ -1,0 +1,69 @@
+What’s still wrong
+
+This block in activate:
+
+// Delete ALL workbox precaches that don't match our version
+if (cacheName.startsWith('workbox-precache') || cacheName.includes('precache')) {
+  if (!cacheName.includes(CACHE_VERSION)) { /* delete */ }
+}
+
+
+Workbox’s precache cache names never include your CACHE_VERSION (v4). So that filter deletes the fresh workbox-precache-* cache on every activation, including the one that contains /index.html. Then your navigation handler tries to serve /index.html from the precache and it’s gone → network fetch → if anything fails, the fetch rejects and you get a blank page.
+
+You also don’t have a router catch handler, so rejected fetches bubble up as “FetchEvent … promise was rejected.”
+
+Minimal, surgical fixes
+1) Replace your activate handler with a safe one
+import { cleanupOutdatedCaches } from 'workbox-precaching';
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    // Speed up first navigation while SW settles
+    try { await self.registration.navigationPreload.enable(); } catch {}
+
+    // Let Workbox handle its own precache migrations
+    await cleanupOutdatedCaches();
+
+    // Optionally prune ONLY your versioned runtime caches
+    const names = await caches.keys();
+    await Promise.all(
+      names
+        .filter(n => n.startsWith(`${CACHE_PREFIX}-`) && !n.endsWith(`-${CACHE_VERSION}`))
+        .map(n => caches.delete(n))
+    );
+
+    await self.clients.claim();
+  })());
+});
+
+2) Add a router-wide catch handler (so FetchEvents never reject)
+import { setCatchHandler } from 'workbox-routing';
+import { matchPrecache } from 'workbox-precaching';
+
+setCatchHandler(async ({ event }) => {
+  if (event.request.mode === 'navigate') {
+    const shell = await matchPrecache('/index.html');
+    if (shell) return shell;                // SPA fallback
+    return new Response('Offline', { status: 503 });
+  }
+  return new Response('', { status: 504, statusText: 'Gateway Timeout' });
+});
+
+
+That’s it. Keep the rest of your routes as-is (including your switch to NetworkFirst for JS/CSS to avoid mixed-version chunks).
+
+Why this fixes the blank page
+
+We stop deleting the Workbox precache that holds /index.html and other precached assets.
+
+Even if the network flakes, navigations now fall back to the cached shell instead of throwing, so the FetchEvent never rejects.
+
+Quick verification steps
+
+Open DevTools → Application → Service Workers → “Bypass for network” OFF.
+
+Unregister the current SW, hard reload.
+
+Load once (to install the fixed SW).
+
+Simulate offline and reload — the app should still render (from /index.html in precache).
