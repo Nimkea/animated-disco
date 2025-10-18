@@ -2,6 +2,11 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
+- **October 18, 2025**:
+  - **Production Deployment Fix**: Resolved critical white screen issue in production by implementing multi-domain CORS support for `xnrt.replit.app` and `xnrt.org` with graceful origin rejection.
+  - **Environment Validation System**: Added comprehensive startup validation (`server/validateEnv.ts`) that aborts server boot with clear error messages when critical environment variables are missing or invalid. Validates DATABASE_URL, SESSION_SECRET, MASTER_SEED (BIP39 12/15/18/21/24 words), RPC_BSC_URL, and USDT_BSC_ADDRESS.
+  - **Production Documentation**: Created comprehensive `docs/PRODUCTION_ENV.md` documenting all required and optional environment variables with examples, security recommendations, and Replit-specific deployment guidance.
+  - **CORS Security Enhancement**: Updated CORS middleware to explicitly whitelist production domains while maintaining same-origin support for autoscale deployments. Unknown origins are gracefully rejected without exposing errors.
 - **October 17, 2025**: 
   - Project cleanup - removed 160+ temporary development artifacts from `attached_assets/` folder (old images, pasted text files, outdated icon bundles, patch files, and screenshots). All active PWA icons remain in `client/public/`. Project size significantly reduced.
   - Build optimization - implemented advanced code-splitting in Vite configuration with manual chunks for vendor libraries (React, UI, charts) and route-based splitting (admin, earning, social, transactions). Initial bundle size reduced from 1,429 KB to 124 KB (393 KB to 268 KB gzipped - 32% improvement). Admin code now loads on-demand only for admins.
