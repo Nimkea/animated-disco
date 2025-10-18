@@ -1,0 +1,112 @@
+Thanks for the dumps + screenshots — they make the root cause pretty clear.
+
+## What’s actually breaking
+
+1. **The runtime error**
+
+* `Uncaught ReferenceError: Cannot access 'A' before initialization` is thrown from **`vendor-charts-OZYDHmNW.js`** on the line where it does `A.forwardRef(...)`.
+* In your build, `A` is the minified binding for **React** that comes from the **`vendor-react-*.js`** chunk.
+* This error happens when **ESM evaluation order gets messed up**—i.e., the chart chunk executes before the React chunk finished initializing **or** the two chunks come from **different builds** (old React chunk + new charts chunk). Either way, the binding is in the Temporal Dead Zone.
+
+2. **Why the chunks are out of sync**
+
+* Your **deployed service worker** (from `dist/public/sw.js`) is the *old* one: it shows `const g="v3"` and uses **`StaleWhileRevalidate` for `.(js|css)`**.
+* That strategy happily serves **older cached JS** while the page asks for new ones, which is how you end up mixing chunk versions → the `A` TDZ error.
+* That same `sw.js` also **aggressively deletes Workbox precaches** by pattern (see the `activate` handler), which is why you’re getting the console warnings:
+  “The FetchEvent for `/manifest.webmanifest` and `/assets/index-*.css` resulted in a network error response: the promise was rejected.”
+
+3. **Your source is fixed, but prod isn’t using it**
+
+* You already rewrote `client/src/sw.ts` to **NetworkFirst for JS/CSS**, added a **global catch handler**, enabled **navigation preload**, and changed the version to `v5`. ✅
+* However, the file served to users is still the **old compiled worker** (the one that prints `v3`). So the browser is running the broken logic.
+
+---
+
+## Fix — do these in order
+
+### 1) Ship the new worker (v5) for real
+
+* Rebuild so `/sw.js` is regenerated from `client/src/sw.ts`.
+* **Purge** your CDN/edge for *at least*:
+
+  ```
+  /sw.js
+  /index.html
+  /manifest.webmanifest
+  /assets/*
+  ```
+
+  (If you’re on Cloudflare, run a cache purge by URL or “Purge Everything”.)
+
+> Why purge? Browsers *do* revalidate service workers, but if the CDN keeps handing back the old `/sw.js`, the browser can’t see your new code.
+
+### 2) Verify what the browser is actually running
+
+* Open DevTools → **Application** → **Service Workers**:
+
+  * Scope should be `/`
+  * **Source:** `/sw.js`
+  * It should log **`Activation complete, version: v5`** (from your new code).
+* **Cache Storage** should show only caches ending in `-v5` plus Workbox’s current precache.
+
+### 3) One-time clean for your own browser (helps confirm the fix)
+
+Paste this in the Console on `xnrt.org` **once**:
+
+```js
+(async () => {
+  const regs = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(regs.map(r => r.unregister()));
+  const keys = await caches.keys();
+  await Promise.all(keys.map(k => caches.delete(k)));
+  location.reload();
+})();
+```
+
+(Do not ship this to users; it’s just for your sanity check.)
+
+### 4) Keep the safer SW settings you already wrote
+
+Your latest `client/src/sw.ts` is good. Key bits to keep:
+
+* **NetworkFirst for `.(js|css)$`** to avoid mixed-version chunks.
+* **Global `setCatchHandler`** so navigations fall back to cached `/index.html` instead of “FetchEvent promise rejected”.
+* **`cleanupOutdatedCaches()`** and only delete *your* runtime caches (`xnrt-*`), not Workbox’s precache.
+* **Navigation preload** enabled.
+* Version bump (`CACHE_VERSION = 'v5'`).
+
+---
+
+## Why those specific console lines happened
+
+* **“Cannot access 'A' before initialization”**
+  Mixed chunk versions (old React vendor, new charts vendor) served by `StaleWhileRevalidate` on JS → ESM TDZ on the `A` binding.
+
+* **“The FetchEvent for … resulted in a network error response: the promise was rejected.”**
+  Old worker’s routes sometimes returned **no response** (promise rejected) and the custom `activate` deleted caches it shouldn’t, so CSS/manifest requests had nothing to fall back to.
+
+* **CSP ‘upgrade-insecure-requests’ report-only**
+  Just a warning; not related to the blank page.
+
+---
+
+## Quick smoke-test checklist (after purge + reload)
+
+1. DevTools → **Sources** → open `/sw.js`. Search for `const CACHE_VERSION = 'v5'`.
+2. **Network** tab: reload with “Disable cache” checked. All `assets/*.js` should be **200** or **200 (from disk cache)**—no 304s from a stale CDN edge for `/sw.js`.
+3. **Console** should be clean; no “Cannot access 'A'…” and no Workbox fetch rejections.
+4. **Application → Cache Storage**: only `xnrt-*-v5` and one `workbox-precache-...`.
+
+---
+
+## Optional hardening (nice-to-haves)
+
+* Serve `/sw.js` with `Cache-Control: no-cache` (or at least with ETag/Last-Modified) so update checks are cheap and reliable.
+* In `vite.config`, consider **removing** `devOptions.enabled: true` for production builds of the PWA plugin.
+* Keep JS/CSS on NetworkFirst forever; don’t switch it back to SWR for those file types.
+
+---
+
+### TL;DR
+
+Your **old service worker** (v3) is still live in production and is **caching JS with Stale-While-Revalidate**, which mixes chunk versions and triggers the `Cannot access 'A' before initialization` crash. Deploy the **new v5 worker**, **purge `/sw.js` and assets on the CDN**, and verify the active worker shows `v5`. That resolves both the blank page and the chart vendor error.
