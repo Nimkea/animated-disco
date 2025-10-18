@@ -6,6 +6,10 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 import { startDepositScanner } from "./services/depositScanner";
+import { validateEnvironment } from "./validateEnv";
+
+// Validate environment variables before starting server
+validateEnvironment();
 
 const app = express();
 
@@ -37,9 +41,29 @@ app.use(helmet({
 }));
 
 // CORS configuration
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5000';
+// In production, frontend and backend are same-origin (served from same Express server)
+// But we allow specific domains for cross-origin requests (if needed)
+const allowedOrigins = [
+  'http://localhost:5000',
+  'http://localhost:3000',
+  'https://xnrt.replit.app',
+  'https://xnrt.org',
+  'https://www.xnrt.org',
+];
+
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or same-origin)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Reject the origin but don't throw error
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(null, false);
+    }
+  },
   credentials: true,
 }));
 
