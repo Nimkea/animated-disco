@@ -3,6 +3,7 @@ XNRT is a React PWA off-chain gamification community earning platform where user
 
 ## Recent Changes
 - **October 18, 2025**:
+  - **Service Worker Cache Fix**: Resolved "Cannot access 'A' before initialization" error in production caused by aggressive StaleWhileRevalidate caching mixing old and new code-split bundle versions. Changed JS/CSS caching strategy to NetworkFirst to ensure all chunks load from the same version. Bumped cache version to v4. Created `docs/SERVICE_WORKER.md` with caching strategy documentation.
   - **Production Deployment Fix**: Resolved critical white screen issue in production by implementing multi-domain CORS support for `xnrt.replit.app` and `xnrt.org` with graceful origin rejection.
   - **Environment Validation System**: Added comprehensive startup validation (`server/validateEnv.ts`) that aborts server boot with clear error messages when critical environment variables are missing or invalid. Validates DATABASE_URL, SESSION_SECRET, MASTER_SEED (BIP39 12/15/18/21/24 words), RPC_BSC_URL, and USDT_BSC_ADDRESS.
   - **Production Documentation**: Created comprehensive `docs/PRODUCTION_ENV.md` documenting all required and optional environment variables with examples, security recommendations, and Replit-specific deployment guidance.

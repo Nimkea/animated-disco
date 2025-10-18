@@ -9,7 +9,7 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_PREFIX = 'xnrt';
 
 // Take control immediately
@@ -101,18 +101,22 @@ registerRoute(
   })
 );
 
-// JS/CSS Bundles - Stale While Revalidate (always check for updates while serving cached version)
+// JS/CSS Bundles - Network First to avoid serving mismatched cached chunks
+// CRITICAL: Code-split bundles MUST load together from the same version
+// StaleWhileRevalidate can cause "Cannot access before initialization" errors
+// when mixing old and new chunk versions
 registerRoute(
   /\.(?:js|css)$/,
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: `${CACHE_PREFIX}-static-assets-${CACHE_VERSION}`,
+    networkTimeoutSeconds: 5,  // Quick timeout for offline support
     plugins: [
       new CacheableResponsePlugin({
         statuses: [0, 200]
       }),
       new ExpirationPlugin({
-        maxEntries: 60,
-        maxAgeSeconds: 60 * 60 * 24 * 7  // 7 days (shorter to force refresh)
+        maxEntries: 100,
+        maxAgeSeconds: 60 * 60 * 24 * 7  // 7 days
       })
     ]
   })
