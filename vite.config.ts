@@ -111,25 +111,32 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React core libraries
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-            return 'vendor-react';
-          }
-          
-          // UI libraries (Radix UI, Lucide, etc.)
-          if (id.includes('node_modules/@radix-ui') || 
-              id.includes('node_modules/lucide-react') ||
-              id.includes('node_modules/framer-motion')) {
-            return 'vendor-ui';
-          }
-          
-          // Chart libraries
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
-            return 'vendor-charts';
-          }
-          
-          // Other vendor libraries
           if (id.includes('node_modules')) {
+            const after = id.split('node_modules/')[1] || '';
+            const [a, b] = after.split('/');
+            const pkg = a.startsWith('@') ? `${a}/${b}` : a;
+            
+            // CRITICAL: React + Charts in same chunk to prevent "Cannot access 'A' before initialization"
+            // Recharts depends on React, so they must load together
+            const CHART_DEPS = [
+              'recharts', 'd3', 'd3-array', 'd3-color', 'd3-format', 'd3-interpolate',
+              'd3-path', 'd3-scale', 'd3-scale-chromatic', 'd3-shape', 'd3-time',
+              'd3-time-format', 'internmap', 'delaunator', 'robust-predicates'
+            ];
+            
+            if (pkg === 'react' || pkg === 'react-dom' || 
+                pkg.startsWith('d3-') || CHART_DEPS.includes(pkg)) {
+              return 'vendor-react-charts';
+            }
+            
+            // UI libraries (Radix UI, Lucide, etc.)
+            if (pkg.startsWith('@radix-ui') || 
+                pkg === 'lucide-react' || 
+                pkg === 'framer-motion') {
+              return 'vendor-ui';
+            }
+            
+            // Other vendor libraries
             return 'vendor-libs';
           }
           
