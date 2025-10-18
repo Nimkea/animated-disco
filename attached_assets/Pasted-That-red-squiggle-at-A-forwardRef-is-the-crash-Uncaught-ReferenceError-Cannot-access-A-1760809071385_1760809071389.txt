@@ -1,0 +1,72 @@
+That red squiggle at `A.forwardRef(...)` is the crash:
+**`Uncaught ReferenceError: Cannot access 'A' before initialization`** in `vendor-charts-*.js`.
+
+`A` is React (minified import). This happens when **the charts chunk executes before the React chunk has finished initializing**, which is caused by either:
+
+1. **Stale/mismatched cached chunks** (old `vendor-charts` + new `vendor-react`) → classic after a SW update, or
+2. **A circular / fragile manual split** where Recharts + d3 are split apart and evaluated in a bad order.
+
+Do this:
+
+## 1) Nuke stale caches & SW
+
+* DevTools → Application → Service Workers → **Unregister**.
+* Application → Clear storage → **Clear site data**.
+* Hard reload.
+  If the error disappears, just redeploy with your **fixed SW** (NetworkFirst for js/css, no top-level `skipWaiting`) and you’re done.
+
+## 2) If it persists, fix the split
+
+Temporarily **disable manualChunks** to confirm:
+
+```ts
+// vite.config.ts
+rollupOptions: { output: { manualChunks: undefined } }
+```
+
+If that fixes it, keep the split but make it safe by **co-locating all chart deps** (Recharts + every d3 subpkg and tiny deps) **in one chunk** so there’s no cross-chunk TDZ:
+
+```ts
+// vite.config.ts
+const CHART_PKGS = [
+  'recharts', 'd3', 'd3-array', 'd3-color', 'd3-format', 'd3-interpolate',
+  'd3-path', 'd3-scale', 'd3-scale-chromatic', 'd3-shape', 'd3-time',
+  'd3-time-format', 'internmap', 'delaunator', 'robust-predicates'
+];
+
+export default defineConfig({
+  // ...
+  build: {
+    // sourcemap: true, // (optional: one build to verify)
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            const after = id.split('node_modules/')[1] || '';
+            const [a, b] = after.split('/');
+            const pkg = a.startsWith('@') ? `${a}/${b}` : a;
+
+            if (pkg.startsWith('d3-') || CHART_PKGS.includes(pkg)) return 'vendor-charts';
+            if (pkg === 'react' || pkg === 'react-dom') return 'vendor-react';
+            if (pkg.startsWith('@radix-ui') || pkg === 'lucide-react' || pkg === 'framer-motion') return 'vendor-ui';
+            return 'vendor-libs';
+          }
+        }
+      }
+    }
+  }
+});
+```
+
+> If you want the bullet-proof route, you can even put **React + Recharts + d3 in the same chunk** (set those `pkg` checks to return `'vendor-charts'`). Slightly larger file, zero ordering risk.
+
+## 3) Rebuild clean & verify
+
+```bash
+rm -rf dist node_modules/.vite
+vite build --force
+```
+
+Deploy, **unregister old SW**, reload. The `vendor-charts-*` line should no longer throw.
+
+If you still see it, paste the exact console stack (top 10 lines) and I’ll point to the specific package that’s leaking out of `vendor-charts`.
