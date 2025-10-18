@@ -116,27 +116,35 @@ export default defineConfig({
             const [a, b] = after.split('/');
             const pkg = a.startsWith('@') ? `${a}/${b}` : a;
             
-            // CRITICAL: React + Charts in same chunk to prevent "Cannot access 'A' before initialization"
-            // Recharts depends on React, so they must load together
-            const CHART_DEPS = [
+            // CRITICAL: All React-dependent packages MUST be in the same chunk
+            // This prevents both TDZ errors and "Cannot read useState" errors
+            const REACT_ECOSYSTEM = [
+              // Core React
+              'react', 'react-dom', 'react-is',
+              // Charts (depends on React)
               'recharts', 'd3', 'd3-array', 'd3-color', 'd3-format', 'd3-interpolate',
               'd3-path', 'd3-scale', 'd3-scale-chromatic', 'd3-shape', 'd3-time',
-              'd3-time-format', 'internmap', 'delaunator', 'robust-predicates'
+              'd3-time-format', 'internmap', 'delaunator', 'robust-predicates',
+              // UI libraries (depend on React)
+              'lucide-react', 'framer-motion',
+              // State management & routing (depend on React)
+              '@tanstack/react-query', 'wouter',
+              // Forms (depend on React)
+              'react-hook-form', '@hookform/resolvers',
+              // Other React components
+              '@sentry/react', 'react-day-picker', 'embla-carousel-react',
+              'react-resizable-panels', 'cmdk', 'vaul', 'input-otp',
+              'react-icons', 'canvas-confetti', 'next-themes'
             ];
             
-            if (pkg === 'react' || pkg === 'react-dom' || 
-                pkg.startsWith('d3-') || CHART_DEPS.includes(pkg)) {
-              return 'vendor-react-charts';
+            // Check if package is in React ecosystem or is a Radix UI component
+            if (REACT_ECOSYSTEM.includes(pkg) || 
+                pkg.startsWith('d3-') || 
+                pkg.startsWith('@radix-ui/')) {
+              return 'vendor-react-stack';
             }
             
-            // UI libraries (Radix UI, Lucide, etc.)
-            if (pkg.startsWith('@radix-ui') || 
-                pkg === 'lucide-react' || 
-                pkg === 'framer-motion') {
-              return 'vendor-ui';
-            }
-            
-            // Other vendor libraries
+            // Other vendor libraries (non-React dependencies)
             return 'vendor-libs';
           }
           
@@ -160,7 +168,7 @@ export default defineConfig({
         },
       },
     },
-    chunkSizeWarningLimit: 600, // Increase from default 500KB
+    chunkSizeWarningLimit: 800, // Increased due to larger React stack bundle
   },
   server: {
     fs: {
