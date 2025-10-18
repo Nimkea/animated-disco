@@ -1,0 +1,165 @@
+Great—these two files are in solid shape. Here’s a tight audit with **drop-in fixes** so auth + PWA stay safe and snappy.
+
+---
+
+# server/index — fixes & hardening
+
+## ✅ What’s good
+
+* `validateEnvironment()` runs before boot.
+* `trust proxy` set to `1` (correct for Replit).
+* Helmet on (CSP in report-only for prod).
+* CORS uses an allow-list + credentials.
+* Starts workers only after `listen()`.
+
+## 🔧 Changes to apply
+
+### 1) Remove Express signature + add compression
+
+```ts
+// after const app = express();
+app.disable('x-powered-by');
+
+import compression from 'compression';
+app.use(compression());
+```
+
+### 2) CORS: preflight + wildcard replit prod (optional)
+
+If you may serve from more than one Replit prod domain, allow a suffix:
+
+```ts
+const allowedOrigins = [
+  'http://localhost:5000','http://localhost:3000',
+  'http://127.0.0.1:5000','http://127.0.0.1:3000',
+  'https://xnrt.replit.app','https://xnrt.org','https://www.xnrt.org',
+];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (isDevelopment && origin.endsWith('.replit.dev')) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    // Optional: allow future subdomains on your apex
+    if (/^https:\/\/([a-z0-9-]+\.)*xnrt\.org$/i.test(origin)) return cb(null, true);
+    console.warn(`[CORS] Rejected origin: ${origin}`);
+    return cb(null, false);
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  optionsSuccessStatus: 204,
+}));
+```
+
+### 3) Never cache auth responses
+
+These often carry identity and set cookies.
+
+```ts
+app.use((req, res, next) => {
+  if (req.path.startsWith('/auth') || req.path.startsWith('/api/auth')) {
+    res.set('Cache-Control', 'no-store');
+  }
+  next();
+});
+```
+
+### 4) Helmet: add a CSP report endpoint (you reference `/csp-report`)
+
+```ts
+app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
+  // Be careful not to log secrets; trim fields if needed.
+  log(`CSP report: ${JSON.stringify(req.body).slice(0, 2000)}…`);
+  res.sendStatus(204);
+});
+```
+
+### 5) Logging: avoid dumping PII
+
+Your interceptor logs whole JSON payloads. Trim to status + path unless explicitly whitelisted.
+
+```ts
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path = req.path;
+  let statusCode = 200;
+
+  const originalJson = res.json;
+  res.json = function (body, ...args) {
+    statusCode = res.statusCode;
+    // do not keep body in memory to log it later; it may contain PII
+    return originalJson.apply(res, [body, ...args]);
+  };
+
+  res.on('finish', () => {
+    if (path.startsWith('/api')) {
+      const duration = Date.now() - start;
+      log(`${req.method} ${path} ${statusCode} in ${duration}ms`);
+    }
+  });
+  next();
+});
+```
+
+---
+
+# client/src/sw.ts — PWA safety tweaks
+
+## ✅ What’s good
+
+* Versioned runtime caches + Workbox manages its own precache (nice).
+* SPA NavigationRoute with a deny-list.
+* API GETs use NetworkFirst (short 60s cache).
+* Auth & wallet routes are NetworkOnly.
+
+## 🔧 Changes to apply
+
+### 1) Also exclude **/api/auth/** and **/api/admin/**
+
+Right now `/auth/*` is NetworkOnly, but if your API lives under `/api/auth/*`, it could be cached for 60s. Add these:
+
+```ts
+// Never cache auth/admin API
+registerRoute(/\/api\/auth\/.*/i, new NetworkOnly());
+registerRoute(/\/api\/admin\/.*/i, new NetworkOnly());
+```
+
+Keep your existing:
+
+```ts
+registerRoute(/\/auth\/.*/, new NetworkOnly());
+registerRoute(/\/api\/wallet\/.*/, new NetworkOnly());
+```
+
+### 2) (Optional) Make JS/CSS a bit fresher
+
+CacheFirst is fine because you’re versioning caches, but a safer default in fast-moving apps is:
+
+```ts
+// If you ever see stale UI sticking around too long, switch to:
+registerRoute(/\.(?:js|css)$/, new StaleWhileRevalidate({
+  cacheName: `${CACHE_PREFIX}-static-assets-${CACHE_VERSION}`,
+  plugins: [ new CacheableResponsePlugin({ statuses: [0, 200] }) ]
+}));
+```
+
+Your versioned CacheFirst is acceptable given the update prompt—just an option.
+
+### 3) Don’t cache personalized GETs (optional)
+
+If you have endpoints like `/api/user/me`, either:
+
+* Put them under `/api/auth/*` (already NetworkOnly after the change), **or**
+* Add a specific NetworkOnly rule for them.
+
+---
+
+# Sanity checks (quick)
+
+* Make sure your **server static** serves the same path Vite builds to (`dist/public`). (Your `vite.ts` likely already does this; just align.)
+* Ensure cookie settings in auth routes use `SameSite: 'none'` and `Secure: true` in prod (you already do).
+* In production, consider turning CSP out of report-only once you’re happy.
+
+---
+
+If you share `server/routes.ts` and `server/vite.ts`, I’ll confirm your static serving path, route mount points, and where to attach `requireAuth + validateCSRF` for state-changing APIs.
