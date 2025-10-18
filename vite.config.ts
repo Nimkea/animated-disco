@@ -116,11 +116,15 @@ export default defineConfig({
             const [a, b] = after.split('/');
             const pkg = a.startsWith('@') ? `${a}/${b}` : a;
             
-            // CRITICAL: All React-dependent packages MUST be in the same chunk
-            // This prevents both TDZ errors and "Cannot read useState" errors
-            const REACT_ECOSYSTEM = [
-              // Core React
-              'react', 'react-dom', 'react-is',
+            // STAGE 1: React Core - loads and initializes FIRST (critical!)
+            // This small bundle ensures React is fully ready before anything else
+            if (pkg === 'react' || pkg === 'react-dom' || pkg === 'react-is' || pkg === 'scheduler') {
+              return 'vendor-react-core';
+            }
+            
+            // STAGE 2: React Ecosystem - loads AFTER React core is ready
+            // All packages that depend on React hooks (useState, useRef, etc.)
+            const REACT_DEPENDENT = [
               // Charts (depends on React)
               'recharts', 'd3', 'd3-array', 'd3-color', 'd3-format', 'd3-interpolate',
               'd3-path', 'd3-scale', 'd3-scale-chromatic', 'd3-shape', 'd3-time',
@@ -137,14 +141,14 @@ export default defineConfig({
               'react-icons', 'canvas-confetti', 'next-themes'
             ];
             
-            // Check if package is in React ecosystem or is a Radix UI component
-            if (REACT_ECOSYSTEM.includes(pkg) || 
+            // Check if package depends on React
+            if (REACT_DEPENDENT.includes(pkg) || 
                 pkg.startsWith('d3-') || 
                 pkg.startsWith('@radix-ui/')) {
-              return 'vendor-react-stack';
+              return 'vendor-react-ecosystem';
             }
             
-            // Other vendor libraries (non-React dependencies)
+            // STAGE 3: Non-React libraries (independent)
             return 'vendor-libs';
           }
           
@@ -168,7 +172,7 @@ export default defineConfig({
         },
       },
     },
-    chunkSizeWarningLimit: 800, // Increased due to larger React stack bundle
+    chunkSizeWarningLimit: 800,
   },
   server: {
     fs: {
