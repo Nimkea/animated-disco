@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
-import { NavigationRoute, registerRoute } from 'workbox-routing';
+import { NavigationRoute, registerRoute, setCatchHandler } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -22,34 +22,33 @@ precacheAndRoute(self.__WB_MANIFEST, {
   ignoreURLParametersMatching: [/.*/]
 });
 
-// Custom activate event to AGGRESSIVELY delete ALL old caches
+// Clean up old caches - let Workbox manage its own precaches
 self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    (async () => {
+      // Let Workbox clean up its own outdated precaches safely
+      cleanupOutdatedCaches();
+      
+      // Only delete OUR custom versioned caches (never touch Workbox caches)
+      const cacheNames = await caches.keys();
+      await Promise.all(
         cacheNames
           .filter((cacheName) => {
-            // Delete ALL workbox precaches that don't match our version
-            if (cacheName.startsWith('workbox-precache') || cacheName.includes('precache')) {
-              if (!cacheName.includes(CACHE_VERSION)) {
-                console.log('[SW] Deleting old Workbox precache:', cacheName);
-                return true;
-              }
-            }
-            // Delete all our custom caches that don't match current version
-            if (cacheName.startsWith(CACHE_PREFIX) && !cacheName.includes(CACHE_VERSION)) {
-              console.log('[SW] Deleting old versioned cache:', cacheName);
-              return true;
-            }
-            return false;
+            // Only delete our custom caches that don't match current version
+            // NEVER touch caches starting with "workbox-" - Workbox manages those
+            return cacheName.startsWith(CACHE_PREFIX) && !cacheName.includes(CACHE_VERSION);
           })
-          .map((cacheName) => caches.delete(cacheName))
+          .map((cacheName) => {
+            console.log('[SW] Deleting old custom cache:', cacheName);
+            return caches.delete(cacheName);
+          })
       );
-    }).then(() => {
-      console.log('[SW] Complete cache cleanup finished, version:', CACHE_VERSION);
-      // Force all clients to reload with fresh service worker
-      return self.clients.claim();
-    })
+      
+      console.log('[SW] Cache cleanup finished, version:', CACHE_VERSION);
+      
+      // Take control of all clients
+      await self.clients.claim();
+    })()
   );
 });
 
@@ -170,6 +169,43 @@ registerRoute(
   }),
   'GET'
 );
+
+// Global catch handler - prevents FetchEvent rejections on network/cache failures
+// This ensures the SW never crashes and always returns a response
+setCatchHandler(async ({ request, event }) => {
+  // For navigation requests, try to serve the SPA shell from cache
+  if (request.mode === 'navigate') {
+    // Try to find index.html in any precache
+    const cacheNames = await caches.keys();
+    const precacheName = cacheNames.find(name => name.includes('precache'));
+    
+    if (precacheName) {
+      const cache = await caches.open(precacheName);
+      const cachedResponse = await cache.match('/index.html', { ignoreSearch: true });
+      
+      if (cachedResponse) {
+        console.log('[SW] Serving cached index.html as fallback for:', request.url);
+        return cachedResponse;
+      }
+    }
+    
+    // If even index.html is not cached, return a friendly offline page
+    return new Response(
+      '<!DOCTYPE html><html><head><title>Offline</title></head><body><h1>Offline</h1><p>Please check your internet connection</p></body></html>',
+      {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'text/html' }
+      }
+    );
+  }
+  
+  // For non-navigation requests (assets, API calls), return appropriate error
+  return new Response('', {
+    status: 504,
+    statusText: 'Gateway Timeout'
+  });
+});
 
 // Listen for skip waiting message
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
