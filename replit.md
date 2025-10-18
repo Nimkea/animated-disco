@@ -3,6 +3,10 @@ XNRT is a React PWA off-chain gamification community earning platform where user
 
 ## Recent Changes
 - **October 18, 2025**:
+  - **CRITICAL FIX:** Resolved service worker white screen issue in production
+    - Fixed activate handler deleting Workbox's own precache (causing blank pages)
+    - Added global catch handler to prevent FetchEvent rejections and provide offline fallback
+    - Service worker now production-ready with robust error handling
   - Deployment preparation complete for VM (always-on) production deployment
   - Created comprehensive production secrets documentation (PRODUCTION_SECRETS.md) covering all 20 environment variables with security best practices
   - Created step-by-step deployment guide (DEPLOY_STEPS.md) for VM configuration, secret setup, and post-deployment verification
