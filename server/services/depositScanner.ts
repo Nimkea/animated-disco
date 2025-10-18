@@ -12,7 +12,16 @@ const PLATFORM_FEE_BPS = Number(process.env.PLATFORM_FEE_BPS || 0);
 const SCAN_BATCH = Number(process.env.BSC_SCAN_BATCH || 300);
 const AUTO_DEPOSIT_ENABLED = process.env.AUTO_DEPOSIT === 'true';
 
-const provider = new ethers.JsonRpcProvider(RPC_URL);
+// Create provider with proper timeout configuration to prevent hanging
+// ethers v6 FetchRequest has a default 300s timeout - reduce to 30s
+const fetchReq = new ethers.FetchRequest(RPC_URL);
+fetchReq.timeout = 30000; // 30 second timeout for all RPC requests
+
+const provider = new ethers.JsonRpcProvider(fetchReq, undefined, {
+  staticNetwork: true,  // Disable automatic network detection for faster startup
+  batchMaxCount: 1,     // Disable batching for better timeout handling  
+  polling: false,       // Disable polling, we explicitly call methods
+});
 const USDT_ABI = [
   "event Transfer(address indexed from, address indexed to, uint256 value)"
 ];
@@ -59,6 +68,8 @@ async function scanForDeposits() {
   try {
     // Get or create scanner state
     let state = await prisma.scannerState.findFirst();
+    
+    // Get current block (timeout configured at provider level)
     const currentBlock = await provider.getBlockNumber();
     
     if (!state) {

@@ -104,22 +104,22 @@ registerRoute(
   })
 );
 
-// JS/CSS Bundles - Network First to avoid serving mismatched cached chunks
-// CRITICAL: Code-split bundles MUST load together from the same version
-// StaleWhileRevalidate can cause "Cannot access before initialization" errors
-// when mixing old and new chunk versions
+// JS/CSS Bundles - CacheFirst with versioned cache name
+// CRITICAL: Version in cache name ensures all chunks are from same build
+// When CACHE_VERSION changes, activate handler deletes old versioned caches
+// This prevents "Cannot access before initialization" from mixing versions
+// CacheFirst ensures offline support while version isolation prevents mismatches
 registerRoute(
   /\.(?:js|css)$/,
-  new NetworkFirst({
+  new CacheFirst({
     cacheName: `${CACHE_PREFIX}-static-assets-${CACHE_VERSION}`,
-    networkTimeoutSeconds: 5,  // Quick timeout for offline support
     plugins: [
       new CacheableResponsePlugin({
         statuses: [0, 200]
       }),
       new ExpirationPlugin({
         maxEntries: 100,
-        maxAgeSeconds: 60 * 60 * 24 * 7  // 7 days
+        maxAgeSeconds: 60 * 60 * 24 * 30  // 30 days
       })
     ]
   })
