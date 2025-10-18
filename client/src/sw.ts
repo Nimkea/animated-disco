@@ -27,7 +27,7 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
       // Let Workbox clean up its own outdated precaches safely
-      cleanupOutdatedCaches();
+      await cleanupOutdatedCaches();
       
       // Only delete OUR custom versioned caches (never touch Workbox caches)
       const cacheNames = await caches.keys();
