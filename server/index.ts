@@ -46,6 +46,8 @@ app.use(helmet({
 const allowedOrigins = [
   'http://localhost:5000',
   'http://localhost:3000',
+  'http://127.0.0.1:5000',
+  'http://127.0.0.1:3000',
   'https://xnrt.replit.app',
   'https://xnrt.org',
   'https://www.xnrt.org',
@@ -55,6 +57,11 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl, or same-origin)
     if (!origin) return callback(null, true);
+    
+    // In development, allow all Replit development domains (*.replit.dev)
+    if (isDevelopment && origin.endsWith('.replit.dev')) {
+      return callback(null, true);
+    }
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);

@@ -5614,6 +5614,85 @@ function stopRetryWorker() {
 
 // server/index.ts
 init_depositScanner();
+
+// server/validateEnv.ts
+var ENV_VALIDATIONS = [
+  {
+    name: "DATABASE_URL",
+    required: true,
+    description: "PostgreSQL connection string"
+  },
+  {
+    name: "SESSION_SECRET",
+    required: true,
+    description: "Secret key for session cookies (min 32 chars)",
+    validate: (val) => val.length >= 32
+  },
+  {
+    name: "MASTER_SEED",
+    required: true,
+    description: "BIP39 mnemonic for HD wallet (12/15/18/21/24 words)",
+    validate: (val) => {
+      const words = val.trim().split(/\s+/);
+      return [12, 15, 18, 21, 24].includes(words.length);
+    }
+  },
+  {
+    name: "RPC_BSC_URL",
+    required: true,
+    description: "Binance Smart Chain RPC endpoint"
+  },
+  {
+    name: "USDT_BSC_ADDRESS",
+    required: true,
+    description: "USDT contract address on BSC",
+    validate: (val) => /^0x[a-fA-F0-9]{40}$/.test(val)
+  }
+];
+function validateEnvironment() {
+  const errors = [];
+  const warnings = [];
+  console.log("[Environment] Validating configuration...");
+  for (const { name, required, description, validate } of ENV_VALIDATIONS) {
+    const value = process.env[name];
+    if (!value) {
+      if (required) {
+        errors.push(`\u274C ${name} is required - ${description}`);
+      } else {
+        warnings.push(`\u26A0\uFE0F  ${name} not set - ${description}`);
+      }
+      continue;
+    }
+    if (validate && !validate(value)) {
+      errors.push(`\u274C ${name} is invalid - ${description}`);
+    } else {
+      console.log(`[Environment] \u2713 ${name} is set`);
+    }
+  }
+  if (!process.env.SMTP_PASSWORD) {
+    warnings.push("\u26A0\uFE0F  SMTP_PASSWORD not set - Email verification/password reset will not work");
+  }
+  if (!process.env.XNRT_WALLET) {
+    warnings.push("\u26A0\uFE0F  XNRT_WALLET not set - Using default treasury address");
+  }
+  if (process.env.AUTO_DEPOSIT !== "true") {
+    warnings.push("\u26A0\uFE0F  AUTO_DEPOSIT is not enabled - Automated deposit scanner is disabled");
+  }
+  if (warnings.length > 0) {
+    console.log("\n[Environment] Warnings:");
+    warnings.forEach((w) => console.log(`  ${w}`));
+  }
+  if (errors.length > 0) {
+    console.error("\n\u274C CRITICAL: Missing required environment variables!\n");
+    errors.forEach((e) => console.error(`  ${e}`));
+    console.error("\n\u{1F4D6} See docs/PRODUCTION_ENV.md for setup instructions\n");
+    throw new Error("Environment validation failed - see logs above");
+  }
+  console.log("[Environment] \u2713 All critical variables validated\n");
+}
+
+// server/index.ts
+validateEnvironment();
 var app = express2();
 app.set("trust proxy", 1);
 var isDevelopment = app.get("env") === "development";
@@ -5638,9 +5717,23 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
   // Disabled - not needed and could break third-party resources
 }));
-var CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5000";
+var allowedOrigins = [
+  "http://localhost:5000",
+  "http://localhost:3000",
+  "https://xnrt.replit.app",
+  "https://xnrt.org",
+  "https://www.xnrt.org"
+];
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(null, false);
+    }
+  },
   credentials: true
 }));
 app.use(express2.json());
