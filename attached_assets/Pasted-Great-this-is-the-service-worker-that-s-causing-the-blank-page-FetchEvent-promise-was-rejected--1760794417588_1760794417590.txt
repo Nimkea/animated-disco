@@ -1,0 +1,134 @@
+Great—this is the service worker that’s causing the blank page + “FetchEvent … promise was rejected” spam. Two concrete problems jump out:
+
+---
+
+## 1) You’re deleting Workbox’s precache on **every activation**
+
+This block:
+
+```js
+self.addEventListener("activate", n=>{
+  n.waitUntil(
+    caches.keys().then(e => Promise.all(
+      e.filter(t =>
+        (t.startsWith("workbox-precache") || t.includes("precache")) && !t.includes(g) ||
+        (t.startsWith(w) && !t.includes(g))
+      ).map(t => caches.delete(t))
+    )).then(() => (self.clients.claim()))
+  )
+});
+```
+
+* `g = "v3"` and Workbox precache cache names **never include `"v3"`**.
+* That `filter` therefore matches your **fresh** `workbox-precache-*` cache and deletes it on activation.
+* After that, your navigation route `NavigationRoute(createHandlerBoundToURL('/index.html'))` can’t find `/index.html` in the precache; it falls back to network, and if the network hiccups, the strategy throws → **rejected FetchEvent** → white screen.
+
+### Fix
+
+Let Workbox clean up its own precaches, and only delete **your** versioned runtime caches:
+
+```js
+// ✅ replace the entire custom activate cleanup with this
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    // Workbox will remove old precache entries safely
+    try { await self.workbox?.precaching?.cleanupOutdatedCaches?.(); } catch (_) {}
+
+    // Enable navigation preload (faster navigations, safer first load)
+    try { await self.registration.navigationPreload.enable(); } catch (_) {}
+
+    await self.clients.claim();
+  })());
+});
+```
+
+If you still want to purge your own old runtime caches, scope it narrowly:
+
+```js
+const VERSION = "v3";
+const PREFIX = "xnrt-"; // your `w`
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    // Only touch *your* caches, never Workbox’s
+    const names = await caches.keys();
+    await Promise.all(
+      names
+        .filter(n => n.startsWith(PREFIX) && !n.endsWith(`-${VERSION}`))
+        .map(n => caches.delete(n))
+    );
+    await self.clients.claim();
+  })());
+});
+```
+
+---
+
+## 2) No router-wide catch handler
+
+Your strategies throw `no-response` when both cache and network miss (first visit + transient failure). That’s exactly the “promise was rejected” you see for `/`, `/manifest.webmanifest`, and `assets/*.css`.
+
+### Add a safe catch handler
+
+This ensures navigations never reject and fall back to your SPA shell:
+
+```js
+// After routes are registered
+_e().setCatchHandler(async ({event}) => {
+  // If it’s a navigation, try the shell; otherwise return a 503 (never reject)
+  if (event.request.mode === "navigate") {
+    const cached = await caches.match("/index.html", { ignoreSearch: true });
+    if (cached) return cached;
+    return new Response("Offline", { status: 503 });
+  }
+  return new Response("", { status: 504, statusText: "Gateway Timeout" });
+});
+```
+
+---
+
+## Optional hardening (recommended)
+
+* **Don’t intercept JS/CSS with CacheFirst on first load.** Use `StaleWhileRevalidate` so the page can render from network without the SW being the single point of failure:
+
+```js
+// scripts & styles
+d(/\.(?:js|css)$/, new O({  // O in your bundle = StaleWhileRevalidate
+  cacheName: `${w}-static-assets-${g}`,
+  plugins: [new P({statuses:[0,200]}), new k({maxEntries:60, maxAgeSeconds: 60*60*24*7})]
+}));
+```
+
+(Your `O` already behaves like Stale-While-Revalidate; keeping this here to stress the goal: never reject.)
+
+* **Warm the shell** on install so the SPA fallback is ready before first fetch:
+
+```js
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(L.getPrecacheName()).then(c => c.addAll(["/index.html"])));
+  self.skipWaiting();
+});
+```
+
+*(Workbox’s precache should already add it, but this guarantees the shell exists even if your custom cleanup ever changes.)*
+
+---
+
+## About the other error
+
+You still have `Cannot access 'A' before initialization` from `vendor-charts-*.js`. That’s a separate bundle issue (usually a circular import or minifier hoisting). After fixing the SW, you’ll likely still see a blank app until you:
+
+* Build once with **minify disabled / sourcemaps on** and open that bundle to find the real symbol behind `A`.
+* If using Terser/Rollup/Vite, try `treeshake: false` or `esbuildMinify: true` (instead of terser), or add `keep_fnames: true, keep_classnames: true` temporarily to pinpoint the offender.
+* Look for a chart module that imports a symbol from a file that also imports back from it; move one of those uses into a function (lazy) to break the cycle.
+
+---
+
+## How to roll this out safely
+
+1. Ship the **fixed SW** (with the new `activate` and router catch handler).
+2. Bump your `sw.js` file (or its content) so clients re-download it.
+3. In your app, call `registration.waiting?.postMessage({ type: "SKIP_WAITING" })` on update and then `window.location.reload()` once the new SW takes control.
+4. Verify: Application → Service Workers → **Bypass for network** toggled OFF, hard-reload, first-visit in Incognito.
+
+If you want, paste your *unminified* SW source (or share your Vite/Workbox config) and I’ll hand you a ready-to-drop-in version with these fixes baked in.
