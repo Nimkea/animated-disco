@@ -19,7 +19,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Security headers - relax only in development for Vite HMR and Replit preview
-const isDevelopment = app.get("env") === "development";
+const isDevelopment = process.env.NODE_ENV !== "production";
 app.use(helmet({
   contentSecurityPolicy: isDevelopment ? false : {
     directives: {
@@ -145,7 +145,7 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  if (process.env.NODE_ENV !== "production") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
@@ -161,7 +161,8 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`serving on port ${port}`);
+    const mode = process.env.NODE_ENV === "production" ? "production" : "development";
+    log(`Server running on port ${port} in ${mode} mode`);
     
     startRetryWorker();
     startDepositScanner();
