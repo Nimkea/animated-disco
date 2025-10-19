@@ -1,6 +1,6 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
-import cors from "cors";
+import cors, { type CorsOptionsDelegate } from "cors";
 import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -9,125 +9,209 @@ import { startDepositScanner } from "./services/depositScanner";
 
 const app = express();
 
-// Trust proxy - required for Replit's reverse proxy environment
-// Set to 1 to trust the first proxy (Replit's reverse proxy)
-// This is more secure than 'true' and satisfies express-rate-limit security requirements
-app.set('trust proxy', 1);
+// Trust only the first proxy (Replit reverse proxy)
+app.set("trust proxy", 1);
 
-// Security headers - relax only in development for Vite HMR and Replit preview
 const isDevelopment = app.get("env") === "development";
-app.use(helmet({
-  contentSecurityPolicy: isDevelopment ? false : {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "wss:", "https:"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-      workerSrc: ["'self'"],
-      reportUri: ["/csp-report"],
-    },
-    reportOnly: true, // Start with report-only mode
-  },
-  crossOriginEmbedderPolicy: false, // Disabled - not needed and could break third-party resources
-}));
 
-// CORS configuration
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5000';
-app.use(cors({
-  origin: CLIENT_URL,
-  credentials: true,
-}));
+// ─────────────────────────────────────────────────────────────────────────────
+// Helmet (CSP loosened in dev for Vite HMR)
+app.use(
+  helmet({
+    contentSecurityPolicy: isDevelopment
+      ? false
+      : {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'", "wss:", "https:"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            workerSrc: ["'self'"],
+            reportUri: ["/csp-report"],
+          },
+          reportOnly: true,
+        },
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CORS: allow prod domain, Replit previews, localhost, and configured APP/CLIENT url
+const APP_URL = process.env.APP_URL?.trim();
+const CLIENT_URL = process.env.CLIENT_URL?.trim();
+
+const allowedHosts = new Set<string>([
+  "xnrt.org",
+  "www.xnrt.org",
+  ...(APP_URL ? [safeHost(APP_URL)] : []),
+  ...(CLIENT_URL ? [safeHost(CLIENT_URL)] : []),
+]);
+
+const REPLIT_RE = /\.repl\.co$/i;
+const LOCAL_RE = /^localhost(?::\d+)?$/i;
+
+function safeHost(u: string): string {
+  try {
+    return new URL(u).host;
+  } catch {
+    return "";
+  }
+}
+
+const corsDelegate: CorsOptionsDelegate<Request> = (req, cb) => {
+  const origin = req.header("Origin") || "";
+  if (!origin) {
+    // No origin (same-origin/CLI); allow
+    return cb(null, { origin: true, credentials: true });
+  }
+
+  let host = "";
+  try {
+    host = new URL(origin).host;
+  } catch {
+    // malformed Origin; reject
+    return cb(null, { origin: false });
+  }
+
+  const allow =
+    allowedHosts.has(host) ||
+    REPLIT_RE.test(host) ||
+    LOCAL_RE.test(host);
+
+  cb(null, { origin: allow, credentials: true });
+};
+
+app.use(cors(corsDelegate));
+// Preflight
+app.options("*", cors(corsDelegate));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Body & cookie parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Lightweight API logger (truncates long JSON)
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJson: unknown;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+  const originalJson = res.json.bind(res);
+  res.json = ((body: unknown, ...args: any[]) => {
+    capturedJson = body;
+    return originalJson(body as any, ...args);
+  }) as any;
 
   res.on("finish", () => {
+    if (!path.startsWith("/api")) return;
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
+    let line = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+    if (capturedJson !== undefined) {
+      const s = safeStringify(capturedJson);
+      if (s) line += ` :: ${s}`;
     }
+    if (line.length > 200) line = line.slice(0, 199) + "…";
+    log(line);
   });
 
   next();
 });
 
+function safeStringify(v: unknown): string {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "";
+  }
+}
+
+// Basic liveness/readiness endpoints
+app.get("/healthz", (_req, res) => res.status(200).json({ ok: true, env: app.get("env") }));
+app.get("/readyz", (_req, res) => res.status(200).json({ ready: true }));
+
+// ─────────────────────────────────────────────────────────────────────────────
 (async () => {
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
+    const status = err?.status || err?.statusCode || 500;
+    const message = err?.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
+    // Surface to logs
+    console.error(err);
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  if (isDevelopment) {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-    
-    startRetryWorker();
-    startDepositScanner();
+  // Bind to platform port (Replit sets PORT=5000; 5000→80 externally)
+  const HOST = process.env.HOST || "0.0.0.0";
+  const PORT = Number(process.env.PORT || "5000");
+
+  server.listen(
+    {
+      host: HOST,
+      port: PORT,
+      reusePort: true, // OK in Replit; allows same port across restarts in some cases
+    },
+    () => {
+      log(`serving on http://${HOST}:${PORT}`);
+
+      // Background workers: start by default only in production,
+      // or when explicitly enabled in dev via ENABLE_SCANNER=true
+      const enableScanner =
+        (process.env.ENABLE_SCANNER ?? (isDevelopment ? "false" : "true"))
+          .toLowerCase() === "true";
+
+      try {
+        startRetryWorker();
+      } catch (e) {
+        console.error("[retryWorker] failed to start:", e);
+      }
+
+      if (enableScanner) {
+        try {
+          startDepositScanner();
+        } catch (e) {
+          console.error("[depositScanner] failed to start:", e);
+        }
+      } else {
+        log("[depositScanner] disabled (set ENABLE_SCANNER=true to enable)");
+      }
+    }
+  );
+
+  server.on("error", (err: any) => {
+    if (err?.code === "EADDRINUSE") {
+      console.error(`[server] Port ${PORT} is already in use. Stop the other process or change PORT.`);
+    } else {
+      console.error("[server] error:", err);
+    }
   });
 
-  process.on('SIGTERM', () => {
-    log('SIGTERM received, shutting down gracefully');
+  // Graceful shutdown
+  const shutdown = (sig: string) => {
+    log(`${sig} received, shutting down gracefully`);
     stopRetryWorker();
     server.close(() => {
-      log('Server closed');
+      log("Server closed");
       process.exit(0);
     });
-  });
+    // Force exit if close hangs
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
 
-  process.on('SIGINT', () => {
-    log('SIGINT received, shutting down gracefully');
-    stopRetryWorker();
-    server.close(() => {
-      log('Server closed');
-      process.exit(0);
-    });
-  });
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })();
