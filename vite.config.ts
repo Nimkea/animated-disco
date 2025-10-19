@@ -122,7 +122,23 @@ export default defineConfig({
               return 'vendor-react-core';
             }
             
-            // STAGE 2: React Ecosystem - loads AFTER React core is ready
+            // Prevent circular dependencies - extract shared dependencies
+            if (pkg === 'tslib' || pkg === 'object-assign') {
+              return 'vendor-react-core';
+            }
+            
+            // STAGE 2: Utility libraries (independent, no circular deps)
+            // These must load BEFORE React ecosystem to prevent initialization errors
+            const UTILITIES = [
+              'ms', 'debug', 'date-fns', 'nanoid', 'clsx', 'class-variance-authority',
+              'tailwind-merge', 'tailwindcss-animate', 'zod', 'memoizee'
+            ];
+            
+            if (UTILITIES.includes(pkg)) {
+              return 'vendor-utilities';
+            }
+            
+            // STAGE 3: React Ecosystem - loads AFTER React core and utilities
             // All packages that depend on React hooks (useState, useRef, etc.)
             const REACT_DEPENDENT = [
               // Charts (depends on React)
@@ -148,7 +164,7 @@ export default defineConfig({
               return 'vendor-react-ecosystem';
             }
             
-            // STAGE 3: Non-React libraries (independent)
+            // STAGE 4: Non-React libraries (independent)
             return 'vendor-libs';
           }
           
