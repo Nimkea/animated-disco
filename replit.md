@@ -18,6 +18,12 @@ Fixed critical production deployment issues to enable successful autoscale deplo
 - **Fix**: Removed manual `DATABASE_URL` secret to allow Replit's auto-injection of production database connection
 - **Impact**: Production uses correct, automatically-managed database URL for Replit Production Database
 
+**Issue 3: Deposit Scanner Missing Table**
+- **Problem**: Deposit scanner crashed with "ScannerState table does not exist" after database migration removed it
+- **Root Cause**: Schema migration accidentally deleted ScannerState table but code still referenced it
+- **Fix**: Re-added ScannerState table to schema (`shared/schema.ts`) for durable scanner progress tracking
+- **Impact**: Scanner now persists block scanning progress across server restarts, preventing missed deposits during downtime
+
 **Deployment Configuration:**
 - **Deployment Type**: Autoscale (stateless, scales based on demand)
 - **Build Command**: `npm run build` (builds frontend with Vite, bundles backend with esbuild)

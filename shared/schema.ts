@@ -77,6 +77,16 @@ export const depositAddresses = pgTable("DepositAddress", {
   index("depositAddress_userId_active_idx").on(table.userId, table.active),
 ]);
 
+// Scanner state for tracking deposit scanner progress
+export const scannerState = pgTable("ScannerState", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lastBlock: integer("lastBlock").notNull(),
+  lastScanAt: timestamp("lastScanAt").defaultNow().notNull(),
+  isScanning: boolean("isScanning").default(false).notNull(),
+  errorCount: integer("errorCount").default(0).notNull(),
+  lastError: text("lastError"),
+});
+
 // Staking tiers
 export const stakes = pgTable("Stake", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
