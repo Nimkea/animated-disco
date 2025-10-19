@@ -2,7 +2,22 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
-- **October 19, 2025**:
+- **October 19, 2025** (Late Evening):
+  - **Critical Security & UX Polish**:
+    - **Service Worker Cache v5→v6**: Bumped cache version to force complete cache invalidation after security fixes, resolving "Cannot read properties of null (reading 'useRef')" error caused by mixing old/new bundle chunks
+    - **Module Preload Hints**: Added modulepreload for main.tsx to ensure React loads before ecosystem libraries
+    - **CSRF Enhancement**: Updated CSRF validation to use double-submit cookie pattern with session-awareness logging. Validates token match and logs warnings if middleware ordering is incorrect (requireAuth → validateCSRF)
+    - **Production Logging Security**: Removed API response body logging in production mode to prevent leaking sensitive data (tokens, balances, passwords)
+    - **Registration Rate Limiting**: Added rate limiter (10 attempts/15min) to protect against brute force registration attacks
+    - **User Enumeration Fix**: Changed registration errors from specific "Email already registered"/"Username already taken" to generic "An account with this email or username already exists" to prevent user enumeration attacks
+    - **VAPID Key Cleanup**: Removed brittle JSON string parsing for VAPID keys, now expects raw keys in environment variables with proper error handling
+  - **Accessibility & UX Improvements**:
+    - **Font Loading**: Removed duplicate Google Fonts link from HTML (kept CSS @import only) to prevent double loading
+    - **Pinch-Zoom**: Removed `maximum-scale=1` from viewport meta to enable pinch-zoom (WCAG 2.1 requirement)
+    - **Toast Timeout Fix**: Fixed absurd 16.7-minute toast timeout → 5 seconds for better UX
+    - **CSS Transitions**: Scoped transitions to interactive elements only (buttons, links, inputs) and added `prefers-reduced-motion` support for accessibility
+    - **Social Meta Tags**: Changed og:image and twitter:image to absolute URLs for proper sharing previews
+- **October 19, 2025** (Earlier):
   - **Critical Security Fixes**:
     - **JWT Authentication**: Removed hardcoded fallback secret from `server/auth/jwt.ts` and added JWT_SECRET to mandatory environment validation with minimum 32-character requirement
     - **Database Connection Management**: Implemented singleton Prisma client pattern in `server/db.ts` to prevent connection pool exhaustion. Replaced all 11 instances of `new PrismaClient()` across scripts/, server/, and prisma/seed.ts
