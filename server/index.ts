@@ -78,6 +78,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
+// Canonical domain redirect - Force all traffic to xnrt.org
+// This prevents duplicate content, session cookie issues, and analytics fragmentation
+app.use((req, res, next) => {
+  const host = req.get('host');
+  
+  // Only redirect in production and only from xnrt.replit.app
+  if (!isDevelopment && host === 'xnrt.replit.app') {
+    const protocol = req.protocol || 'https';
+    const canonicalUrl = `https://xnrt.org${req.originalUrl}`;
+    
+    console.log(`[Redirect] 301 from ${host} to xnrt.org`);
+    return res.redirect(301, canonicalUrl);
+  }
+  
+  next();
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
