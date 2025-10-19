@@ -5270,7 +5270,12 @@ var vite_config_default = defineConfig({
         type: "module",
         navigateFallback: "index.html"
       },
-      includeAssets: ["favicon.ico", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png"],
+      includeAssets: [
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "favicon-16x16.png",
+        "favicon-32x32.png"
+      ],
       manifest: {
         id: "/?app-id=xnrt",
         name: "XNRT - We Build the NextGen",
@@ -5283,24 +5288,9 @@ var vite_config_default = defineConfig({
         display: "standalone",
         orientation: "portrait-primary",
         icons: [
-          {
-            src: "/icon-192.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "any"
-          },
-          {
-            src: "/icon-256.png",
-            sizes: "256x256",
-            type: "image/png",
-            purpose: "any"
-          },
-          {
-            src: "/icon-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any"
-          },
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-256.png", sizes: "256x256", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
           {
             src: "/icon-512-maskable.png",
             sizes: "512x512",
@@ -5356,38 +5346,52 @@ var vite_config_default = defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    commonjsOptions: {
+      include: [/recharts/, /d3-/, /node_modules/]
+    },
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom"))
             return "vendor-react";
-          }
-          if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/lucide-react") || id.includes("node_modules/framer-motion")) {
+          if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/lucide-react") || id.includes("node_modules/framer-motion"))
             return "vendor-ui";
-          }
-          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-")) {
+          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-"))
             return "vendor-charts";
-          }
-          if (id.includes("node_modules")) {
-            return "vendor-libs";
-          }
-          if (id.includes("/pages/admin/")) {
-            return "admin";
-          }
-          if (id.includes("/pages/staking") || id.includes("/pages/mining")) {
+          if (id.includes("node_modules")) return "vendor-libs";
+          if (id.includes("/pages/admin/")) return "admin";
+          if (id.includes("/pages/staking") || id.includes("/pages/mining"))
             return "earning";
-          }
-          if (id.includes("/pages/referrals") || id.includes("/pages/leaderboard")) {
+          if (id.includes("/pages/referrals") || id.includes("/pages/leaderboard"))
             return "social";
-          }
-          if (id.includes("/pages/deposit") || id.includes("/pages/withdrawal")) {
+          if (id.includes("/pages/deposit") || id.includes("/pages/withdrawal"))
             return "transactions";
-          }
-        }
+        },
+        inlineDynamicImports: false,
+        compact: false,
+        minifyInternalExports: false
       }
     },
+    // ✅ safer minifier to avoid Recharts scope issues
+    minify: "terser",
+    terserOptions: {
+      compress: {
+        passes: 2,
+        pure_funcs: ["console.log"]
+      },
+      mangle: false
+    },
+    target: "esnext",
     chunkSizeWarningLimit: 600
-    // Increase from default 500KB
+  },
+  // ✅ ensure Recharts pre-bundles correctly and global scope exists
+  optimizeDeps: {
+    include: ["recharts"],
+    esbuildOptions: {
+      define: {
+        global: "globalThis"
+      }
+    }
   },
   server: {
     fs: {
