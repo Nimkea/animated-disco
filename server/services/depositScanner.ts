@@ -1,7 +1,6 @@
 import { ethers } from "ethers";
-import { PrismaClient, Prisma } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { Prisma } from "@prisma/client";
+import { prisma } from "../db";
 
 const RPC_URL = process.env.RPC_BSC_URL || "";
 const USDT_ADDRESS = (process.env.USDT_BSC_ADDRESS || "").toLowerCase();
@@ -105,21 +104,19 @@ async function scanForDeposits() {
 
     console.log(`[DepositScanner] Scanning blocks ${fromBlock} to ${toBlock}...`);
 
-    // Get all user deposit addresses
-    const users = await prisma.user.findMany({
-      where: { depositAddress: { not: null } },
-      select: { id: true, depositAddress: true }
+    // Get all active deposit addresses (supports both legacy 714 and new 60 coin types)
+    const depositAddresses = await prisma.depositAddress.findMany({
+      where: { active: true },
+      select: { userId: true, address: true, coinType: true, version: true }
     });
 
     // Create address-to-userId mapping
     const addressToUserId = new Map<string, string>();
-    users.forEach(user => {
-      if (user.depositAddress) {
-        addressToUserId.set(user.depositAddress.toLowerCase(), user.id);
-      }
+    depositAddresses.forEach(addr => {
+      addressToUserId.set(addr.address.toLowerCase(), addr.userId);
     });
 
-    console.log(`[DepositScanner] Watching ${users.length} deposit addresses`);
+    console.log(`[DepositScanner] Watching ${depositAddresses.length} deposit addresses (${depositAddresses.filter(a => a.coinType === 714).length} legacy, ${depositAddresses.filter(a => a.coinType === 60).length} EVM)`);
 
     // Query USDT Transfer events to any address (we'll filter by user addresses)
     const filter = usdtContract.filters.Transfer();

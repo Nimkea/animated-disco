@@ -1,10 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import { verifyToken } from './jwt';
 import { validateCSRFToken } from './csrf';
 import rateLimit from 'express-rate-limit';
-
-const prisma = new PrismaClient();
 
 declare global {
   namespace Express {

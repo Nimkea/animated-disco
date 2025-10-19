@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import { nanoid } from 'nanoid';
 import crypto from 'crypto';
 import { hashPassword, comparePassword, generateResetToken } from './password';
@@ -11,7 +11,6 @@ import rateLimit from 'express-rate-limit';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Validation schemas
 const registerSchema = z.object({

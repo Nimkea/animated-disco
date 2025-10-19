@@ -1,5 +1,6 @@
 // Prisma-based storage implementation
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "./db";
 import crypto from "crypto";
 import { nanoid } from "nanoid";
 import { 
@@ -30,8 +31,6 @@ import {
   type PushSubscription,
   type InsertPushSubscription,
 } from "@shared/schema";
-
-const prisma = new PrismaClient();
 
 function generateReferralCode(): string {
   return `XNRT${nanoid(8).toUpperCase()}`;

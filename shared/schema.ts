@@ -61,6 +61,22 @@ export const balances = pgTable("Balance", {
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull(),
 });
 
+// Deposit addresses (support multiple addresses per user for legacy 714 + new 60 paths)
+export const depositAddresses = pgTable("DepositAddress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  address: varchar("address", { length: 42 }).unique().notNull(),
+  coinType: integer("coinType").notNull(),
+  derivationIndex: integer("derivationIndex").notNull(),
+  derivationPath: varchar("derivationPath").notNull(),
+  version: integer("version").default(2).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  unique("depositAddress_coinType_index_unique").on(table.coinType, table.derivationIndex),
+  index("depositAddress_userId_active_idx").on(table.userId, table.active),
+]);
+
 // Staking tiers
 export const stakes = pgTable("Stake", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -139,7 +155,7 @@ export const transactions = pgTable("Transaction", {
   index("transactions_status_idx").on(table.status),
   index("transactions_createdAt_idx").on(table.createdAt),
   index("transactions_userId_createdAt_idx").on(table.userId, table.createdAt),
-  unique("transactions_txhash_unique").on(table.transactionHash),
+  unique("transactions_txhash_wallet_unique").on(table.transactionHash, table.walletAddress),
 ]);
 
 // Tasks

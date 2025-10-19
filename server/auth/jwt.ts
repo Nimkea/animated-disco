@@ -1,7 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { nanoid } from 'nanoid';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required for secure token signing');
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = '7d';
 
 export interface JWTPayload {

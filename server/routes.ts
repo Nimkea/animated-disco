@@ -4,7 +4,8 @@ import { storage, generateAnonymizedHandle } from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 import { STAKING_TIERS, type StakingTier } from "@shared/schema";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "./db";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
@@ -12,8 +13,6 @@ import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 import { ethers } from "ethers";
 import { nanoid } from "nanoid";
 import { deriveDepositAddress } from "./services/hdWallet";
-
-const prisma = new PrismaClient();
 
 const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, '').replace(/"$/, '');
 const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, '').replace(/}$/, '').replace(/"$/, '');

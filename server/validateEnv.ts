@@ -23,6 +23,12 @@ const ENV_VALIDATIONS: EnvValidation[] = [
     validate: (val) => val.length >= 32
   },
   {
+    name: 'JWT_SECRET',
+    required: true,
+    description: 'Secret key for JWT token signing (min 32 chars)',
+    validate: (val) => val.length >= 32
+  },
+  {
     name: 'MASTER_SEED',
     required: true,
     description: 'BIP39 mnemonic for HD wallet (12/15/18/21/24 words)',
@@ -41,6 +47,21 @@ const ENV_VALIDATIONS: EnvValidation[] = [
     required: true,
     description: 'USDT contract address on BSC',
     validate: (val) => /^0x[a-fA-F0-9]{40}$/.test(val)
+  },
+  {
+    name: 'VAPID_PUBLIC_KEY',
+    required: true,
+    description: 'VAPID public key for Web Push notifications'
+  },
+  {
+    name: 'VAPID_PRIVATE_KEY',
+    required: true,
+    description: 'VAPID private key for Web Push notifications'
+  },
+  {
+    name: 'SMTP_PASSWORD',
+    required: true,
+    description: 'SMTP password for sending emails (verification, password reset)'
   },
 ];
 
@@ -70,10 +91,6 @@ export function validateEnvironment() {
   }
   
   // Check optional but important variables
-  if (!process.env.SMTP_PASSWORD) {
-    warnings.push('⚠️  SMTP_PASSWORD not set - Email verification/password reset will not work');
-  }
-  
   if (!process.env.XNRT_WALLET) {
     warnings.push('⚠️  XNRT_WALLET not set - Using default treasury address');
   }

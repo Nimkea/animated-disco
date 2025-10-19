@@ -45,6 +45,7 @@ model User {
   pushSubscriptions PushSubscription[]
   linkedWallets   LinkedWallet[]
   depositReports  DepositReport[]
+  depositAddresses DepositAddress[]
 }
 
 model Session {
@@ -72,6 +73,23 @@ model Balance {
   updatedAt       DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DepositAddress {
+  id              String   @id @default(uuid())
+  userId          String
+  address         String   @unique @db.VarChar(42)
+  coinType        Int
+  derivationIndex Int
+  derivationPath  String
+  version         Int      @default(2)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([coinType, derivationIndex])
+  @@index([userId, active])
 }
 
 model Stake {
@@ -137,7 +155,7 @@ model Transaction {
   usdtAmount      Decimal?  @db.Decimal(38, 18)
   source          String?
   walletAddress   String?
-  transactionHash String?   @unique @db.Text
+  transactionHash String?   @db.Text
   proofImageUrl   String?
   status          String    @default("pending")
   adminNotes      String?
@@ -152,6 +170,7 @@ model Transaction {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([transactionHash, walletAddress])
   @@index([userId])
   @@index([type])
   @@index([status])
