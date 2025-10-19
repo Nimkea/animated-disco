@@ -46,6 +46,18 @@ const resendVerificationSchema = z.object({
   email: z.string().email(),
 });
 
+// Rate limiters for auth endpoints
+const registrationRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 registration attempts per 15 minutes per IP
+  message: 'Too many registration attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    return process.env.NODE_ENV === 'development';
+  },
+});
+
 const forgotPasswordRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
@@ -58,7 +70,7 @@ const forgotPasswordRateLimiter = rateLimit({
 });
 
 // POST /auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', registrationRateLimiter, async (req, res) => {
   try {
     const data = registerSchema.parse(req.body);
 
@@ -72,11 +84,12 @@ router.post('/register', async (req, res) => {
       },
     });
 
+    // Return generic message to prevent user enumeration
+    // OWASP recommendation: Don't reveal which field (email/username) already exists
+    // https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
     if (existingUser) {
       return res.status(400).json({ 
-        message: existingUser.email === data.email 
-          ? 'Email already registered' 
-          : 'Username already taken' 
+        message: 'An account with this email or username already exists' 
       });
     }
 

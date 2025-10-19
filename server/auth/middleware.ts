@@ -75,11 +75,15 @@ export async function requireAdmin(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
-export function validateCSRF(req: Request, res: Response, next: NextFunction) {
+export function validateCSRF(req: AuthRequest, res: Response, next: NextFunction) {
   const headerToken = req.headers['x-csrf-token'] as string;
   const cookieToken = req.cookies.csrfToken;
+  
+  // Get session ID from authenticated user (if available)
+  // CSRF validation should come AFTER requireAuth middleware
+  const sessionId = req.authUser?.jwtId;
 
-  if (!validateCSRFToken(headerToken, cookieToken)) {
+  if (!validateCSRFToken(headerToken, cookieToken, sessionId)) {
     return res.status(403).json({ message: 'Invalid CSRF token' });
   }
 

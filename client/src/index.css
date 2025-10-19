@@ -167,18 +167,32 @@
 @layer base {
   * {
     @apply border-border;
-    transition-property: background-color, border-color, color, fill, stroke;
-    transition-timing-function: ease;
-    transition-duration: 0.3s;
   }
 
-  html {
-    transition: background-color 0.3s ease, color 0.3s ease;
+  /* Only apply transitions to interactive elements and respect user motion preferences */
+  @media (prefers-reduced-motion: no-preference) {
+    button, a, input, select, textarea, [role="button"] {
+      transition-property: background-color, border-color, color, fill, stroke, opacity, transform;
+      transition-timing-function: ease;
+      transition-duration: 0.3s;
+    }
+
+    html, body {
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+  }
+
+  /* Disable all transitions for users who prefer reduced motion (accessibility) */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 

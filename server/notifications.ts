@@ -1,12 +1,20 @@
 import { storage } from "./storage";
 import webpush from "web-push";
 
-const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, '').replace(/"$/, '');
-const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, '').replace(/}$/, '').replace(/"$/, '');
+// IMPORTANT: Store VAPID keys as raw strings in environment variables, not JSON
+// Correct format: VAPID_PUBLIC_KEY=BHDx7M...abc123
+// Incorrect format: VAPID_PUBLIC_KEY={"publicKey":"BHDx7M..."}
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:support@xnrt.org";
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    console.log('[Push] VAPID details configured successfully');
+  } catch (error) {
+    console.error('[Push] Failed to set VAPID details. Ensure keys are stored as raw strings:', error);
+  }
 }
 
 const ENABLE_PUSH_NOTIFICATIONS = process.env.ENABLE_PUSH_NOTIFICATIONS !== "false";

@@ -9,7 +9,9 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-const CACHE_VERSION = 'v5';
+// v6: Force refresh after security fixes & HD wallet migration to prevent
+//     stale cached chunks from mixing with new code (fixes useRef errors)
+const CACHE_VERSION = 'v6';
 const CACHE_PREFIX = 'xnrt';
 
 // Take control immediately
