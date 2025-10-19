@@ -9,14 +9,43 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-// v6: Force refresh after security fixes & HD wallet migration to prevent
-//     stale cached chunks from mixing with new code (fixes useRef errors)
-const CACHE_VERSION = 'v6';
+// v7: Force refresh to clear all old caches after user reports persistent
+//     useRef error (aggressive cache clearing for stuck browsers)
+const CACHE_VERSION = 'v7';
 const CACHE_PREFIX = 'xnrt';
 
 // Take control immediately
 clientsClaim();
 self.skipWaiting();
+
+// Install event - Force clear ALL old caches for v7+ (aggressive cleanup)
+self.addEventListener('install', (event: ExtendableEvent) => {
+  console.log('[SW] Installing new service worker, version:', CACHE_VERSION);
+  event.waitUntil(
+    (async () => {
+      const cacheNames = await caches.keys();
+      console.log('[SW] Found existing caches:', cacheNames);
+      
+      // Delete ALL caches that don't match current version
+      await Promise.all(
+        cacheNames
+          .filter(cacheName => 
+            // Keep only caches with current version suffix
+            !cacheName.includes(`-${CACHE_VERSION}`) &&
+            // And keep Workbox precaches (they're managed separately)
+            !cacheName.startsWith('workbox-precache')
+          )
+          .map(cacheName => {
+            console.log('[SW] Deleting old cache during install:', cacheName);
+            return caches.delete(cacheName);
+          })
+      );
+      
+      console.log('[SW] Install complete, forcing skip waiting');
+      await self.skipWaiting();
+    })()
+  );
+});
 
 // Precache all assets from the build
 // Workbox manages its own precache names - we NEVER delete them manually
