@@ -6,7 +6,7 @@ This guide will help you deploy your XNRT platform to production with autoscale 
 
 Your autoscale deployment is already configured with:
 - **Build Command**: `npm run build`
-- **Run Command**: `node dist/index.js`
+- **Run Command**: `NODE_ENV=production node dist/index.js`
 - **Deployment Type**: Autoscale
 
 ## Step 1: Database Setup
