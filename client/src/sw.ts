@@ -9,9 +9,9 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-// v7: Force refresh to clear all old caches after user reports persistent
-//     useRef error (aggressive cache clearing for stuck browsers)
-const CACHE_VERSION = 'v7';
+// v8: Force refresh to fix production MIME type errors from cached dev HTML
+//     Clears stale caches mixing dev/prod assets causing "Cannot access before initialization"
+const CACHE_VERSION = 'v8';
 const CACHE_PREFIX = 'xnrt';
 
 // Take control immediately
