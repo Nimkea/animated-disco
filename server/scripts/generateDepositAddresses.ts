@@ -1,5 +1,7 @@
-import { prisma } from '../db';
+import { PrismaClient } from '@prisma/client';
 import { deriveDepositAddress } from '../services/hdWallet';
+
+const prisma = new PrismaClient();
 
 /**
  * Migration script to generate unique deposit addresses for all existing users

@@ -4,15 +4,16 @@ import { storage, generateAnonymizedHandle } from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 import { STAKING_TIERS, type StakingTier } from "@shared/schema";
-import { Prisma } from "@prisma/client";
-import { prisma } from "./db";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
 import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 import { ethers } from "ethers";
 import { nanoid } from "nanoid";
-import { deriveDepositAddress, getCurrentDerivationInfo } from "./services/hdWallet";
+import { deriveDepositAddress } from "./services/hdWallet";
+
+const prisma = new PrismaClient();
 
 const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, '').replace(/"$/, '');
 const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, '').replace(/}$/, '').replace(/"$/, '');
@@ -893,32 +894,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const nextIndex = (maxIndexUser?.derivationIndex ?? -1) + 1;
         const address = deriveDepositAddress(nextIndex);
-        const { coinType, path, version } = getCurrentDerivationInfo();
-        const derivationPath = `${path}/${nextIndex}`;
 
-        // Atomically update user and create deposit address record
-        await prisma.$transaction([
-          // Update User table
-          prisma.user.update({
-            where: { id: userId },
-            data: {
-              depositAddress: address,
-              derivationIndex: nextIndex
-            }
-          }),
-          // Create DepositAddress record for scanner
-          prisma.depositAddress.create({
-            data: {
-              userId,
-              address: address.toLowerCase(),
-              coinType,
-              derivationIndex: nextIndex,
-              derivationPath,
-              version,
-              active: true
-            }
-          })
-        ]);
+        // Update user with new address
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            depositAddress: address,
+            derivationIndex: nextIndex
+          }
+        });
 
         return res.json({
           address,

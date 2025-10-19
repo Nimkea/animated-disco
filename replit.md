@@ -1,24 +1,8 @@
 ## Overview
-XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform features a complete branding refresh, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning. The business vision is to capture a significant share of the gamified earning platform market by offering a unique, secure, and highly engaging user experience with strong community features.
+XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
-## Recent Changes (Oct 19, 2025)
-
-### Deposit Scanner RPC Timeout Fixes
-Fixed critical issues preventing blockchain deposit scanning:
-
-**RPC Request Timeouts:**
-- Increased timeout from 30s to 60s for heavy getLogs queries
-- Added retry logic with exponential backoff (3 attempts, 2s/4s/8s delays)
-- Wrapped critical RPC calls (getBlockNumber, queryFilter) with retry handler
-- Added RPC URL validation and host logging on startup
-- Graceful error handling - scanner no longer crashes on RPC unavailability
-- **Result**: Scanner processes 31k+ transfer events in <30s without timeouts
-
-**Zero Deposit Addresses:**
-- Updated `/api/wallet/deposit-address` to create DepositAddress records (not just User table)
-- Ran migration to backfill 6 existing users with addresses
-- Scanner now watches 11 active addresses (6 legacy coin type 714 + 5 EVM coin type 60)
-- **Result**: Scanner actively monitors user deposits instead of watching 0 addresses
+## Recent Changes
+- **October 17, 2025**: Project cleanup - removed 160+ temporary development artifacts from `attached_assets/` folder (old images, pasted text files, outdated icon bundles, patch files, and screenshots). All active PWA icons remain in `client/public/`. Project size significantly reduced.
 
 ## User Preferences
 - **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
@@ -56,8 +40,15 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 
 **Feature Specifications:**
 - **Admin Dashboard**: Comprehensive management for Deposits, Withdrawals, Users, Analytics, and Settings, including bulk deposit approval.
-- **Deposit/Withdrawal Systems**: USDT to XNRT conversion for deposits with unique personal addresses and automated crediting. XNRT to USDT conversion for withdrawals with admin approval.
-- **Earning Systems**: Staking, Mining, Referral, Daily Check-in, and Achievement systems with automated rewards and anti-exploit measures.
+- **Deposit/Withdrawal Systems**: 
+    - **Deposits**: USDT to XNRT conversion with unique personal deposit addresses per user. Users can deposit directly from exchanges (Binance, OKX) without wallet linking, gas fees, or blockchain interaction. HD wallet derivation (BIP44 path m/44'/714'/0'/0/{index}) generates unique BSC addresses. Automated scanner watches all user addresses and auto-credits XNRT after 12 confirmations.
+    - **Withdrawals**: XNRT to USDT conversion with admin approval and tracking.
+- **Earning Systems**:
+    - **Staking**: Four-tiered system with varying APY, real-time countdowns, and automated daily reward distribution.
+    - **Mining**: Automated 24-hour sessions with XP to XNRT conversion and automatic reward deposit.
+    - **Referral**: 3-level commission chain, network visualization, leaderboard, and social sharing.
+    - **Daily Check-in**: Atomic check-ins with streak rewards and anti-exploit measures.
+    - **Achievement**: Auto-unlocks achievements with XP rewards.
 - **XP Leaderboard System**: Weekly/monthly rankings with category filters.
 - **Push Notification System**: Web Push notifications with VAPID authentication, subscription management, and event triggers.
 - **Security Features**: Secure password reset and email verification systems with time-limited tokens and rate limiting.
@@ -69,7 +60,6 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Progressive Enhancement**: Feature flags enable phased rollout.
 - **Code Quality**: Zero LSP/TypeScript errors, 100% type-safe, and E2E test coverage.
 - **Database Schema Alignment**: 100% schema alignment between Drizzle and Prisma.
-- **Canonical Domain**: Production traffic consolidated on `xnrt.org` via 301 redirect from `xnrt.replit.app`.
 
 ## External Dependencies
 - **Database**: Neon (PostgreSQL)

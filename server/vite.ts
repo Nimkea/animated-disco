@@ -75,42 +75,18 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  // Resolve against project root regardless of how the server is launched
-  const distPath = path.resolve(process.cwd(), "dist/public");
+  const distPath = path.resolve(import.meta.dirname, "public");
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
-      `Could not find the build directory: ${distPath}. Run "npm run build" first.`,
+      `Could not find the build directory: ${distPath}, make sure to build the client first`,
     );
   }
 
-  // Serve /assets with immutable cache headers (hashed filenames never change)
-  // This MUST be before the general static middleware to take precedence
-  app.use("/assets", express.static(path.join(distPath, "assets"), {
-    immutable: true,
-    maxAge: "1y",
-    setHeaders: (res, filepath) => {
-      // Ensure correct MIME types for JavaScript modules
-      if (filepath.endsWith('.js')) {
-        res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
-      } else if (filepath.endsWith('.css')) {
-        res.setHeader('Content-Type', 'text/css; charset=utf-8');
-      }
-    }
-  }));
+  app.use(express.static(distPath));
 
-  // Serve other static files with shorter cache
-  app.use(express.static(distPath, { maxAge: "1h" }));
-
-  // SPA fallback - ONLY for HTML navigations, not for missing assets
-  app.use("*", (req, res, next) => {
-    const accept = req.headers.accept || "";
-    // Only serve index.html for actual HTML navigation requests
-    if (accept.includes("text/html")) {
-      res.sendFile(path.join(distPath, "index.html"));
-    } else {
-      // For non-HTML requests (like missing JS/CSS), return 404
-      next();
-    }
+  // fall through to index.html if the file doesn't exist
+  app.use("*", (_req, res) => {
+    res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

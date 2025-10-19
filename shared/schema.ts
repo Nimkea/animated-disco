@@ -61,32 +61,6 @@ export const balances = pgTable("Balance", {
   updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull(),
 });
 
-// Deposit addresses (support multiple addresses per user for legacy 714 + new 60 paths)
-export const depositAddresses = pgTable("DepositAddress", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  address: varchar("address", { length: 42 }).unique().notNull(),
-  coinType: integer("coinType").notNull(),
-  derivationIndex: integer("derivationIndex").notNull(),
-  derivationPath: varchar("derivationPath").notNull(),
-  version: integer("version").default(2).notNull(),
-  active: boolean("active").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  unique("depositAddress_coinType_index_unique").on(table.coinType, table.derivationIndex),
-  index("depositAddress_userId_active_idx").on(table.userId, table.active),
-]);
-
-// Scanner state for tracking deposit scanner progress
-export const scannerState = pgTable("ScannerState", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  lastBlock: integer("lastBlock").notNull(),
-  lastScanAt: timestamp("lastScanAt").defaultNow().notNull(),
-  isScanning: boolean("isScanning").default(false).notNull(),
-  errorCount: integer("errorCount").default(0).notNull(),
-  lastError: text("lastError"),
-});
-
 // Staking tiers
 export const stakes = pgTable("Stake", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -165,7 +139,7 @@ export const transactions = pgTable("Transaction", {
   index("transactions_status_idx").on(table.status),
   index("transactions_createdAt_idx").on(table.createdAt),
   index("transactions_userId_createdAt_idx").on(table.userId, table.createdAt),
-  unique("transactions_txhash_wallet_unique").on(table.transactionHash, table.walletAddress),
+  unique("transactions_txhash_unique").on(table.transactionHash),
 ]);
 
 // Tasks
@@ -290,73 +264,6 @@ export const passwordResets = pgTable("PasswordReset", {
   index("password_resets_token_idx").on(table.token),
 ]);
 
-// Linked Wallets (for legacy wallet linking feature)
-export const linkedWallets = pgTable("LinkedWallet", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  address: varchar("address", { length: 42 }).notNull(),
-  signature: text("signature").notNull(),
-  nonce: text("nonce").notNull(),
-  linkedAt: timestamp("linkedAt").defaultNow().notNull(),
-  active: boolean("active").default(true).notNull(),
-}, (table) => [
-  index("linked_wallets_userId_idx").on(table.userId),
-  index("linked_wallets_address_idx").on(table.address),
-  unique("linked_wallets_userId_address_unique").on(table.userId, table.address),
-]);
-
-// Wallet Nonces (for wallet linking verification)
-export const walletNonces = pgTable("WalletNonce", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull(),
-  address: varchar("address", { length: 42 }).notNull(),
-  nonce: text("nonce").notNull(),
-  issuedAt: timestamp("issuedAt").defaultNow().notNull(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("wallet_nonces_expiresAt_idx").on(table.expiresAt),
-  unique("wallet_nonces_userId_address_unique").on(table.userId, table.address),
-]);
-
-// Deposit Reports (user-submitted deposit reports for manual verification)
-export const depositReports = pgTable("DepositReport", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  fromAddress: varchar("fromAddress", { length: 42 }).notNull(),
-  amount: decimal("amount", { precision: 38, scale: 18 }),
-  txHash: text("txHash"),
-  notes: text("notes"),
-  status: varchar("status").default("open").notNull(),
-  resolvedAt: timestamp("resolvedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("deposit_reports_userId_idx").on(table.userId),
-  index("deposit_reports_fromAddress_idx").on(table.fromAddress),
-  index("deposit_reports_status_idx").on(table.status),
-]);
-
-// Unmatched Deposits (deposits detected on-chain but not matched to any user address)
-export const unmatchedDeposits = pgTable("UnmatchedDeposit", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  fromAddress: varchar("fromAddress", { length: 42 }).notNull(),
-  toAddress: varchar("toAddress", { length: 42 }).notNull(),
-  amount: decimal("amount", { precision: 38, scale: 18 }).notNull(),
-  transactionHash: text("transactionHash").unique().notNull(),
-  blockNumber: integer("blockNumber").notNull(),
-  confirmations: integer("confirmations").default(0).notNull(),
-  matched: boolean("matched").default(false).notNull(),
-  matchedUserId: varchar("matchedUserId"),
-  matchedAt: timestamp("matchedAt"),
-  reportedByUserId: varchar("reportedByUserId"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("unmatched_deposits_fromAddress_idx").on(table.fromAddress),
-  index("unmatched_deposits_matched_idx").on(table.matched),
-  index("unmatched_deposits_blockNumber_idx").on(table.blockNumber),
-  index("unmatched_deposits_reportedByUserId_idx").on(table.reportedByUserId),
-]);
-
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   balance: one(balances, {
@@ -475,20 +382,6 @@ export const passwordResetsRelations = relations(passwordResets, ({ one }) => ({
   }),
 }));
 
-export const linkedWalletsRelations = relations(linkedWallets, ({ one }) => ({
-  user: one(users, {
-    fields: [linkedWallets.userId],
-    references: [users.id],
-  }),
-}));
-
-export const depositReportsRelations = relations(depositReports, ({ one }) => ({
-  user: one(users, {
-    fields: [depositReports.userId],
-    references: [users.id],
-  }),
-}));
-
 // Types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
@@ -537,18 +430,6 @@ export type InsertSession = typeof sessions.$inferInsert;
 
 export type PasswordReset = typeof passwordResets.$inferSelect;
 export type InsertPasswordReset = typeof passwordResets.$inferInsert;
-
-export type LinkedWallet = typeof linkedWallets.$inferSelect;
-export type InsertLinkedWallet = typeof linkedWallets.$inferInsert;
-
-export type WalletNonce = typeof walletNonces.$inferSelect;
-export type InsertWalletNonce = typeof walletNonces.$inferInsert;
-
-export type DepositReport = typeof depositReports.$inferSelect;
-export type InsertDepositReport = typeof depositReports.$inferInsert;
-
-export type UnmatchedDeposit = typeof unmatchedDeposits.$inferSelect;
-export type InsertUnmatchedDeposit = typeof unmatchedDeposits.$inferInsert;
 
 // Staking tier configurations
 export const STAKING_TIERS = {

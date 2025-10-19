@@ -1,6 +1,8 @@
-import { prisma } from '../server/db';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { nanoid } from 'nanoid';
+
+const prisma = new PrismaClient();
 
 async function makeAdmin() {
   const email = 'noahkeaneowen@hotmail.com';

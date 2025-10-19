@@ -6,10 +6,6 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 import { startDepositScanner } from "./services/depositScanner";
-import { validateEnvironment } from "./validateEnv";
-
-// Validate environment variables before starting server
-validateEnvironment();
 
 const app = express();
 
@@ -19,7 +15,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Security headers - relax only in development for Vite HMR and Replit preview
-const isDevelopment = process.env.NODE_ENV !== "production";
+const isDevelopment = app.get("env") === "development";
 app.use(helmet({
   contentSecurityPolicy: isDevelopment ? false : {
     directives: {
@@ -41,36 +37,9 @@ app.use(helmet({
 }));
 
 // CORS configuration
-// In production, frontend and backend are same-origin (served from same Express server)
-// But we allow specific domains for cross-origin requests (if needed)
-const allowedOrigins = [
-  'http://localhost:5000',
-  'http://localhost:3000',
-  'http://127.0.0.1:5000',
-  'http://127.0.0.1:3000',
-  'https://xnrt.replit.app',
-  'https://xnrt.org',
-  'https://www.xnrt.org',
-];
-
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5000';
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or same-origin)
-    if (!origin) return callback(null, true);
-    
-    // In development, allow all Replit development domains (*.replit.dev)
-    if (isDevelopment && origin.endsWith('.replit.dev')) {
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      // Reject the origin but don't throw error
-      console.warn(`[CORS] Rejected origin: ${origin}`);
-      callback(null, false);
-    }
-  },
+  origin: CLIENT_URL,
   credentials: true,
 }));
 
@@ -78,45 +47,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// Canonical domain redirect - Force all traffic to xnrt.org
-// This prevents duplicate content, session cookie issues, and analytics fragmentation
-app.use((req, res, next) => {
-  const host = req.get('host');
-  
-  // Only redirect in production and only from xnrt.replit.app
-  if (!isDevelopment && host === 'xnrt.replit.app') {
-    const protocol = req.protocol || 'https';
-    const canonicalUrl = `https://xnrt.org${req.originalUrl}`;
-    
-    console.log(`[Redirect] 301 from ${host} to xnrt.org`);
-    return res.redirect(301, canonicalUrl);
-  }
-  
-  next();
-});
-
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  // Only capture response bodies in development to avoid leaking sensitive data
-  // (tokens, balances, passwords, etc.) in production logs
-  if (isDevelopment) {
-    const originalResJson = res.json;
-    res.json = function (bodyJson, ...args) {
-      capturedJsonResponse = bodyJson;
-      return originalResJson.apply(res, [bodyJson, ...args]);
-    };
-  }
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      // Production: Only log method, path, status, and duration (no response body)
-      // Development: Include response body for debugging
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (isDevelopment && capturedJsonResponse) {
+      if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
@@ -145,7 +91,7 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (process.env.NODE_ENV !== "production") {
+  if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
@@ -161,8 +107,7 @@ app.use((req, res, next) => {
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    const mode = process.env.NODE_ENV === "production" ? "production" : "development";
-    log(`Server running on port ${port} in ${mode} mode`);
+    log(`serving on port ${port}`);
     
     startRetryWorker();
     startDepositScanner();

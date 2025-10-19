@@ -1,5 +1,7 @@
-import { prisma } from '../server/db';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+
+const prisma = new PrismaClient();
 
 async function main() {
   console.log('Starting database seed...');
@@ -10,10 +12,10 @@ async function main() {
 
   // Create admin user with balance
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@xnrt.org' },
+    where: { email: 'admin@xnrt.io' },
     update: {},
     create: {
-      email: 'admin@xnrt.org',
+      email: 'admin@xnrt.io',
       username: 'admin',
       passwordHash: adminPassword,
       referralCode: 'ADMIN2025',
