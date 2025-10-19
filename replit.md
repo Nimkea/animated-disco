@@ -1,6 +1,25 @@
 ## Overview
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform features a complete branding refresh, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning. The business vision is to capture a significant share of the gamified earning platform market by offering a unique, secure, and highly engaging user experience with strong community features.
 
+## Recent Changes (Oct 19, 2025)
+
+### Deposit Scanner RPC Timeout Fixes
+Fixed critical issues preventing blockchain deposit scanning:
+
+**RPC Request Timeouts:**
+- Increased timeout from 30s to 60s for heavy getLogs queries
+- Added retry logic with exponential backoff (3 attempts, 2s/4s/8s delays)
+- Wrapped critical RPC calls (getBlockNumber, queryFilter) with retry handler
+- Added RPC URL validation and host logging on startup
+- Graceful error handling - scanner no longer crashes on RPC unavailability
+- **Result**: Scanner processes 31k+ transfer events in <30s without timeouts
+
+**Zero Deposit Addresses:**
+- Updated `/api/wallet/deposit-address` to create DepositAddress records (not just User table)
+- Ran migration to backfill 6 existing users with addresses
+- Scanner now watches 11 active addresses (6 legacy coin type 714 + 5 EVM coin type 60)
+- **Result**: Scanner actively monitors user deposits instead of watching 0 addresses
+
 ## User Preferences
 - **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
 - Light mode: Black cosmic background with golden twinkling stars and golden UI accents

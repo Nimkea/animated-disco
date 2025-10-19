@@ -8,18 +8,30 @@ const TREASURY_ADDRESS = (process.env.XNRT_WALLET || "").toLowerCase();
 const REQUIRED_CONFIRMATIONS = Number(process.env.BSC_CONFIRMATIONS || 12);
 const XNRT_RATE = Number(process.env.XNRT_RATE_USDT || 100);
 const PLATFORM_FEE_BPS = Number(process.env.PLATFORM_FEE_BPS || 0);
-const SCAN_BATCH = Number(process.env.BSC_SCAN_BATCH || 300);
+const SCAN_BATCH = Number(process.env.BSC_SCAN_BATCH || 1000);
 const AUTO_DEPOSIT_ENABLED = process.env.AUTO_DEPOSIT === 'true';
 
-// Create provider with proper timeout configuration to prevent hanging
-// ethers v6 FetchRequest has a default 300s timeout - reduce to 30s
+// Validate RPC URL
+if (!RPC_URL) {
+  throw new Error("Missing RPC_BSC_URL environment variable");
+}
+
+try {
+  const url = new URL(RPC_URL);
+  console.log(`[DepositScanner] RPC endpoint: ${url.host}`);
+} catch (e) {
+  throw new Error(`Invalid RPC_BSC_URL: ${RPC_URL}`);
+}
+
+// Create provider with extended timeout and throttling for public nodes
+// ethers v6 FetchRequest timeout - increase to 60s for heavy getLogs queries
 const fetchReq = new ethers.FetchRequest(RPC_URL);
-fetchReq.timeout = 30000; // 30 second timeout for all RPC requests
+fetchReq.timeout = 60000; // 60 second timeout for RPC requests
 
 const provider = new ethers.JsonRpcProvider(fetchReq, undefined, {
-  staticNetwork: true,  // Disable automatic network detection for faster startup
-  batchMaxCount: 1,     // Disable batching for better timeout handling  
-  polling: false,       // Disable polling, we explicitly call methods
+  staticNetwork: true,     // Disable automatic network detection for faster startup
+  batchMaxCount: 1,        // Disable batching for better timeout handling  
+  polling: false,          // Disable polling, we explicitly call methods
 });
 const USDT_ABI = [
   "event Transfer(address indexed from, address indexed to, uint256 value)"
@@ -27,6 +39,51 @@ const USDT_ABI = [
 const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_ABI, provider);
 
 let isScanning = false;
+
+/**
+ * Retry helper with exponential backoff for RPC calls
+ * Handles transient errors like TIMEOUT, SERVER_ERROR, NETWORK_ERROR
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>, 
+  label: string, 
+  retries = 3
+): Promise<T> {
+  let lastError: any;
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastError = e;
+      
+      // Check if error is transient (retriable)
+      const isTransient = 
+        e?.code === "TIMEOUT" || 
+        e?.code === "SERVER_ERROR" || 
+        e?.code === "NETWORK_ERROR" ||
+        e?.code === "ETIMEDOUT" ||
+        e?.message?.includes("timeout") ||
+        e?.message?.includes("ETIMEDOUT");
+      
+      // If not transient or last retry, throw immediately
+      if (!isTransient || i === retries - 1) {
+        throw e;
+      }
+      
+      // Exponential backoff: 2s, 4s, 8s
+      const delayMs = 1000 * Math.pow(2, i + 1);
+      console.warn(
+        `[DepositScanner] ${label} failed (${e?.code || e?.shortMessage || 'unknown error'}); ` +
+        `retrying in ${delayMs}ms (attempt ${i + 1}/${retries})`
+      );
+      
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  throw lastError;
+}
 
 export async function startDepositScanner() {
   if (!AUTO_DEPOSIT_ENABLED) {
@@ -68,8 +125,11 @@ async function scanForDeposits() {
     // Get or create scanner state
     let state = await prisma.scannerState.findFirst();
     
-    // Get current block (timeout configured at provider level)
-    const currentBlock = await provider.getBlockNumber();
+    // Get current block with retry logic
+    const currentBlock = await withRetry(
+      () => provider.getBlockNumber(),
+      "getBlockNumber"
+    );
     
     if (!state) {
       // Initialize scanner state
@@ -120,7 +180,10 @@ async function scanForDeposits() {
 
     // Query USDT Transfer events to any address (we'll filter by user addresses)
     const filter = usdtContract.filters.Transfer();
-    const events = await usdtContract.queryFilter(filter, fromBlock, toBlock);
+    const events = await withRetry(
+      () => usdtContract.queryFilter(filter, fromBlock, toBlock),
+      `queryFilter blocks ${fromBlock}-${toBlock}`
+    );
 
     console.log(`[DepositScanner] Found ${events.length} transfer events`);
 
@@ -146,20 +209,39 @@ async function scanForDeposits() {
     console.log(`[DepositScanner] Scan completed in ${duration}ms`);
 
   } catch (error: any) {
-    console.error("[DepositScanner] Scan failed:", error);
+    // Determine if error is critical or transient
+    const isRpcError = 
+      error?.code === "TIMEOUT" || 
+      error?.code === "SERVER_ERROR" ||
+      error?.code === "NETWORK_ERROR" ||
+      error?.message?.includes("timeout") ||
+      error?.message?.includes("connect");
     
-    // Update error state
-    const state = await prisma.scannerState.findFirst();
-    if (state) {
-      await prisma.scannerState.update({
-        where: { id: state.id },
-        data: {
-          isScanning: false,
-          errorCount: state.errorCount + 1,
-          lastError: error.message,
-          lastScanAt: new Date(),
-        }
-      });
+    if (isRpcError) {
+      console.warn(
+        `[DepositScanner] RPC temporarily unavailable: ${error?.code || error?.message}. ` +
+        `Will retry on next scan cycle.`
+      );
+    } else {
+      console.error("[DepositScanner] Scan failed with unexpected error:", error);
+    }
+    
+    // Update error state gracefully
+    try {
+      const state = await prisma.scannerState.findFirst();
+      if (state) {
+        await prisma.scannerState.update({
+          where: { id: state.id },
+          data: {
+            isScanning: false,
+            errorCount: state.errorCount + 1,
+            lastError: `${error?.code || 'ERROR'}: ${error?.message || 'Unknown'}`,
+            lastScanAt: new Date(),
+          }
+        });
+      }
+    } catch (dbError) {
+      console.error("[DepositScanner] Failed to update error state:", dbError);
     }
   } finally {
     isScanning = false;
