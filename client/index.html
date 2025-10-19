@@ -1,45 +1,53 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Removed maximum-scale=1 to allow pinch-zoom for accessibility (WCAG 2.1) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="XNRT - Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion." />
+    <meta
+      name="description"
+      content="XNRT - Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion."
+    />
     <meta name="theme-color" content="#000000" />
-    
-    <!-- Open Graph / Facebook - Using absolute URLs for proper sharing previews -->
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://xnrt.org/" />
     <meta property="og:title" content="XNRT - We Build the NextGen" />
-    <meta property="og:description" content="Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion." />
+    <meta
+      property="og:description"
+      content="Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion."
+    />
     <meta property="og:image" content="https://xnrt.org/icon-512.png" />
-    
-    <!-- Twitter - Using absolute URLs for proper sharing previews -->
+
+    <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content="https://xnrt.org/" />
     <meta property="twitter:title" content="XNRT - We Build the NextGen" />
-    <meta property="twitter:description" content="Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion." />
+    <meta
+      property="twitter:description"
+      content="Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion."
+    />
     <meta property="twitter:image" content="https://xnrt.org/icon-512.png" />
-    
+
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    
-    <!-- Google Fonts: Preconnect for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>XNRT - We Build the NextGen</title>
-    
-    <!-- Preload React core bundle to ensure it loads before ecosystem libraries -->
-    <!-- This prevents "Cannot read properties of null (reading 'useRef')" errors -->
-    <link rel="modulepreload" href="/src/main.tsx" />
   </head>
   <body>
     <div id="root"></div>
+    <!-- Dev entry; Vite rewrites this to hashed bundle in prod -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
