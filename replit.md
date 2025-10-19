@@ -1,6 +1,52 @@
 ## Overview
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform features a complete branding refresh, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
+## Recent Changes
+
+### Production-Readiness Fixes (Oct 19, 2025)
+Comprehensive production stability improvements to eliminate MIME errors and enhance deployment reliability:
+
+**Application Entry (`main.tsx`):**
+- Wrapped app in `React.StrictMode` to catch side-effects during development
+- Gated monitoring (Sentry/Web Vitals) to production-only with HMR-safe single initialization
+- Added service worker feature detection before registration
+- Set SW registration to `immediate: false` for user-controlled updates (prevents forced reloads)
+- Added root element validation with clear error messaging
+
+**Performance & Compatibility (`index.html`, `index.css`):**
+- Migrated Google Fonts from CSS `@import` to HTML `<link>` tags with `preconnect` for better CSP compliance and faster loading
+- Added `color-scheme` declarations for proper light/dark native controls
+- Implemented CSS fallbacks for relative color syntax (`hsl(from...)`) with `@supports` feature detection for older browser support
+
+**Service Worker v9 (`sw.ts`):**
+- **Critical MIME Fix**: Added content-type validation plugins to prevent caching HTML responses as JavaScript files
+- Removed auto `skipWaiting()` - now user-controlled via UI message for safer updates
+- Implemented destination-based route matching (`request.destination === 'script'`) instead of URL patterns
+- Tightened `ignoreURLParametersMatching` to only analytics params (was `/.*/`)
+- Improved push notification JSON parsing with robust error handling
+- Uses `Response.error()` for failed non-navigation requests
+
+**Build Configuration (`vite.config.ts`):**
+- Disabled service worker in development (`devOptions.enabled: false`) to prevent caching dev HTML
+- Set `injectRegister: null` since registration is manually controlled in `main.tsx`
+- Implemented safer path resolution using `fileURLToPath` and `__dirname`
+- Made Replit dev plugins conditional with `.filter(Boolean)` cleanup
+- Maintained optimized vendor chunk strategy (React Core → Utilities → React Ecosystem → Other libs)
+
+**Production Serving (`server/vite.ts`):**
+- Changed `distPath` resolution from `import.meta.dirname` to `process.cwd()` for deployment-agnostic builds
+- Standardized on `text/javascript` MIME type for JavaScript files
+- Maintained `/assets` priority serving with 1-year immutable cache headers
+- SPA fallback restricted to HTML navigation requests only
+
+**Impact:**
+- ✅ Eliminated MIME type errors from cached development files in production
+- ✅ Users now control service worker updates (no forced disruptions)
+- ✅ Service worker cannot cache wrong content types
+- ✅ Builds work regardless of launch directory or deployment method
+- ✅ Improved font loading performance and CSP compatibility
+- ✅ Legacy browser support for relative color syntax
+
 ## User Preferences
 - **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
 - Light mode: Black cosmic background with golden twinkling stars and golden UI accents
