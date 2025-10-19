@@ -1,0 +1,81 @@
+That HTML is the culprit. You’re deploying a page that loads **`/src/main.tsx`** directly:
+
+```html
+<link rel="modulepreload" href="/src/main.tsx" />
+<script type="module" src="/src/main.tsx"></script>
+```
+
+That only works in **Vite dev**. In production, the server can’t transpile TS/TSX, so it returns your **`index.html`** for that URL → `content-type: text/html` → the strict-MIME error you saw.
+
+Here’s the one-shot fix.
+
+# Do this
+
+1. **Build with Vite** (this rewrites the HTML to point at hashed JS in `/assets`):
+
+```bash
+pnpm build   # or npm/yarn
+```
+
+2. **Deploy the built files** (the ones in your Vite `outDir`, e.g. `dist` or `dist/public`) — **not** the source `index.html`.
+   After build, your generated HTML will look like:
+
+```html
+<!-- dist/index.html (example) -->
+<script type="module" crossorigin src="/assets/index-ABCD1234.js"></script>
+<link rel="modulepreload" href="/assets/vendor-EFGH5678.js">
+```
+
+3. **Serve assets before SPA fallback** so asset misses don’t get `index.html`:
+
+### Express
+
+```ts
+import express from "express";
+import path from "path";
+const app = express();
+const dist = path.resolve("dist");            // or "dist/public" if that’s your outDir
+
+app.use("/assets", express.static(path.join(dist, "assets"), {
+  immutable: true, maxAge: "1y"
+}));
+app.use(express.static(dist, { maxAge: "1h" }));
+
+// SPA fallback *only for HTML navigations*
+app.get("*", (req, res, next) => {
+  const accept = req.headers.accept || "";
+  if (accept.includes("text/html")) {
+    res.sendFile(path.join(dist, "index.html"));
+  } else {
+    next();
+  }
+});
+```
+
+### Nginx
+
+```nginx
+location /assets/ {
+  alias /var/www/app/dist/assets/;
+}
+location / {
+  try_files $uri $uri/ /index.html;
+}
+```
+
+4. (If you use a Service Worker) bump the cache version, call `cleanupOutdatedCaches()`, then **Unregister SW + Clear storage** and hard-reload.
+
+# Quick verification
+
+* This should now return **JavaScript**:
+
+```bash
+curl -I https://xnrt.org/assets/<exact-file-from-dist>.js | grep -i content-type
+# => text/javascript; charset=utf-8
+```
+
+* And `https://xnrt.org/src/main.tsx` should **404** (not 200 HTML).
+
+---
+
+**Bottom line:** never ship `<script src="/src/main.tsx">` to prod. Always deploy Vite’s **built** `index.html` + `/assets/*` and make sure your server serves `/assets` statically before sending `index.html` as a fallback.
