@@ -124,3 +124,40 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Monitoring**: Sentry (optional), `web-vitals`
 - **Security**: `helmet`
 - **Unique ID Generation**: `nanoid`
+
+## Production Deployment
+
+### Deployment Configuration
+- **Type**: Autoscale (scales automatically based on traffic demand)
+- **Build**: `npm run build` (compiles React frontend + bundles Express backend)
+- **Run**: `node dist/index.js` (production-optimized server)
+
+### Required Production Secrets
+All secrets must be configured in the Publishing tool's Environment Variables section:
+
+**Critical Secrets:**
+- `DATABASE_URL` - PostgreSQL connection (auto-configured if using Replit's production database)
+- `SESSION_SECRET` - Session encryption key (generate new for production)
+- `JWT_SECRET` - JWT token signing key (generate new for production)
+- `MASTER_SEED` - HD wallet master seed for generating user deposit addresses (⚠️ highly sensitive)
+- `RPC_BSC_URL` - Binance Smart Chain RPC endpoint (e.g., https://bsc-dataseed.binance.org/)
+- `USDT_BSC_ADDRESS` - USDT contract address on BSC (0x55d398326f99059fF775485246999027B3197955)
+- `VAPID_PUBLIC_KEY` - Web push public key
+- `VAPID_PRIVATE_KEY` - Web push private key
+- `SMTP_PASSWORD` - Brevo SMTP password for email sending
+
+**Note**: SMTP host/port/user are hardcoded in the application (smtp-relay.brevo.com:587)
+
+### Deployment Checklist
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete step-by-step deployment guide including:
+- Database setup (Replit production DB or external)
+- Secrets configuration with security best practices
+- Database migration steps
+- Autoscale settings recommendations
+- Post-deployment verification tests
+- Troubleshooting common issues
+- Custom domain setup (xnrt.org)
+
+### Environment Separation
+- **Development**: Local secrets, development database, HMR enabled, service worker disabled
+- **Production**: Separate secrets, production database, monitoring enabled, service worker active with caching
