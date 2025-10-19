@@ -75,11 +75,12 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "public");
+  // Resolve against project root regardless of how the server is launched
+  const distPath = path.resolve(process.cwd(), "dist/public");
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+      `Could not find the build directory: ${distPath}. Run "npm run build" first.`,
     );
   }
 
@@ -91,7 +92,7 @@ export function serveStatic(app: Express) {
     setHeaders: (res, filepath) => {
       // Ensure correct MIME types for JavaScript modules
       if (filepath.endsWith('.js')) {
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
       } else if (filepath.endsWith('.css')) {
         res.setHeader('Content-Type', 'text/css; charset=utf-8');
       }
@@ -106,7 +107,7 @@ export function serveStatic(app: Express) {
     const accept = req.headers.accept || "";
     // Only serve index.html for actual HTML navigation requests
     if (accept.includes("text/html")) {
-      res.sendFile(path.resolve(distPath, "index.html"));
+      res.sendFile(path.join(distPath, "index.html"));
     } else {
       // For non-HTML requests (like missing JS/CSS), return 404
       next();

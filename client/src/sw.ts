@@ -9,51 +9,43 @@ import { ExpirationPlugin } from 'workbox-expiration';
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-// v8: Force refresh to fix production MIME type errors from cached dev HTML
-//     Clears stale caches mixing dev/prod assets causing "Cannot access before initialization"
-const CACHE_VERSION = 'v8';
+// v9: Production-ready SW - no auto-skipWaiting, destination-based caching,
+//     content-type guards prevent caching HTML as JS (fixes MIME errors)
+const CACHE_VERSION = 'v9';
 const CACHE_PREFIX = 'xnrt';
 
-// Take control immediately
+// Keep clientsClaim so the active SW controls open tabs
 clientsClaim();
-self.skipWaiting();
 
-// Install event - Force clear ALL old caches for v7+ (aggressive cleanup)
+// Install event - prune only our versioned runtime caches
 self.addEventListener('install', (event: ExtendableEvent) => {
   console.log('[SW] Installing new service worker, version:', CACHE_VERSION);
   event.waitUntil(
     (async () => {
       const cacheNames = await caches.keys();
-      console.log('[SW] Found existing caches:', cacheNames);
-      
-      // Delete ALL caches that don't match current version
       await Promise.all(
         cacheNames
-          .filter(cacheName => 
-            // Keep only caches with current version suffix
-            !cacheName.includes(`-${CACHE_VERSION}`) &&
-            // And keep Workbox precaches (they're managed separately)
-            !cacheName.startsWith('workbox-precache')
+          .filter(n =>
+            n.startsWith(`${CACHE_PREFIX}-`) &&
+            !n.endsWith(`-${CACHE_VERSION}`)
           )
-          .map(cacheName => {
-            console.log('[SW] Deleting old cache during install:', cacheName);
-            return caches.delete(cacheName);
+          .map(n => {
+            console.log('[SW] Deleting old runtime cache:', n);
+            return caches.delete(n);
           })
       );
-      
-      console.log('[SW] Install complete, forcing skip waiting');
-      await self.skipWaiting();
+      console.log('[SW] Install complete');
     })()
   );
 });
 
 // Precache all assets from the build
-// Workbox manages its own precache names - we NEVER delete them manually
 precacheAndRoute(self.__WB_MANIFEST, {
-  ignoreURLParametersMatching: [/.*/]
+  // Ignore only analytics params (don't use /.*/)
+  ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^gclid$/, /^msclkid$/],
 });
 
-// Activate event - Let Workbox handle precache cleanup, only delete our custom runtime caches
+// Activate event
 self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
@@ -64,22 +56,8 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
         // Navigation preload not supported, continue without it
       }
 
-      // Let Workbox handle its own precache migrations (DO NOT delete manually!)
+      // Let Workbox handle its own precache migrations
       await cleanupOutdatedCaches();
-
-      // Only prune OUR custom versioned runtime caches (xnrt-*)
-      const cacheNames = await caches.keys();
-      await Promise.all(
-        cacheNames
-          .filter(cacheName => 
-            cacheName.startsWith(`${CACHE_PREFIX}-`) && 
-            !cacheName.endsWith(`-${CACHE_VERSION}`)
-          )
-          .map(cacheName => {
-            console.log('[SW] Deleting old runtime cache:', cacheName);
-            return caches.delete(cacheName);
-          })
-      );
 
       console.log('[SW] Activation complete, version:', CACHE_VERSION);
       await self.clients.claim();
@@ -93,10 +71,9 @@ registerRoute(
     createHandlerBoundToURL('/index.html'),
     {
       denylist: [
-        /^\/api\/.*/,  // Exclude API routes
-        /\/[^/?]+\.(?:js|css|json|png|jpg|jpeg|svg|gif|webp|ico|map|woff|woff2)$/  // Exclude static files
+        /^\/api\/.*/,
+        /\/[^/?]+\.(?:js|css|json|png|jpg|jpeg|svg|gif|webp|ico|map|woff|woff2)$/
       ]
-      // NO allowlist - matches all navigation requests except those in denylist
     }
   )
 );
@@ -109,7 +86,7 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 10,
-        maxAgeSeconds: 60 * 60 * 24 * 365  // 1 year
+        maxAgeSeconds: 60 * 60 * 24 * 365
       }),
       new CacheableResponsePlugin({
         statuses: [0, 200]
@@ -126,7 +103,7 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 10,
-        maxAgeSeconds: 60 * 60 * 24 * 365  // 1 year
+        maxAgeSeconds: 60 * 60 * 24 * 365
       }),
       new CacheableResponsePlugin({
         statuses: [0, 200]
@@ -135,24 +112,39 @@ registerRoute(
   })
 );
 
-// JS/CSS Bundles - CacheFirst with versioned cache name
-// CRITICAL: Version in cache name ensures all chunks are from same build
-// When CACHE_VERSION changes, activate handler deletes old versioned caches
-// This prevents "Cannot access before initialization" from mixing versions
-// CacheFirst ensures offline support while version isolation prevents mismatches
+// Content-type guard plugin factory
+const onlyIfContentType = (startsWith: string) => ({
+  cacheWillUpdate: async ({ response }: { response: Response }) => {
+    if (!response || response.status !== 200) return null;
+    const ct = response.headers.get('content-type') || '';
+    return ct.startsWith(startsWith) ? response : null;
+  },
+});
+
+// Scripts - Match by destination + type-guard
 registerRoute(
-  /\.(?:js|css)$/,
+  ({ request }) => request.destination === 'script',
   new CacheFirst({
-    cacheName: `${CACHE_PREFIX}-static-assets-${CACHE_VERSION}`,
+    cacheName: `${CACHE_PREFIX}-scripts-${CACHE_VERSION}`,
     plugins: [
-      new CacheableResponsePlugin({
-        statuses: [0, 200]
-      }),
-      new ExpirationPlugin({
-        maxEntries: 100,
-        maxAgeSeconds: 60 * 60 * 24 * 30  // 30 days
-      })
-    ]
+      onlyIfContentType('text/javascript'),
+      onlyIfContentType('application/javascript'),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 }),
+    ],
+  })
+);
+
+// Styles - Match by destination + type-guard
+registerRoute(
+  ({ request }) => request.destination === 'style',
+  new CacheFirst({
+    cacheName: `${CACHE_PREFIX}-styles-${CACHE_VERSION}`,
+    plugins: [
+      onlyIfContentType('text/css'),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 }),
+    ],
   })
 );
 
@@ -172,7 +164,7 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 50,
-        maxAgeSeconds: 60 * 60 * 24 * 30  // 30 days
+        maxAgeSeconds: 60 * 60 * 24 * 30
       })
     ]
   })
@@ -190,7 +182,6 @@ registerRoute(
 );
 
 // API Routes - Network First with short cache (1 minute for fresh data)
-// Auth & wallet routes are excluded above
 registerRoute(
   /\/api\/.*/,
   new NetworkFirst({
@@ -199,7 +190,7 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 50,
-        maxAgeSeconds: 60  // 1 minute
+        maxAgeSeconds: 60
       }),
       new CacheableResponsePlugin({
         statuses: [0, 200]
@@ -210,7 +201,6 @@ registerRoute(
 );
 
 // Global catch handler - Ensures FetchEvents NEVER reject
-// Provides graceful fallback to cached shell for failed navigations
 setCatchHandler(async ({ request }) => {
   // For navigation requests (page loads), fallback to cached /index.html
   if (request.mode === 'navigate') {
@@ -219,7 +209,6 @@ setCatchHandler(async ({ request }) => {
       console.log('[SW] Network failed, serving cached shell');
       return cachedShell;
     }
-    // If somehow /index.html isn't in precache, return offline page
     return new Response('Offline - Unable to load app shell', { 
       status: 503,
       statusText: 'Service Unavailable',
@@ -227,34 +216,37 @@ setCatchHandler(async ({ request }) => {
     });
   }
   
-  // For other requests, return empty response with timeout status
-  return new Response('', { 
-    status: 504, 
-    statusText: 'Gateway Timeout' 
-  });
+  // For other requests, return proper network failure
+  return Response.error();
 });
 
-// Listen for skip waiting message
+// Listen for skip waiting message from UI
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[SW] Skip waiting triggered by UI');
     self.skipWaiting();
   }
 });
 
-// Push notification handler
+// Push notification handler with robust JSON parsing
 self.addEventListener('push', (event: PushEvent) => {
-  const data = event.data?.json() || {};
-  const { title, body, icon, badge, data: actionData } = data;
-  
-  event.waitUntil(
-    self.registration.showNotification(title || 'XNRT Notification', {
+  event.waitUntil((async () => {
+    let data: any = {};
+    try {
+      data = event.data ? event.data.json() : {};
+    } catch (e) {
+      console.error('[SW] Failed to parse push data:', e);
+    }
+    
+    const { title, body, icon, badge, data: actionData, tag } = data;
+    await self.registration.showNotification(title || 'XNRT Notification', {
       body: body || 'You have a new notification',
       icon: icon || '/icon-192.png',
       badge: badge || '/icon-192.png',
       data: actionData,
-      tag: data.tag || 'xnrt-notification',
-    })
-  );
+      tag: tag || 'xnrt-notification',
+    });
+  })());
 });
 
 // Notification click handler
