@@ -1,0 +1,19 @@
+When two domains serve the same content, search engines and browsers treat them as separate sites unless you explicitly designate a canonical version. MDN’s URI guide notes that you should “choose one [domain] and stick with it” to make your site appear consistent to users and search engines
+developer.mozilla.org
+. It then recommends two canonicalization techniques:
+
+HTTP 301 redirect – configure the server to return a permanent 301 response for the non‑canonical host and point it at the canonical host
+developer.mozilla.org
+. This tells browsers and search engines that the resource has permanently moved, consolidating link equity and traffic on the canonical domain.
+
+rel="canonical" tags – add a <link rel="canonical"> tag in the page head to signal the preferred URL
+developer.mozilla.org
+. This is useful when you cannot redirect but still want to avoid duplicate‑content penalties; however, a 301 redirect is stronger because it forces all requests onto the canonical domain.
+
+Cookies are also tied to the domain that sets them. The Set‑Cookie specification explains that the Domain attribute defines which host (and optional subdomains) may receive the cookie; multiple domain values are not allowed
+developer.mozilla.org
+. A cookie set for one domain will be rejected if it doesn’t match the requesting host
+developer.mozilla.org
+. In practice, this means a user who logs in at xnrt.org will not automatically be logged in when switching to xnrt.replit.app because the session cookie only applies to one domain. Consolidating users onto a single host avoids these session splits.
+
+Given these points, the safest and most maintainable practice is to choose a single canonical domain (e.g., xnrt.org) and implement a 301 redirect from the other host (xnrt.replit.app) to it. This prevents duplicate‑content penalties, avoids splitting analytics and session cookies across domains, and provides a clear, consistent entry point for users. You can still keep both domains live for branding or convenience, but all absolute links and bookmarks should point to the canonical domain.
