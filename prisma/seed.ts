@@ -10,10 +10,10 @@ async function main() {
 
   // Create admin user with balance
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@xnrt.io' },
+    where: { email: 'admin@xnrt.org' },
     update: {},
     create: {
-      email: 'admin@xnrt.io',
+      email: 'admin@xnrt.org',
       username: 'admin',
       passwordHash: adminPassword,
       referralCode: 'ADMIN2025',
