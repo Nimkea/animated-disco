@@ -3,11 +3,26 @@ XNRT is a React PWA off-chain gamification community earning platform where user
 
 ## Recent Changes
 
-### Autoscale Deployment Configuration (Oct 19, 2025)
-Configured autoscale deployment for production with optimized build and run commands:
+### Production Deployment Fixes (Oct 19, 2025)
+Fixed critical production deployment issues to enable successful autoscale deployment:
+
+**Issue 1: Server Running in Dev Mode (500 Errors)**
+- **Problem**: Production server tried to run Vite dev mode, causing "Failed to load /src/main.tsx" errors
+- **Root Cause**: `NODE_ENV` wasn't set, so Express defaulted to development mode
+- **Fix**: Updated run command to `NODE_ENV=production node dist/index.js`
+- **Impact**: Server now correctly serves static files from `dist/public` instead of trying to load development files
+
+**Issue 2: Database Connection Failures**
+- **Problem**: Production deployment crashed with "terminating connection due to administrator command" database errors
+- **Root Cause**: Manual `DATABASE_URL` in Publishing Secrets pointed to wrong/stale database instance
+- **Fix**: Removed manual `DATABASE_URL` secret to allow Replit's auto-injection of production database connection
+- **Impact**: Production uses correct, automatically-managed database URL for Replit Production Database
+
+**Deployment Configuration:**
 - **Deployment Type**: Autoscale (stateless, scales based on demand)
 - **Build Command**: `npm run build` (builds frontend with Vite, bundles backend with esbuild)
-- **Run Command**: `node dist/index.js` (production-optimized Express server)
+- **Run Command**: `NODE_ENV=production node dist/index.js` (forces production mode)
+- **Database**: Replit Production Database with auto-injected `DATABASE_URL`
 - **Benefits**: Automatic scaling during traffic spikes, cost-effective (only runs when serving requests), production-ready asset serving
 
 ### Production-Readiness Fixes (Oct 19, 2025)

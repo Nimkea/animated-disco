@@ -15,12 +15,14 @@ Your autoscale deployment is already configured with:
 1. Open the **Database** tool from the left sidebar
 2. Click **"Switch to Production"** at the top
 3. Replit will automatically create and configure your production database
-4. The `DATABASE_URL` will be automatically set in production
+4. The `DATABASE_URL` will be **automatically injected** by Replit during deployment
+
+**⚠️ IMPORTANT**: Do NOT manually add `DATABASE_URL` to your Publishing Secrets if using Replit's Production Database. Replit automatically injects the correct connection string. Adding it manually can cause connection failures.
 
 ### Option B: Use External Database (Neon/Other)
 If you prefer to use your own database:
 1. Create a new production database in Neon (or your provider)
-2. You'll add the connection string in the secrets section below
+2. Manually add the `DATABASE_URL` to Publishing Secrets (see Step 2 below)
 
 ## Step 2: Configure Production Secrets
 
