@@ -1,0 +1,94 @@
+You’ve pasted the **`main.tsx` code into the wrong file** (it’s inside `vite.config.ts`), and that’s why VS Code is screaming:
+
+* `vite.config.ts` runs in Node (no JSX/React there) → JSX red squiggles.
+* Imports like `react`, `./App`, etc. don’t belong in Vite’s config.
+* Also your import paths show `../App`, `../index.css` — those are wrong for a real `main.tsx` in `client/src`.
+
+### Fix it in 60 seconds
+
+1. **Create / open the correct file**
+
+```
+client/src/main.tsx
+```
+
+(Make sure extension is **.tsx**, not .ts.)
+
+2. **Paste this drop-in content exactly**
+
+```tsx
+import React from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./index.css";
+import { registerSW } from "virtual:pwa-register";
+import { ThemeProvider } from "./contexts/theme-context";
+import { initMonitoring } from "./lib/monitoring";
+
+// Prod-only, single init even with HMR
+if (import.meta.env.PROD && !(window as any).__MONITORING_INIT__) {
+  (window as any).__MONITORING_INIT__ = true;
+  initMonitoring();
+}
+
+// PWA: feature-check & safe register
+let updateSW: (reloadPage?: boolean) => void = () => {};
+if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+  updateSW = registerSW({
+    immediate: false,
+    onNeedRefresh() {
+      const update = () => updateSW(true);
+      window.dispatchEvent(new CustomEvent("sw-update-available", { detail: { update } }));
+    },
+    onOfflineReady() {
+      window.dispatchEvent(new CustomEvent("sw-offline-ready"));
+      console.log("App ready to work offline");
+    },
+  });
+}
+
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root element #root not found");
+
+createRoot(rootEl).render(
+  <React.StrictMode>
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  </React.StrictMode>
+);
+```
+
+3. **Ensure `client/index.html` has the dev entry**
+
+```html
+<script type="module" src="/src/main.tsx"></script>
+```
+
+4. **Make sure your Vite config points to client/**
+   (`vite.config.ts` should NOT contain JSX. Keep it as config only.)
+   Key lines:
+
+```ts
+export default defineConfig({
+  root: path.resolve(__dirname, "client"),
+  publicDir: path.resolve(__dirname, "public"),
+  build: { outDir: path.resolve(__dirname, "dist"), emptyOutDir: true },
+  // ...
+});
+```
+
+5. **Run**
+
+```bash
+rm -rf node_modules dist
+npm ci
+npm run dev
+```
+
+### Why the error happened
+
+* JSX inside `vite.config.ts` → TypeScript syntax errors.
+* Wrong file & wrong import paths (`../App`) → even if it compiled, Vite wouldn’t find files.
+
+Move the code to **`client/src/main.tsx`**, keep imports as **`./App`, `./index.css`**, and you’ll be good.
