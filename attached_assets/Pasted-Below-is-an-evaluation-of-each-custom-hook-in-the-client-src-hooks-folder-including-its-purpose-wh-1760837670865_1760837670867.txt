@@ -1,0 +1,121 @@
+Below is an evaluation of each custom hook in the client/src/hooks folder, including its purpose, what it does well, and what could be improved.
+
+useAuth.ts
+
+Purpose: Calls /auth/me via React Query to determine whether the user is authenticated. It returns the user object, a loading flag, and a boolean isAuthenticated.
+
+Strengths:
+
+Uses credentials: "include" so cookies (session tokens) are sent correctly.
+
+Disables automatic retries (retry: false) to avoid spamming the endpoint on 401 responses.
+
+Returns a clean API (user, isLoading, isAuthenticated) for components to consume.
+
+Potential improvements:
+
+Expose error from useQuery so callers can display an error state.
+
+Centralise 401 handling. For example, if res.status === 401, you could call a shared handleUnauthorized() helper (as in authUtils.ts) to show a toast and redirect.
+
+Consider caching the CSRF token before this query runs to ensure authenticated calls have the correct header; see queryClient.ts for token management.
+
+use-confetti.ts
+
+Purpose: Provides a celebrate function to trigger different confetti patterns via the canvas-confetti library. Supports celebration types: achievement, streak, levelup, and a default.
+
+Strengths:
+
+Respects feature flags: checks featureFlags?.ux?.animations before running confetti.
+
+Defines clear patterns with varying particle counts, spreads and colours.
+
+Wraps the confetti call in try/catch so an error in the library won’t crash the UI.
+
+Potential improvements:
+
+You could accept optional overrides (e.g. custom colours or particle counts) to make celebrations more flexible.
+
+If confetti runs frequently, consider throttling or debouncing to avoid performance issues.
+
+useIsMobile (use-mobile.tsx)
+
+Purpose: Detects if the viewport is below a MOBILE_BREAKPOINT (768px) and returns a boolean.
+
+Strengths:
+
+Uses window.matchMedia with a change listener to update state when the viewport crosses the breakpoint.
+
+Initializes state on mount and cleans up the listener on unmount.
+
+Potential improvements:
+
+Update the breakpoint to come from a central theme or config so it stays consistent with your Tailwind breakpoints.
+
+Listen for orientationchange events if you need to adjust behaviour when the device orientation changes.
+
+use-notification-badge.ts
+
+Purpose: Fetches the number of unread notifications via React Query and updates the App icon’s badge using the Badging API (navigator.setAppBadge and navigator.clearAppBadge).
+
+Strengths:
+
+Polls /api/notifications/unread-count every 30 seconds to keep the badge current.
+
+Gracefully no-ops on browsers that don’t support the Badging API.
+
+Exposes both the unread count and whether the API is supported.
+
+Potential improvements:
+
+Handle network errors explicitly—currently the hook ignores the error state, which may leave badges stale if the call fails.
+
+When no notifications are unread, you call clearAppBadge(). Some implementations recommend clearing by passing undefined to setAppBadge() as an alternative.
+
+Badging is most useful for installed PWAs; in browsers, the method may be unavailable. Consider showing an on-screen badge in the navbar as a fallback.
+
+useTheme.ts
+
+Purpose: Retrieves the current theme (light/dark) from ThemeContext.
+
+Strengths:
+
+Simple and type-safe: throws if the hook is used outside of ThemeProvider.
+
+Encourages a centralised theme provider, which simplifies toggling dark/light modes.
+
+Potential improvements:
+
+You could add helpers here to toggle or persist the theme (e.g. read/write localStorage) instead of handling that logic in the provider.
+
+use-toast.ts
+
+Purpose: Implements a global toast system using a reducer, a simple in-memory store (memoryState), and a useToast hook. Provides toast() to create a toast, update() to modify it, and dismiss() to hide it.
+
+Strengths:
+
+Uses a reducer pattern with controlled side effects (dismiss actions schedule a removal timeout).
+
+Supports updating existing toasts and limiting the number of concurrent toasts (TOAST_LIMIT).
+
+Consumers can either call the toast() helper or use the useToast() hook to render the toasts UI.
+
+Potential improvements:
+
+The constant TOAST_REMOVE_DELAY is set to 1 000 000 ms (~16.7 minutes), meaning a toast stays in memory for a very long time. Consider reducing this to a more typical 4‑8 seconds.
+
+The global listeners array must be cleaned up properly; your effect removes the listener on unmount, which is good, but ensure that unmounts happen for all usages to avoid memory leaks.
+
+Add the ability to set different auto‑dismiss durations per toast (e.g. allow ToastProps to include a duration override).
+
+General best practice
+
+Hooks that perform network requests or side effects should handle errors gracefully and avoid leaking implementation details. For example, in authentication flows, use generic error messages so attackers cannot infer whether a username exists
+codesignal.com
+.
+
+Store sensitive data like API tokens or private keys in environment variables rather than in your codebase
+configu.com
+—this applies to any hook that might need configuration values.
+
+By refining timeout values, adding error handling and leveraging central configuration for breakpoints and themes, these hooks will remain robust and maintainable as your application grows.

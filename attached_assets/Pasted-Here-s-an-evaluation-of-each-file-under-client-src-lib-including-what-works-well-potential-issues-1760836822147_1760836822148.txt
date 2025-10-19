@@ -1,0 +1,99 @@
+Here’s an evaluation of each file under client/src/lib/, including what works well, potential issues and practical suggestions.
+
+auth.ts
+
+Purpose: Provides a single requireSession() function that fetches /auth/me with credentials and throws a user‑friendly error if the server returns 401 or any non‑OK response.
+
+Strengths: Uses fetch with credentials: 'include' to carry cookies, and checks HTTP status codes cleanly.
+
+Improvements:
+
+The error messages could be less ambiguous and avoid exposing internal route names. Consider localising them for different flows.
+
+For repeated use, you could wrap this function in a custom React Query hook that automatically redirects on 401, similar to handleUnauthorized in authUtils.ts.
+
+authUtils.ts
+
+Purpose: Defines a helper type (ApiError), a robust isUnauthorizedError() check and a handleUnauthorized() function that triggers a toast and redirects the user to /api/login.
+
+Strengths: The isUnauthorizedError helper is more thorough than a simple regex; it checks status and code properties before falling back to message matching
+cheatsheetseries.owasp.org
+. The redirect is delayed slightly to allow the toast to render.
+
+Improvements:
+
+Centralise the 401 handling logic. You could export a single helper (e.g. useUnauthorizedRedirect) that calls toast internally, so you don’t need to pass a callback.
+
+Avoid hard‑coding /api/login; instead read a LOGIN_URL from environment variables or a config file to keep server/client paths consistent.
+
+csrf.ts
+
+Purpose: Fetches a CSRF token from /auth/csrf, caches it on the window object and returns it on subsequent calls.
+
+Strengths: Uses cache: 'no-store' to avoid caching the CSRF endpoint response.
+
+Risks & improvements:
+
+Storing the token on window.CSRF_TOKEN makes it globally accessible to any script running in the page. OWASP notes that CSRF tokens should be tied to the user’s session and sent via custom HTTP headers so that cross‑site requests can’t set them
+cheatsheetseries.owasp.org
+. Consider storing the token in a closure or state module instead of mutating window; this reduces exposure in case of XSS.
+
+Combine this logic with initCSRFToken in queryClient.ts to avoid two separate token stores, and handle token refreshes when the server rotates tokens.
+
+monitoring.ts
+
+Purpose: Conditionally initialises Sentry error tracking and sets up Web Vitals reporting via the web-vitals package.
+
+Strengths: Checks that VITE_SENTRY_DSN is defined before initialising Sentry; integrates both browser tracing and session replay; logs metrics to console for quick debugging.
+
+Improvements:
+
+Ensure that verbose logging (e.g. console.log('[Web Vitals] ...')) is disabled in production builds or behind an environment flag, so it doesn’t clutter user consoles.
+
+Allow configuration of sample rates (e.g. tracesSampleRate) via environment variables.
+
+queryClient.ts
+
+Purpose: Configures a global QueryClient for React Query and centralises API calls. It includes initCSRFToken() to fetch the token, apiRequest() for HTTP mutations (adding x-csrf-token when needed) and a custom query function generator (getQueryFn).
+
+Strengths:
+
+Encapsulates CSRF token handling: when csrfToken is set, it automatically adds the token for all POST/PUT/PATCH/DELETE requests. This aligns with the recommendation that CSRF tokens be sent via custom headers
+cheatsheetseries.owasp.org
+.
+
+Configures sensible defaults for queries: no automatic retries, no refetch on window focus, and infinite staleTime, which prevents unnecessary network requests.
+
+Provides an on401 option in getQueryFn to either throw or return null, giving flexibility in UI.
+
+Improvements:
+
+initCSRFToken() doesn’t block API requests while it loads the token, so a user who starts interacting immediately might send a mutation without the token. Gate calls on its resolution (e.g. load the token before rendering).
+
+Use a typed error class instead of string concatenation in throwIfResNotOk(), so consumers can inspect error.status more easily.
+
+Combine with handleUnauthorized() from authUtils.ts to auto‑redirect when res.status === 401.
+
+utils.ts
+
+Purpose: Exports a simple cn function that merges class names via clsx and tailwind-merge.
+
+Strengths: This utility prevents class name conflicts and is a standard Tailwind/clsx pattern.
+
+Improvements: None needed; keep it as a lightweight helper.
+
+General advice
+
+Secret management: Ensure environment variables like API URLs and login routes are read from a secure source and not hard‑coded. The Configu guide reminds us not to store secrets in the codebase and to exclude .env from version control
+configu.com
+.
+
+CSRF handling: Keep the CSRF token associated with the session, send it via an HTTP header as you already do, and avoid persisting it in global objects or local storage to minimise exposure
+cheatsheetseries.owasp.org
+.
+
+Error messages: Use generic messages for login errors or API failures. This prevents attackers from inferring whether a username exists or not
+codesignal.com
+ (from earlier analysis).
+
+Overall, this library layer is well organised and separates concerns clearly. With a few small tweaks—especially around CSRF token storage and unified 401 handling—you’ll have a robust foundation for client‑side authentication and API calls.
