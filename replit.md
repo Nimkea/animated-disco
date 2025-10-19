@@ -3,6 +3,13 @@ XNRT is a React PWA off-chain gamification community earning platform where user
 
 ## Recent Changes
 
+### Autoscale Deployment Configuration (Oct 19, 2025)
+Configured autoscale deployment for production with optimized build and run commands:
+- **Deployment Type**: Autoscale (stateless, scales based on demand)
+- **Build Command**: `npm run build` (builds frontend with Vite, bundles backend with esbuild)
+- **Run Command**: `node dist/index.js` (production-optimized Express server)
+- **Benefits**: Automatic scaling during traffic spikes, cost-effective (only runs when serving requests), production-ready asset serving
+
 ### Production-Readiness Fixes (Oct 19, 2025)
 Comprehensive production stability improvements to eliminate MIME errors and enhance deployment reliability:
 
