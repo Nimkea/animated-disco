@@ -1,0 +1,298 @@
+Awesome drop. I went through every file you sent and mapped it to the MIME error + overall prod safety. Here’s a crisp, do-this-now plan with small patches.
+
+---
+
+# Root cause refresher
+
+Your **prod** served `client/index.html` (which points at `/src/main.tsx`) instead of **built** `dist/public/index.html` (which points at `/assets/*.js`). Browsers then fetched `/src/main.tsx` → server returned HTML → strict MIME error.
+
+So the fixes are:
+
+1. always deploy **dist/public/**, never `client/`
+2. make the server serve **/assets first**, SPA fallback **last** (you mostly did)
+3. ensure the SW never caches HTML under a `.js` request (I gave you a patched `sw.ts` last message)
+4. avoid enabling the SW in dev (prevents caching dev HTML)
+
+Below are your file-by-file tweaks.
+
+---
+
+## ✅ vite.config.ts – 6 small but important edits
+
+**What to change**
+
+1. **Disable SW in dev** (prevents the “dev HTML cached in prod” trap).
+2. **Don’t auto-inject registration** when you already call `registerSW` in `main.tsx`.
+3. **Safer path resolution** (avoid `import.meta.dirname` portability issues).
+4. Keep your manualChunks, but remember order comments don’t enforce load order—fine though.
+5. Ensure webmanifest is emitted (you did).
+6. Load Replit dev-only plugins only in dev.
+
+**Patch**
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { fileURLToPath } from "url";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { VitePWA } from "vite-plugin-pwa";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isProd = process.env.NODE_ENV === "production";
+
+export default defineConfig({
+  plugins: [
+    react(),
+    !isProd && runtimeErrorOverlay(),
+    VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",          // relative to Vite root ("client")
+      filename: "sw.ts",
+      // You already register with virtual:pwa-register in main.tsx:
+      injectRegister: null,   // ❗ prevent double registration
+      registerType: "prompt",
+      devOptions: {
+        enabled: false,       // ❗ disable SW in dev (important)
+        navigateFallback: "index.html",
+      },
+      includeAssets: [
+        "favicon.ico", "apple-touch-icon.png", "favicon-16x16.png", "favicon-32x32.png"
+      ],
+      manifest: {
+        id: "/?app-id=xnrt",
+        name: "XNRT - We Build the NextGen",
+        short_name: "XNRT",
+        description: "Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion.",
+        start_url: "/?source=pwa",
+        scope: "/",
+        theme_color: "#000000",
+        background_color: "#000000",
+        display: "standalone",
+        orientation: "portrait-primary",
+        icons: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icon-256.png", sizes: "256x256", type: "image/png", purpose: "any" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+        ],
+        shortcuts: [
+          { name: "Staking", short_name: "Stake", description: "Start staking XNRT tokens", url: "/staking", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+          { name: "Mining", short_name: "Mine", description: "Start a mining session", url: "/mining", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+          { name: "Referrals", short_name: "Refer", description: "View referral network", url: "/referrals", icons: [{ src: "/icon-192.png", sizes: "192x192" }] }
+        ]
+      },
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}"]
+      }
+    }),
+    // Replit dev plugins only when REPL_ID exists AND not prod
+    ...(!isProd && process.env.REPL_ID
+      ? [
+          // dynamic import is okay, but keep it inside the conditional
+          (await import("@replit/vite-plugin-cartographer")).cartographer(),
+          (await import("@replit/vite-plugin-dev-banner")).devBanner(),
+        ]
+      : []),
+  ].filter(Boolean),
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "client", "src"),
+      "@shared": path.resolve(__dirname, "shared"),
+      "@assets": path.resolve(__dirname, "attached_assets"),
+    },
+  },
+  root: path.resolve(__dirname, "client"),
+  build: {
+    outDir: path.resolve(__dirname, "dist/public"),
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules")) {
+            const after = id.split("node_modules/")[1] || "";
+            const [a, b] = after.split("/");
+            const pkg = a?.startsWith("@") ? `${a}/${b}` : a;
+
+            if (["react", "react-dom", "react-is", "scheduler", "tslib", "object-assign"].includes(pkg)) {
+              return "vendor-react-core";
+            }
+
+            const UTILITIES = [
+              "ms","debug","date-fns","nanoid","clsx","class-variance-authority",
+              "tailwind-merge","tailwindcss-animate","zod","memoizee"
+            ];
+            if (UTILITIES.includes(pkg)) return "vendor-utilities";
+
+            const REACT_DEPENDENT = [
+              "recharts","d3","d3-array","d3-color","d3-format","d3-interpolate","d3-path","d3-scale",
+              "d3-scale-chromatic","d3-shape","d3-time","d3-time-format","internmap","delaunator","robust-predicates",
+              "lucide-react","framer-motion","@tanstack/react-query","wouter",
+              "react-hook-form","@hookform/resolvers","@sentry/react","react-day-picker",
+              "embla-carousel-react","react-resizable-panels","cmdk","vaul","input-otp","react-icons",
+              "canvas-confetti","next-themes"
+            ];
+            if (REACT_DEPENDENT.includes(pkg) || pkg?.startsWith("d3-") || pkg?.startsWith("@radix-ui/")) {
+              return "vendor-react-ecosystem";
+            }
+            return "vendor-libs";
+          }
+
+          if (id.includes("/pages/admin/")) return "admin";
+          if (id.includes("/pages/staking") || id.includes("/pages/mining")) return "earning";
+          if (id.includes("/pages/referrals") || id.includes("/pages/leaderboard")) return "social";
+          if (id.includes("/pages/deposit") || id.includes("/pages/withdrawal")) return "transactions";
+        },
+      },
+    },
+    chunkSizeWarningLimit: 800,
+  },
+  server: {
+    fs: { strict: true, deny: ["**/.*"] },
+  },
+});
+```
+
+> If your environment doesn’t support top-level `await` in vite.config, convert those two dynamic imports to a small helper function or `require()` in CJS—otherwise this will work in Node ≥18 ESM.
+
+---
+
+## ✅ tsconfig.json
+
+Looks fine. Paths align with your Vite root and aliases.
+
+---
+
+## ✅ tailwind.config.ts
+
+Looks good. Colors read from CSS vars (HSL) and content paths point at `./client`. No change needed.
+
+---
+
+## ✅ postcss.config.js
+
+Good.
+
+---
+
+## ✅ drizzle.config.ts
+
+Good (guard for `DATABASE_URL`).
+
+---
+
+## ✅ components.json / .stylelintrc.json
+
+Both fine.
+
+---
+
+## ⚠️ server/vite.ts (critical for prod)
+
+Two things:
+
+1. **Dev** path is good (uses Vite middlewares + `client/index.html` and `/src/main.tsx?v=...`).
+2. **Prod serveStatic** must point at **dist/public**, not `server/public` (depends on how you run).
+
+Your current code:
+
+```ts
+const distPath = path.resolve(import.meta.dirname, "public");
+```
+
+* If you run **bundled** server from `dist/index.js`, `import.meta.dirname` will be `dist` → `dist/public` (OK).
+* If you run `node server/index.js` directly, that becomes `server/public` (NOT OK).
+
+**Make it robust:**
+
+```ts
+export function serveStatic(app: Express) {
+  // Resolve against project root regardless of how the server is launched
+  const distPath = path.resolve(process.cwd(), "dist/public");
+
+  if (!fs.existsSync(distPath)) {
+    throw new Error(`Could not find the build directory: ${distPath}. Run "pnpm build" first.`);
+  }
+
+  app.use("/assets", express.static(path.join(distPath, "assets"), {
+    immutable: true,
+    maxAge: "1y",
+    setHeaders: (res, filepath) => {
+      if (filepath.endsWith(".js")) {
+        res.setHeader("Content-Type", "text/javascript; charset=utf-8"); // prefer text/javascript
+      } else if (filepath.endsWith(".css")) {
+        res.setHeader("Content-Type", "text/css; charset=utf-8");
+      }
+    },
+  }));
+
+  app.use(express.static(distPath, { maxAge: "1h" }));
+
+  app.use("*", (req, res, next) => {
+    const accept = req.headers.accept || "";
+    if (accept.includes("text/html")) {
+      res.sendFile(path.join(distPath, "index.html"));
+    } else {
+      next(); // 404 for non-HTML missing assets (do NOT serve index.html)
+    }
+  });
+}
+```
+
+> Note I switched JS to `text/javascript` (modules accept it just fine).
+
+---
+
+## ⚠️ client/index.html (dev-only) → don’t deploy this
+
+This file must **never** go to production. It references `/src/main.tsx`. That’s correct for dev, but prod **must** use `dist/public/index.html` generated by Vite, which references `/assets/*.js`.
+
+Also, move Google Fonts to HTML (not CSS `@import`) as we discussed for CSP + performance:
+
+```html
+<!-- in <head> -->
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Lora:wght@400;500;600;700&display=swap" rel="stylesheet">
+```
+
+And remove the `@import` lines from `index.css`.
+
+---
+
+## ✅ client/vite-env.d.ts
+
+Good.
+
+---
+
+# Final deployment checklist (10 mins)
+
+1. **Apply the `sw.ts` patch** I sent earlier (no unconditional `skipWaiting`, destination-based caching, content-type guard).
+2. **Apply the vite.config.ts changes** above (dev SW off, injectRegister null, safer path).
+3. **Fix `serveStatic`** to resolve `dist/public` via `process.cwd()`.
+4. **Move Google Fonts to HTML** and remove CSS `@import`.
+5. Build:
+
+   ```bash
+   pnpm build
+   ```
+6. Run prod server that serves **dist/public** (not `client/`):
+
+   ```bash
+   NODE_ENV=production node dist/index.js
+   ```
+7. In the browser:
+
+   * DevTools → Application → **Unregister SW + Clear storage**
+   * Hard reload
+8. Verify headers:
+
+   ```bash
+   curl -I https://your.domain/assets/<hashed>.js | grep -i content-type
+   # expect: text/javascript
+   ```
+9. Happen to visit `/src/main.tsx` in prod? It should be **404**, not `200 text/html`.
+
+That’s it. Do those and the MIME error loop dies for good.

@@ -1,0 +1,109 @@
+Nice—this `main.tsx` is close to production-ready. A few tweaks will make it safer, faster, and avoid dev-mode gotchas.
+
+# What to change
+
+## 1) Only init monitoring in prod + avoid double-init on HMR
+
+Most monitoring SDKs shouldn’t run in dev/HMR. Gate it and guard against re-runs.
+
+```ts
+// Initialize monitoring (Sentry + Web Vitals) only once in prod
+if (import.meta.env.PROD && !(window as any).__MONITORING_INIT__) {
+  (window as any).__MONITORING_INIT__ = true;
+  initMonitoring();
+}
+```
+
+## 2) Register the SW only when supported + keep current update flow
+
+`virtual:pwa-register` is fine, but add the feature check (prevents SSR/tools from choking) and keep your custom events.
+
+```ts
+let updateSW: (reloadPage?: boolean) => void = () => {};
+
+if ('serviceWorker' in navigator) {
+  // Tip: set `immediate: false` so your `updateSW(true)` controls activation
+  updateSW = registerSW({
+    immediate: false,
+    onNeedRefresh() {
+      const update = () => updateSW(true); // skipWaiting + reload
+      window.dispatchEvent(new CustomEvent('sw-update-available', { detail: { update } }));
+    },
+    onOfflineReady() {
+      window.dispatchEvent(new CustomEvent('sw-offline-ready'));
+      console.log('App ready to work offline');
+    },
+  });
+}
+```
+
+## 3) StrictMode + safer root lookup
+
+StrictMode helps catch side-effects (especially with React Query/wouter). Also fail fast if `#root` is missing.
+
+```ts
+import React from "react";
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root element #root not found");
+
+createRoot(rootEl).render(
+  <React.StrictMode>
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  </React.StrictMode>
+);
+```
+
+> Note: StrictMode double-invokes effects in dev only; your code should be side-effect safe (React Query is fine).
+
+## 4) Tie-in with your MIME error
+
+This file is OK. The MIME error came from shipping `index.html` that referenced `/src/main.tsx`. After building with Vite and deploying the **dist HTML + hashed `/assets/*.js`**, this entry stays the same and works.
+
+# Final, polished `main.tsx`
+
+```ts
+import React from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./index.css";
+import { registerSW } from "virtual:pwa-register";
+import { ThemeProvider } from "./contexts/theme-context";
+import { initMonitoring } from "./lib/monitoring";
+
+// Monitoring: prod-only, single init even with HMR
+if (import.meta.env.PROD && !(window as any).__MONITORING_INIT__) {
+  (window as any).__MONITORING_INIT__ = true;
+  initMonitoring();
+}
+
+// PWA service worker (feature-checked)
+let updateSW: (reloadPage?: boolean) => void = () => {};
+if ("serviceWorker" in navigator) {
+  updateSW = registerSW({
+    immediate: false,
+    onNeedRefresh() {
+      const update = () => updateSW(true);
+      window.dispatchEvent(new CustomEvent("sw-update-available", { detail: { update } }));
+    },
+    onOfflineReady() {
+      window.dispatchEvent(new CustomEvent("sw-offline-ready"));
+      console.log("App ready to work offline");
+    },
+  });
+}
+
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root element #root not found");
+
+createRoot(rootEl).render(
+  <React.StrictMode>
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  </React.StrictMode>
+);
+```
+
+This keeps your current behavior, prevents double initialization, and plays nicely with the production build. Send the next file when you’re ready.
