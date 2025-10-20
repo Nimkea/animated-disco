@@ -43,9 +43,28 @@ const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 
 /** Simple Admin gate (client-side UX; keep server/RLS checks too) */
 function AdminRoute({ component: Comp }: { component: React.ComponentType }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
+  
+  // Debug logging
+  console.log("AdminRoute check:", { isAuthenticated, isLoading, user, isAdmin: (user as any)?.isAdmin });
+  
+  // Show loading while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Checking permissions...</div>
+      </div>
+    );
+  }
+  
+  // Check admin status
   const isAdmin = isAuthenticated && (user as any)?.isAdmin === true;
-  if (!isAdmin) return <Redirect to="/" />;
+  
+  if (!isAdmin) {
+    console.log("Admin access denied - redirecting to home");
+    return <Redirect to="/" />;
+  }
+  
   return <Comp />;
 }
 
