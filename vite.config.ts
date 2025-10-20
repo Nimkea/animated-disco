@@ -90,7 +90,9 @@ export default defineConfig({
       : []),
   ],
 
+  // ✅ Ensure React isn't duplicated or hoisted into chart chunks
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
@@ -109,23 +111,35 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
+          // ✅ Isolate React first
           if (
             id.includes("node_modules/react") ||
             id.includes("node_modules/react-dom")
-          )
+          ) {
             return "vendor-react";
+          }
+
+          // ✅ Chart libraries (never include React)
+          if (
+            id.includes("node_modules/recharts") ||
+            id.includes("node_modules/d3-")
+          ) {
+            return "vendor-charts";
+          }
+
+          // UI libs
           if (
             id.includes("node_modules/@radix-ui") ||
             id.includes("node_modules/lucide-react") ||
             id.includes("node_modules/framer-motion")
-          )
+          ) {
             return "vendor-ui";
-          if (
-            id.includes("node_modules/recharts") ||
-            id.includes("node_modules/d3-")
-          )
-            return "vendor-charts";
+          }
+
+          // Other vendor libs
           if (id.includes("node_modules")) return "vendor-libs";
+
+          // Admin & feature groupings
           if (id.includes("/pages/admin/")) return "admin";
           if (id.includes("/pages/staking") || id.includes("/pages/mining"))
             return "earning";
@@ -142,7 +156,8 @@ export default defineConfig({
         minifyInternalExports: false,
       },
     },
-    // ✅ safer minifier to avoid Recharts scope issues
+
+    // ✅ safer minifier to avoid scope/hoisting bugs
     minify: "terser",
     terserOptions: {
       compress: {
@@ -155,7 +170,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
   },
 
-  // ✅ ensure Recharts pre-bundles correctly and global scope exists
+  // ✅ Ensure Recharts & D3 pre-bundle correctly
   optimizeDeps: {
     include: ["recharts"],
     esbuildOptions: {
