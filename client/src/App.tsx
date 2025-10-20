@@ -44,7 +44,7 @@ const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 /** Simple Admin gate (client-side UX; keep server/RLS checks too) */
 function AdminRoute({ component: Comp }: { component: React.ComponentType }) {
   const { isAuthenticated, user } = useAuth();
-  const isAdmin = isAuthenticated && (user as any)?.role === "Admin"; // adapt if your shape differs
+  const isAdmin = isAuthenticated && (user as any)?.isAdmin === true;
   if (!isAdmin) return <Redirect to="/" />;
   return <Comp />;
 }
