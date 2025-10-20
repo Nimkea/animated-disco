@@ -26,17 +26,24 @@ export async function setupVite(app: Express, server: Server) {
     allowedHosts: true as const,
   };
 
+  // Resolve the Vite config (it's an async function)
+  const userConfig = typeof viteConfig === "function" 
+    ? await viteConfig({ command: "serve", mode: process.env.NODE_ENV || "development" })
+    : viteConfig;
+
   const vite = await createViteServer({
-    ...viteConfig,
+    ...userConfig,
     configFile: false,
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
       },
     },
-    server: serverOptions,
+    server: { 
+      ...(typeof userConfig === 'object' && 'server' in userConfig ? userConfig.server : {}),
+      ...serverOptions 
+    },
     appType: "custom",
   });
 

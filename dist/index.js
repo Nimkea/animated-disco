@@ -5253,12 +5253,16 @@ import { createServer as createViteServer, createLogger } from "vite";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { VitePWA } from "vite-plugin-pwa";
-var vite_config_default = defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
+var vite_config_default = defineConfig(async ({ mode }) => {
+  const isDev = mode === "development";
+  const plugins = [react()];
+  if (isDev && process.env.REPL_ID) {
+    const { cartographer } = await import("@replit/vite-plugin-cartographer");
+    const { devBanner } = await import("@replit/vite-plugin-dev-banner");
+    plugins.push(cartographer(), devBanner());
+  }
+  plugins.push(
     VitePWA({
       strategies: "injectManifest",
       srcDir: "src",
@@ -5266,7 +5270,7 @@ var vite_config_default = defineConfig({
       registerType: "prompt",
       injectRegister: "auto",
       devOptions: {
-        enabled: true,
+        enabled: isDev,
         type: "module",
         navigateFallback: "index.html"
       },
@@ -5335,66 +5339,53 @@ var vite_config_default = defineConfig({
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}"]
       }
-    }),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      ),
-      await import("@replit/vite-plugin-dev-banner").then(
-        (m) => m.devBanner()
-      )
-    ] : []
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
-            return "vendor-react";
-          }
-          if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/lucide-react") || id.includes("node_modules/framer-motion")) {
-            return "vendor-ui";
-          }
-          if (id.includes("node_modules/recharts") || id.includes("node_modules/d3-")) {
-            return "vendor-charts";
-          }
-          if (id.includes("node_modules")) {
-            return "vendor-libs";
-          }
-          if (id.includes("/pages/admin/")) {
-            return "admin";
-          }
-          if (id.includes("/pages/staking") || id.includes("/pages/mining")) {
-            return "earning";
-          }
-          if (id.includes("/pages/referrals") || id.includes("/pages/leaderboard")) {
-            return "social";
-          }
-          if (id.includes("/pages/deposit") || id.includes("/pages/withdrawal")) {
-            return "transactions";
-          }
-        }
+    })
+  );
+  return {
+    base: "/",
+    plugins,
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets")
       }
     },
-    chunkSizeWarningLimit: 600
-    // Increase from default 500KB
-  },
-  server: {
-    fs: {
-      strict: true,
-      deny: ["**/.*"]
+    root: path.resolve(import.meta.dirname, "client"),
+    optimizeDeps: {
+      include: ["react", "react-dom"]
+    },
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true,
+      sourcemap: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("node_modules")) {
+              return "vendor";
+            }
+          }
+        }
+      },
+      chunkSizeWarningLimit: 600
+    },
+    server: {
+      fs: { strict: true, deny: ["**/.*"] },
+      watch: {
+        usePolling: true,
+        interval: 300,
+        ignored: [
+          "**/dist/**",
+          "**/.pnpm/**",
+          "**/pnpm-store/**",
+          "**/.local/**",
+          "/nix/store/**",
+          "**/.cache/**"
+        ]
+      }
     }
-  }
+  };
 });
 
 // server/vite.ts
@@ -5415,17 +5406,20 @@ async function setupVite(app2, server) {
     hmr: { server },
     allowedHosts: true
   };
+  const userConfig = typeof vite_config_default === "function" ? await vite_config_default({ command: "serve", mode: process.env.NODE_ENV || "development" }) : vite_config_default;
   const vite = await createViteServer({
-    ...vite_config_default,
+    ...userConfig,
     configFile: false,
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
       }
     },
-    server: serverOptions,
+    server: {
+      ...typeof userConfig === "object" && "server" in userConfig ? userConfig.server : {},
+      ...serverOptions
+    },
     appType: "custom"
   });
   app2.use(vite.middlewares);
@@ -5456,14 +5450,40 @@ async function setupVite(app2, server) {
   });
 }
 function serveStatic(app2) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
+  const distPath = path2.resolve(process.cwd(), "dist/public");
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
     );
   }
-  app2.use(express.static(distPath));
-  app2.use("*", (_req, res) => {
+  app2.use((req, res, next) => {
+    if (req.method === "GET" && (req.path === "/" || req.path.endsWith(".html"))) {
+      res.setHeader("Cache-Control", "no-store");
+    }
+    next();
+  });
+  app2.use(
+    express.static(distPath, {
+      maxAge: "1y",
+      immutable: true,
+      setHeaders(res, file) {
+        if (file.endsWith(".js")) {
+          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        }
+        if (file.endsWith(".css")) {
+          res.setHeader("Content-Type", "text/css; charset=utf-8");
+        }
+        if (file.endsWith(".webmanifest")) {
+          res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+        }
+      }
+    })
+  );
+  app2.get("*", (req, res) => {
+    if (/\.[a-z0-9]+$/i.test(req.path)) {
+      return res.status(404).end();
+    }
+    res.setHeader("Cache-Control", "no-store");
     res.sendFile(path2.resolve(distPath, "index.html"));
   });
 }
@@ -5622,22 +5642,18 @@ app.use(
     contentSecurityPolicy: isDevelopment ? false : {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://fonts.googleapis.com"
-        ],
-        imgSrc: ["'self'", "data:", "https:"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
         connectSrc: ["'self'", "wss:", "https:"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
         frameSrc: ["'none'"],
-        workerSrc: ["'self'"],
+        workerSrc: ["'self'", "blob:"],
         reportUri: ["/csp-report"]
       },
-      reportOnly: true
+      reportOnly: false
     },
     crossOriginEmbedderPolicy: false
   })
@@ -5683,9 +5699,9 @@ app.use((req, res, next) => {
   const path3 = req.path;
   let capturedJson;
   const originalJson = res.json.bind(res);
-  res.json = ((body, ...args) => {
+  res.json = ((body) => {
     capturedJson = body;
-    return originalJson(body, ...args);
+    return originalJson(body);
   });
   res.on("finish", () => {
     if (!path3.startsWith("/api")) return;
@@ -5707,10 +5723,7 @@ function safeStringify(v) {
     return "";
   }
 }
-app.get(
-  "/healthz",
-  (_req, res) => res.status(200).json({ ok: true, env: app.get("env") })
-);
+app.get("/healthz", (_req, res) => res.status(200).json({ ok: true, env: app.get("env") }));
 app.get("/readyz", (_req, res) => res.status(200).json({ ready: true }));
 (async () => {
   const server = await registerRoutes(app);
@@ -5755,9 +5768,7 @@ app.get("/readyz", (_req, res) => res.status(200).json({ ready: true }));
   );
   server.on("error", (err) => {
     if (err?.code === "EADDRINUSE") {
-      console.error(
-        `[server] Port ${PORT} is already in use. Stop the other process or change PORT.`
-      );
+      console.error(`[server] Port ${PORT} is already in use. Stop the other process or change PORT.`);
     } else {
       console.error("[server] error:", err);
     }

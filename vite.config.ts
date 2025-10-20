@@ -123,13 +123,18 @@ export default defineConfig(async ({ mode }) => {
       chunkSizeWarningLimit: 600,
     },
     server: {
+      fs: { strict: true, deny: ["**/.*"] },
       watch: {
         usePolling: true,
-        interval: 1000,
-      },
-      fs: {
-        strict: true,
-        deny: ["**/.*"],
+        interval: 300,
+        ignored: [
+          "**/dist/**",
+          "**/.pnpm/**",
+          "**/pnpm-store/**",
+          "**/.local/**",
+          "/nix/store/**",
+          "**/.cache/**",
+        ],
       },
     },
   };
