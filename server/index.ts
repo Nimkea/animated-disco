@@ -23,18 +23,18 @@ app.use(
       : {
           directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
+            scriptSrc: ["'self'", "'unsafe-eval'", "'wasm-unsafe-eval'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-            imgSrc: ["'self'", "data:", "https:"],
+            imgSrc: ["'self'", "data:", "https:", "blob:"],
             connectSrc: ["'self'", "wss:", "https:"],
-            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
             frameSrc: ["'none'"],
-            workerSrc: ["'self'"],
+            workerSrc: ["'self'", "blob:"],
             reportUri: ["/csp-report"],
           },
-          reportOnly: true,
+          reportOnly: false,
         },
     crossOriginEmbedderPolicy: false,
   })

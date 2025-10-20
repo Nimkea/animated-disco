@@ -109,9 +109,16 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React core libraries
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+          // React core - must load first
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
             return 'vendor-react';
+          }
+          
+          // React ecosystem (hooks, utilities that depend on React)
+          if (id.includes('node_modules/@tanstack/react-query') || 
+              id.includes('node_modules/react-hook-form') ||
+              id.includes('node_modules/wouter')) {
+            return 'vendor-react-ecosystem';
           }
           
           // UI libraries (Radix UI, Lucide, etc.)
@@ -121,7 +128,7 @@ export default defineConfig({
             return 'vendor-ui';
           }
           
-          // Chart libraries - separate D3 from Recharts to avoid circular deps
+          // Chart libraries - D3 first, then Recharts
           if (id.includes('node_modules/d3-')) {
             return 'vendor-d3';
           }
@@ -129,17 +136,17 @@ export default defineConfig({
             return 'vendor-charts';
           }
           
-          // Other vendor libraries
+          // Other vendor libraries (non-React)
           if (id.includes('node_modules')) {
             return 'vendor-libs';
           }
           
-          // Admin pages - separate bundle (most users never see these)
+          // Admin pages - separate bundle
           if (id.includes('/pages/admin/')) {
             return 'admin';
           }
           
-          // User pages - group by feature area
+          // User pages - group by feature
           if (id.includes('/pages/staking') || id.includes('/pages/mining')) {
             return 'earning';
           }
