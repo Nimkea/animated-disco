@@ -2,6 +2,13 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
+- **October 20, 2025**: Fixed production errors and development ENOSPC issues:
+  - **Vite Config**: Consolidated all node_modules into single vendor chunk to prevent React fragmentation and load-order issues. Enabled polling watcher with comprehensive ignore patterns to resolve ENOSPC file watcher limits.
+  - **CSP Security**: Removed 'unsafe-eval' from production CSP (strict security). CSP disabled in development to allow HMR.
+  - **Static Serving**: Fixed distPath to dist/public, added proper Content-Type headers for JS/CSS/webmanifest, prevented HTML fallback for missing assets.
+  - **Server/Vite Integration**: Fixed async Vite config invocation to properly resolve root path and load plugins.
+  - **Environment Variables**: Added CHOKIDAR_USEPOLLING and WATCHPACK_POLLING to dev script for stable file watching.
+  - All production builds now generate single vendor bundle; development server runs without ENOSPC errors.
 - **October 17, 2025**: Project cleanup - removed 160+ temporary development artifacts from `attached_assets/` folder (old images, pasted text files, outdated icon bundles, patch files, and screenshots). All active PWA icons remain in `client/public/`. Project size significantly reduced.
 
 ## User Preferences
