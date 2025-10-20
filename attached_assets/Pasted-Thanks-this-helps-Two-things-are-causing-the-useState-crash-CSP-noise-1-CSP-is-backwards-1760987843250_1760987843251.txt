@@ -1,0 +1,124 @@
+Thanks—this helps. Two things are causing the `useState` crash + CSP noise:
+
+1. **CSP is backwards in prod**
+   Your server enables **`'unsafe-eval'` in production**. That weakens security and can also interact badly with Cloudflare/optimizers/dev overlays. In prod you should **not** allow `'unsafe-eval'`.
+
+2. **Static file serving must never return HTML for chunk URLs**
+   If `/assets/vendor-*.js` ever 404s and your server falls back to `index.html`, the browser “executes” HTML as JS, imports resolve weirdly, and you get things like `React`/`useState` being `undefined`.
+
+Below are drop-in fixes.
+
+---
+
+## A. Fix Helmet CSP (prod: no `unsafe-eval`)
+
+Change your Helmet block to this (dev = off, prod = strict):
+
+```ts
+const isDevelopment = app.get("env") === "development";
+
+app.use(
+  helmet({
+    contentSecurityPolicy: isDevelopment
+      ? false // dev: disabled for HMR/tools
+      : {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],               // <-- no 'unsafe-eval' in prod
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            imgSrc: ["'self'", "data:", "https:", "blob:"],
+            connectSrc: ["'self'", "wss:", "https:"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+            workerSrc: ["'self'", "blob:"],
+            reportUri: ["/csp-report"],
+          },
+          reportOnly: false,
+        },
+    crossOriginEmbedderPolicy: false,
+  })
+);
+```
+
+> We already removed the Replit error overlay in production in the Vite config I sent, so you do **not** need `'unsafe-eval'` in prod.
+
+---
+
+## B. Serve the correct folder and never fall back HTML for asset paths
+
+Ensure your prod static server serves **the same path you build to** (`dist/public`) and that **asset 404s don’t fall back to HTML**.
+
+Use this `serveStatic` (in `server/vite.ts` or inline—just make sure it’s the one being called):
+
+```ts
+import type { Express } from "express";
+import path from "path";
+import express from "express";
+
+export function serveStatic(app: Express) {
+  const distDir = path.resolve(process.cwd(), "dist/public");
+
+  // HTML should never be cached
+  app.use((req, res, next) => {
+    if (req.method === "GET" && (req.path === "/" || req.path.endsWith(".html"))) {
+      res.setHeader("Cache-Control", "no-store");
+    }
+    next();
+  });
+
+  // Serve built assets
+  app.use(
+    express.static(distDir, {
+      maxAge: "1y",
+      immutable: true,
+      setHeaders(res, file) {
+        if (file.endsWith(".js")) res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        if (file.endsWith(".css")) res.setHeader("Content-Type", "text/css; charset=utf-8");
+        if (file.endsWith(".webmanifest")) res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+      },
+    })
+  );
+
+  // SPA fallback ONLY for non-file routes
+  app.get("*", (req, res) => {
+    // If the request looks like a file (has an extension), do NOT serve index.html
+    if (/\.[a-z0-9]+$/i.test(req.path)) {
+      return res.status(404).end(); // avoid returning HTML to script requests
+    }
+    res.sendFile(path.join(distDir, "index.html"));
+  });
+}
+```
+
+---
+
+## C. Rebuild clean, purge caches, hard refresh
+
+1. **Clean build**
+
+```bash
+rm -rf node_modules .vite dist
+pnpm install
+pnpm build
+```
+
+2. **Bump SW cache version** in `sw.ts` (e.g., `const CACHE_VERSION = 'v9'`) and rebuild if you changed it.
+
+3. **Purge Cloudflare** (Everything or at least `/assets/*`). **Disable Rocket Loader** or any JS “optimizer”.
+
+4. **Browser:** DevTools → Application → **Service Workers → Unregister** → Clear storage → **Clear site data** → reload (Ctrl+F5 / ⌘⇧R).
+
+---
+
+## D. Quick verification (do these checks)
+
+* Open the vendor chunk URL in a tab: `https://xnrt.org/assets/vendor-.....js`
+  It must display minified **JS**, **not HTML**.
+* `curl -I https://xnrt.org/assets/vendor-....js` should show
+  `Content-Type: application/javascript` and `HTTP/1.1 200`.
+* DevTools Network: search **react** — you should see it inside your single `vendor` chunk.
+* Console: no more `useState` undefined.
+
+Once these are in place, the `useState` crash should be gone and your CSP will be secure in production. If anything still blips, share your current `serveStatic` implementation (or confirm you replaced it with the one above) and we’ll tighten further.

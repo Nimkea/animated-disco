@@ -1,13 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
+export default defineConfig(async ({ mode }) => {
+  const isDev = mode === "development";
+  const plugins = [react()];
+
+  if (isDev && process.env.REPL_ID) {
+    const { cartographer } = await import("@replit/vite-plugin-cartographer");
+    const { devBanner } = await import("@replit/vite-plugin-dev-banner");
+    plugins.push(cartographer(), devBanner());
+  }
+
+  plugins.push(
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
@@ -15,7 +21,9 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: 'auto',
       devOptions: {
-        enabled: false,
+        enabled: isDev,
+        type: 'module',
+        navigateFallback: 'index.html',
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'favicon-16x16.png', 'favicon-32x32.png'],
       manifest: {
@@ -82,91 +90,43 @@ export default defineConfig({
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}']
       }
-    }),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
-    },
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          // React core - must load first
-          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
-            return 'vendor-react';
-          }
-          
-          // React ecosystem (hooks, utilities that depend on React)
-          if (id.includes('node_modules/@tanstack/react-query') || 
-              id.includes('node_modules/react-hook-form') ||
-              id.includes('node_modules/wouter')) {
-            return 'vendor-react-ecosystem';
-          }
-          
-          // UI libraries (Radix UI, Lucide, etc.)
-          if (id.includes('node_modules/@radix-ui') || 
-              id.includes('node_modules/lucide-react') ||
-              id.includes('node_modules/framer-motion')) {
-            return 'vendor-ui';
-          }
-          
-          // Chart libraries - D3 first, then Recharts
-          if (id.includes('node_modules/d3-')) {
-            return 'vendor-d3';
-          }
-          if (id.includes('node_modules/recharts')) {
-            return 'vendor-charts';
-          }
-          
-          // Other vendor libraries (non-React)
-          if (id.includes('node_modules')) {
-            return 'vendor-libs';
-          }
-          
-          // Admin pages - separate bundle
-          if (id.includes('/pages/admin/')) {
-            return 'admin';
-          }
-          
-          // User pages - group by feature
-          if (id.includes('/pages/staking') || id.includes('/pages/mining')) {
-            return 'earning';
-          }
-          
-          if (id.includes('/pages/referrals') || id.includes('/pages/leaderboard')) {
-            return 'social';
-          }
-          
-          if (id.includes('/pages/deposit') || id.includes('/pages/withdrawal')) {
-            return 'transactions';
-          }
-        },
+    })
+  );
+
+  return {
+    base: "/",
+    plugins,
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets"),
       },
     },
-    chunkSizeWarningLimit: 600, // Increase from default 500KB
-  },
-  server: {
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+    root: path.resolve(import.meta.dirname, "client"),
+    optimizeDeps: {
+      include: ["react", "react-dom"],
     },
-  },
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true,
+      sourcemap: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("node_modules")) {
+              return "vendor";
+            }
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
+    },
+    server: {
+      fs: {
+        strict: true,
+        deny: ["**/.*"],
+      },
+    },
+  };
 });

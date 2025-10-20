@@ -1,0 +1,143 @@
+Great—thanks for the config. Your runtime error (`useState` is undefined in `vendor-libs-*.js`) is almost certainly because **React isn’t available to that chunk at runtime**. In your current setup the risk comes from (a) the dev overlay being included in prod (CSP + eval), and (b) very aggressive manual chunking that can split React-dependent libs away from React so a stale SW/CDN chunk (or a wrong MIME/HTML fallback) turns React into `undefined`.
+
+Here’s a **drop-in** `vite.config.ts` that fixes it decisively:
+
+* Disable the Replit runtime error overlay **outside dev** (it uses `eval`, trips CSP).
+* Put **all `node_modules` into a single `vendor` chunk** (removes fragile cross-vendor edges).
+* Keep your PWA, but enable dev options only in dev.
+
+Paste this over your file:
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { VitePWA } from "vite-plugin-pwa";
+
+export default defineConfig(async ({ mode }) => {
+  const isDev = mode === "development";
+  const plugins = [react()];
+
+  // Replit dev-only helpers (avoid in production – they use eval and break CSP)
+  if (isDev && process.env.REPL_ID) {
+    const { cartographer } = await import("@replit/vite-plugin-cartographer");
+    const { devBanner } = await import("@replit/vite-plugin-dev-banner");
+    plugins.push(cartographer(), devBanner());
+  }
+
+  plugins.push(
+    VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      registerType: "prompt",
+      injectRegister: "auto",
+      devOptions: {
+        enabled: isDev, // only in dev
+        type: "module",
+        navigateFallback: "index.html",
+      },
+      includeAssets: [
+        "favicon.ico",
+        "apple-touch-icon.png",
+        "favicon-16x16.png",
+        "favicon-32x32.png",
+      ],
+      manifest: {
+        id: "/?app-id=xnrt",
+        name: "XNRT - We Build the NextGen",
+        short_name: "XNRT",
+        description:
+          "Off-chain gamification earning platform. Earn XNRT tokens through staking, mining, referrals, and task completion.",
+        start_url: "/?source=pwa",
+        scope: "/",
+        theme_color: "#000000",
+        background_color: "#000000",
+        display: "standalone",
+        orientation: "portrait-primary",
+        icons: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icon-256.png", sizes: "256x256", type: "image/png", purpose: "any" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
+        shortcuts: [
+          { name: "Staking", short_name: "Stake", description: "Start staking XNRT tokens", url: "/staking", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+          { name: "Mining", short_name: "Mine", description: "Start a mining session", url: "/mining", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+          { name: "Referrals", short_name: "Refer", description: "View referral network", url: "/referrals", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+        ],
+      },
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}"],
+      },
+    })
+  );
+
+  return {
+    base: "/",
+    plugins,
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      },
+    },
+    root: path.resolve(import.meta.dirname, "client"),
+    optimizeDeps: {
+      include: ["react", "react-dom"], // ensure prebundled in dev
+    },
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true,
+      sourcemap: true,
+      rollupOptions: {
+        output: {
+          // One rock-solid vendor chunk. (We can re-split later for perf.)
+          manualChunks(id) {
+            if (id.includes("node_modules")) return "vendor";
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
+    },
+    server: {
+      fs: { strict: true, deny: ["**/.*"] },
+    },
+  };
+});
+```
+
+### After replacing, do these exactly
+
+1. **Clean & rebuild**
+
+```bash
+rm -rf node_modules .vite dist
+pnpm install   # or npm/yarn
+pnpm build
+```
+
+2. **Bump your SW cache version** in `sw.ts` (e.g., `const CACHE_VERSION = 'v9'`) and rebuild again if you changed it.
+
+3. **Purge CDN/Cloudflare** (Everything or `/assets/*`).
+   Also **disable Rocket Loader** or any JS “optimization” that rewrites module scripts.
+
+4. **On your server**, be sure you serve exactly `dist/public` and that asset 404s don’t fall back to `index.html`:
+
+* `Content-Type` for chunks should be `application/javascript`.
+* No HTML should be returned for `/assets/*.js`.
+
+5. **Hard refresh with SW**:
+
+* DevTools → Application → **Service Workers: Unregister**
+* Application → **Clear storage → Clear site data**
+* Reload with **Ctrl+F5** (or **⌘⇧R**).
+
+### Quick verification in DevTools
+
+* Network → open `/assets/vendor-*.js` → must be **JS**, not HTML.
+* Search Network for `react` — you should see it inside the single `vendor` chunk.
+* Console should no longer show `useState` undefined.
+
+If you still hit anything after this, show me your **server static serve code** (the Express `app.use(express.static(...))` + fallback route) and I’ll align it so module chunks can’t accidentally resolve to HTML.
