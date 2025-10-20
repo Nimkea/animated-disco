@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(async ({ mode }) => {
   const isDev = mode === "development";
-  const plugins = [react()];
+  const plugins: any[] = [react()];
 
   if (isDev && process.env.REPL_ID) {
     const { cartographer } = await import("@replit/vite-plugin-cartographer");
@@ -113,7 +113,7 @@ export default defineConfig(async ({ mode }) => {
       sourcemap: true,
       rollupOptions: {
         output: {
-          manualChunks(id) {
+          manualChunks(id: string) {
             if (id.includes("node_modules")) {
               return "vendor";
             }
@@ -123,6 +123,10 @@ export default defineConfig(async ({ mode }) => {
       chunkSizeWarningLimit: 600,
     },
     server: {
+      watch: {
+        usePolling: true,
+        interval: 1000,
+      },
       fs: {
         strict: true,
         deny: ["**/.*"],
