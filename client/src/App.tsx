@@ -41,12 +41,9 @@ const Referrals = lazy(() => import("@/pages/referrals"));
 const Leaderboard = lazy(() => import("@/pages/leaderboard"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 
-/** Simple Admin gate (client-side UX; keep server/RLS checks too) */
-function AdminRoute({ component: Comp }: { component: React.ComponentType }) {
-  const { isAuthenticated, user, isLoading } = useAuth();
-  
-  // Debug logging
-  console.log("AdminRoute check:", { isAuthenticated, isLoading, user, isAdmin: (user as any)?.isAdmin });
+/** Admin-protected Dashboard component */
+function ProtectedAdminDashboard() {
+  const { user, isLoading } = useAuth();
   
   // Show loading while checking auth
   if (isLoading) {
@@ -57,15 +54,20 @@ function AdminRoute({ component: Comp }: { component: React.ComponentType }) {
     );
   }
   
-  // Check admin status
-  const isAdmin = isAuthenticated && (user as any)?.isAdmin === true;
-  
-  if (!isAdmin) {
-    console.log("Admin access denied - redirecting to home");
+  // Check admin status  
+  if (!(user as any)?.isAdmin) {
     return <Redirect to="/" />;
   }
   
-  return <Comp />;
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+        Loading…
+      </div>
+    }>
+      <AdminDashboard />
+    </Suspense>
+  );
 }
 
 function AuthenticatedApp() {
@@ -121,10 +123,7 @@ function AuthenticatedApp() {
                   <Route path="/achievements" component={Achievements} />
                   <Route path="/rewards" component={Rewards} />
                   <Route path="/leaderboard" component={Leaderboard} />
-                  <Route
-                    path="/admin"
-                    component={() => <AdminRoute component={AdminDashboard} />}
-                  />
+                  <Route path="/admin" component={ProtectedAdminDashboard} />
                   <Route component={NotFound} />
                 </Switch>
               </Suspense>
