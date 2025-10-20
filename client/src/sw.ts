@@ -23,9 +23,9 @@ import { ExpirationPlugin } from "workbox-expiration";
 declare const self: ServiceWorkerGlobalScope;
 
 // Cache version - increment this to force COMPLETE cache invalidation
-// v9: Production-ready SW - no auto-skipWaiting, destination-based caching,
-//     content-type guards prevent caching HTML as JS (fixes MIME errors)
-const CACHE_VERSION = "v9";
+// v10: Removed navigation preload to fix preloadResponse warning,
+//      separated D3 from Recharts in build chunks to prevent init errors
+const CACHE_VERSION = "v10";
 const CACHE_PREFIX = "xnrt";
 
 // Take control of clients immediately after activate
@@ -60,15 +60,10 @@ precacheAndRoute(self.__WB_MANIFEST, {
   ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^gclid$/, /^msclkid$/],
 });
 
-// Activate: nav preload + cleanup workbox caches
+// Activate: cleanup workbox caches
 self.addEventListener("activate", (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
-      try {
-        await self.registration.navigationPreload?.enable();
-      } catch {
-        // not supported; continue
-      }
       await cleanupOutdatedCaches();
       console.log("[SW] Activation complete, version:", CACHE_VERSION);
       await self.clients.claim();

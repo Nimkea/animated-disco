@@ -121,8 +121,11 @@ export default defineConfig({
             return 'vendor-ui';
           }
           
-          // Chart libraries
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
+          // Chart libraries - separate D3 from Recharts to avoid circular deps
+          if (id.includes('node_modules/d3-')) {
+            return 'vendor-d3';
+          }
+          if (id.includes('node_modules/recharts')) {
             return 'vendor-charts';
           }
           
