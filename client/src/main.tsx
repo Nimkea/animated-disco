@@ -1,32 +1,53 @@
+import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { registerSW } from 'virtual:pwa-register';
-import { initMonitoring } from './lib/monitoring';
-import { ThemeProvider } from './contexts/theme-context';
+import { registerSW } from "virtual:pwa-register";
+import { ThemeProvider } from "./contexts/theme-context";
+import { initMonitoring } from "./lib/monitoring";
 
-// Initialize monitoring (Sentry + Web Vitals)
-initMonitoring();
+// Global flags to prevent double inits (StrictMode/HMR)
+declare global {
+  interface Window {
+    __SW_INIT__?: boolean;
+    __MONITORING_INIT__?: boolean;
+  }
+}
 
-// Register service worker with update prompt
-const updateSW = registerSW({
-  onNeedRefresh() {
-    const update = () => {
-      updateSW(true);
-    };
-    
-    const event = new CustomEvent('sw-update-available', { detail: { update } });
-    window.dispatchEvent(event);
-  },
-  onOfflineReady() {
-    console.log('App ready to work offline');
-    const event = new CustomEvent('sw-offline-ready');
-    window.dispatchEvent(event);
-  },
-});
+// Monitoring: prod-only, single init even with HMR
+if (import.meta.env.PROD && !window.__MONITORING_INIT__) {
+  window.__MONITORING_INIT__ = true;
+  initMonitoring();
+}
 
-createRoot(document.getElementById("root")!).render(
-  <ThemeProvider>
-    <App />
-  </ThemeProvider>
+// PWA service worker: feature-check + once-only guard
+if ("serviceWorker" in navigator && !window.__SW_INIT__) {
+  window.__SW_INIT__ = true;
+
+  const updateSW = registerSW({
+    immediate: false,
+    onNeedRefresh() {
+      const doUpdate = () => updateSW(true);
+      window.dispatchEvent(
+        new CustomEvent("sw-update-available", {
+          detail: { update: doUpdate },
+        }),
+      );
+    },
+    onOfflineReady() {
+      window.dispatchEvent(new CustomEvent("sw-offline-ready"));
+      console.log("App ready to work offline");
+    },
+  });
+}
+
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root element #root not found");
+
+createRoot(rootEl).render(
+  <React.StrictMode>
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  </React.StrictMode>,
 );
