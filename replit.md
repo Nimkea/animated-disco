@@ -2,6 +2,11 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
+- **October 21, 2025**: Fixed critical React crash caused by nested TooltipProvider components:
+  - **Root Cause**: Two TooltipProvider instances (App.tsx and sidebar.tsx) created React context conflicts causing "Cannot read properties of null (reading 'useRef')" error that broke the entire app.
+  - **Solution**: Removed TooltipProvider from App.tsx. SidebarProvider now provides the single TooltipProvider for all authenticated app tooltips with delayDuration={0}.
+  - **Prevention**: Added code comments in both files warning against adding additional TooltipProviders to prevent reintroduction of this issue.
+  - **Result**: App now loads successfully without React hook errors. Landing page displays correctly with all cosmic theming intact.
 - **October 21, 2025**: Built comprehensive announcements system for platform-wide communication:
   - **Database Schema**: Added Announcement table (Drizzle + Prisma) with fields: id, title, content, type (info/warning/success/error), isActive, createdBy, createdAt, expiresAt. Includes indexes on isActive and createdAt for performance.
   - **Admin API**: Implemented full CRUD endpoints with Zod validation, proper auth (requireAuth + requireAdmin + validateCSRF), and RESTful error handling (201 Created, 204 No Content, 404 Not Found). Fixed critical req.authUser bug and added insertAnnouncementSchema validation.
