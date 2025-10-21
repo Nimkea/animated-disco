@@ -65,6 +65,12 @@
   --font-serif: 'Lora', serif;
   --font-mono: Menlo, monospace;
   --radius: 1rem;
+
+  /* Safe area insets for iOS notch/home indicator */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
   --shadow-2xs: 0px 2px 0px 0px hsl(9, 75%, 61% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(9, 75%, 61% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(9, 75%, 61% / 0.00), 0px 1px 2px -1px hsl(9, 75%, 61% / 0.00);
@@ -263,5 +269,64 @@
 
   .animate-gradient {
     animation: gradient 3s ease infinite;
+  }
+
+  /* Mobile Touch Optimizations */
+  
+  /* Smooth scrolling on iOS */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Disable tap highlight on mobile - we use custom ripple effects */
+  button, a, [role="button"], input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  /* Better touch targets for mobile (minimum 44x44px) */
+  button, a[href], [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Prevent text selection on buttons and interactive elements */
+  button, [role="button"] {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Improve scrolling performance */
+  .overflow-auto, .overflow-scroll {
+    will-change: scroll-position;
+  }
+
+  /* Safe area padding for iOS devices with notch */
+  body {
+    padding-top: var(--safe-area-inset-top);
+    padding-right: var(--safe-area-inset-right);
+    padding-bottom: var(--safe-area-inset-bottom);
+    padding-left: var(--safe-area-inset-left);
+  }
+
+  /* Prevent zoom on input focus (iOS Safari) */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  textarea,
+  select {
+    font-size: max(16px, 1rem);
+  }
+
+  /* Better mobile gestures */
+  html {
+    touch-action: manipulation;
+  }
+
+  /* Pull-to-refresh on mobile - disable where needed */
+  .no-pull-refresh {
+    overscroll-behavior-y: contain;
   }
 }

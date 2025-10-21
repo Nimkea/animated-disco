@@ -36,7 +36,12 @@ export default defineConfig(async ({ mode }) => {
         theme_color: '#000000',
         background_color: '#000000',
         display: 'standalone',
+        display_override: ['standalone', 'fullscreen', 'minimal-ui'],
         orientation: 'portrait-primary',
+        categories: ['finance', 'lifestyle', 'productivity'],
+        iarc_rating_id: 'e84b072d-71b3-4d3e-86ae-31a8ce4e53b7',
+        lang: 'en-US',
+        dir: 'ltr',
         icons: [
           {
             src: '/icon-192.png',
