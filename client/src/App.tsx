@@ -4,7 +4,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 
 import { queryClient, initCSRFToken } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
@@ -188,12 +187,10 @@ function AppContent() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AppContent />
-        <Toaster />
-        <PWAInstallPrompt />
-        <PWAUpdateNotification />
-      </TooltipProvider>
+      <AppContent />
+      <Toaster />
+      <PWAInstallPrompt />
+      <PWAUpdateNotification />
     </QueryClientProvider>
   );
 }
