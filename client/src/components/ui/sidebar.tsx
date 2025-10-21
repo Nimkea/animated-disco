@@ -128,6 +128,8 @@ function SidebarProvider({
 
   return (
     <SidebarContext.Provider value={contextValue}>
+      {/* IMPORTANT: This is the single TooltipProvider for the entire authenticated app */}
+      {/* Do NOT add another TooltipProvider elsewhere - nested providers cause React hook errors */}
       <TooltipProvider delayDuration={0}>
         <div
           data-slot="sidebar-wrapper"

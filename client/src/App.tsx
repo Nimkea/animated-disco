@@ -187,6 +187,8 @@ function AppContent() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Note: TooltipProvider is provided by SidebarProvider in AuthenticatedApp */}
+      {/* Do NOT add a TooltipProvider here - it will cause nested provider conflicts */}
       <AppContent />
       <Toaster />
       <PWAInstallPrompt />
