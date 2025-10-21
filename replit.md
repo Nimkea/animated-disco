@@ -1,43 +1,6 @@
 ## Overview
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
-## Recent Changes
-- **October 21, 2025**: Fixed announcement creation failure in admin panel:
-  - **Root Cause**: Frontend `apiRequest` function was being called with wrong parameter order. Expected `apiRequest(method, url, data)` but code used `apiRequest(url, { method, body })`.
-  - **Frontend Fix**: Corrected all three mutations (create/update/delete) in announcements.tsx to use proper signature: `apiRequest("POST", "/api/admin/announcements", data)`.
-  - **Backend Cleanup**: Fixed 6 LSP type errors in deposit-related endpoints (server/routes.ts) - corrected field names (detectedAt→createdAt, reportedAt→createdAt), added null safety for report.amount, fixed schema mismatches (txHash vs transactionHash), and removed non-existent fields (resolvedBy, adminNotes→notes).
-  - **Result**: All 9 LSP errors resolved. Announcement creation, editing, and deletion now work correctly. Admin can create announcements with title, content, type (info/warning/success/error), expiry date, and active status.
-- **October 21, 2025**: Fixed critical React crash caused by nested TooltipProvider components:
-  - **Root Cause**: Two TooltipProvider instances (App.tsx and sidebar.tsx) created React context conflicts causing "Cannot read properties of null (reading 'useRef')" error that broke the entire app.
-  - **Solution**: Removed TooltipProvider from App.tsx. SidebarProvider now provides the single TooltipProvider for all authenticated app tooltips with delayDuration={0}.
-  - **Prevention**: Added code comments in both files warning against adding additional TooltipProviders to prevent reintroduction of this issue.
-  - **Result**: App now loads successfully without React hook errors. Landing page displays correctly with all cosmic theming intact.
-- **October 21, 2025**: Built comprehensive announcements system for platform-wide communication:
-  - **Database Schema**: Added Announcement table (Drizzle + Prisma) with fields: id, title, content, type (info/warning/success/error), isActive, createdBy, createdAt, expiresAt. Includes indexes on isActive and createdAt for performance.
-  - **Admin API**: Implemented full CRUD endpoints with Zod validation, proper auth (requireAuth + requireAdmin + validateCSRF), and RESTful error handling (201 Created, 204 No Content, 404 Not Found). Fixed critical req.authUser bug and added insertAnnouncementSchema validation.
-  - **Admin Interface**: Created announcements management tab with create/edit dialog, delete confirmation, type-based styling (4 variants with icons), and creator tracking. Integrated into admin dashboard with Megaphone icon.
-  - **User Banner**: Built dismissible announcement banner component for home page with localStorage persistence, type-specific Alert variants, and auto-fetch from public API (shows active, non-expired announcements limited to 5).
-- **October 21, 2025**: Completed analytics dashboard enhancements with real-time widgets and export functionality:
-  - **Real-time Analytics**: Added `/api/admin/analytics/realtime` endpoint with active users (last 15 min), today's deposits/withdrawals (count + totals), and pending transaction counts. Frontend displays Live Overview section with 4 auto-refreshing cards (30s interval).
-  - **Analytics Export**: Implemented `/api/admin/analytics/export` endpoint supporting CSV and JSON formats with proper headers and date-stamped filenames. Added export buttons to analytics page with download handlers and toast notifications.
-- **October 21, 2025**: Added iOS splash screens, professional email templates, and performance optimizations:
-  - **iOS Splash Screens**: Generated 17 custom branded splash screens (black background + golden XNRT logo) for all iPhone and iPad models using sharp. Covers iPhone 12-15 families, Minis, older 4.7/5.5-inch devices, and common iPad sizes. All screens properly linked in index.html.
-  - **Email Template System**: Created comprehensive HTML email template system with XNRT cosmic branding (black background, golden accents, inline CSS for email client compatibility). Implemented templates for verification, password reset, deposit confirmation, withdrawal notification, achievement unlock, and welcome emails. All templates integrated into server/services/email.ts with proper typing and text fallbacks.
-  - **Performance Optimizations**: Added resource hints (dns-prefetch, preconnect, preload) to index.html for faster font loading. Enhanced build configuration with smart code splitting (react-vendor, charts-vendor, ui-vendor, web3-vendor) and organized asset output (images/, fonts/ directories).
-- **October 21, 2025**: Enhanced PWA mobile experience for iOS and Android:
-  - **iOS Optimizations**: Added Apple-specific meta tags (mobile-web-app-capable, status-bar-style, app-title), viewport-fit=cover for safe area support, and comprehensive safe area CSS variables (env(safe-area-inset-*)). Created splash screen documentation with generation instructions.
-  - **Android Enhancements**: Added display_override fallback modes, app categories (finance, lifestyle, productivity), IARC rating, and internationalization support (lang, dir).
-  - **Mobile Touch Improvements**: Implemented mobile-only 44x44px minimum touch targets (@media pointer: coarse), disabled tap highlights for custom ripple effects, prevented zoom on input focus (16px minimum), scoped iOS momentum scrolling to specific containers, and added pull-to-refresh control.
-  - **Accessibility**: Touch-callout disabled only on buttons/links to preserve iOS copy/paste on inputs. All changes scoped to mobile devices to prevent desktop layout disruption.
-- **October 20, 2025**: Fixed production errors and development ENOSPC issues:
-  - **Vite Config**: Consolidated all node_modules into single vendor chunk to prevent React fragmentation and load-order issues. Enabled polling watcher with comprehensive ignore patterns to resolve ENOSPC file watcher limits.
-  - **CSP Security**: Removed 'unsafe-eval' from production CSP (strict security). CSP disabled in development to allow HMR.
-  - **Static Serving**: Fixed distPath to dist/public, added proper Content-Type headers for JS/CSS/webmanifest, prevented HTML fallback for missing assets.
-  - **Server/Vite Integration**: Fixed async Vite config invocation to properly resolve root path and load plugins.
-  - **Environment Variables**: Added CHOKIDAR_USEPOLLING and WATCHPACK_POLLING to dev script for stable file watching.
-  - All production builds now generate single vendor bundle; development server runs without ENOSPC errors.
-- **October 17, 2025**: Project cleanup - removed 160+ temporary development artifacts from `attached_assets/` folder (old images, pasted text files, outdated icon bundles, patch files, and screenshots). All active PWA icons remain in `client/public/`. Project size significantly reduced.
-
 ## User Preferences
 - **Unified Cosmic Theme System**: Users can toggle between light and dark modes, both featuring cosmic starfield backgrounds
 - Light mode: Black cosmic background with golden twinkling stars and golden UI accents
@@ -75,7 +38,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 **Feature Specifications:**
 - **Admin Dashboard**: Comprehensive management for Deposits, Withdrawals, Users, Analytics, Announcements, and Settings, including bulk deposit approval.
 - **Announcements System**: Platform-wide communication system with admin CRUD interface and user-facing dismissible banners. Supports 4 priority levels (info/warning/success/error), expiry dates, and active/inactive status. Public API serves active announcements to authenticated users on home page.
-- **Deposit/Withdrawal Systems**: 
+- **Deposit/Withdrawal Systems**:
     - **Deposits**: USDT to XNRT conversion with unique personal deposit addresses per user. Users can deposit directly from exchanges (Binance, OKX) without wallet linking, gas fees, or blockchain interaction. HD wallet derivation (BIP44 path m/44'/714'/0'/0/{index}) generates unique BSC addresses. Automated scanner watches all user addresses and auto-credits XNRT after 12 confirmations.
     - **Withdrawals**: XNRT to USDT conversion with admin approval and tracking.
 - **Earning Systems**:
