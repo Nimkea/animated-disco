@@ -2,6 +2,11 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
+- **October 21, 2025**: Built comprehensive announcements system for platform-wide communication:
+  - **Database Schema**: Added Announcement table (Drizzle + Prisma) with fields: id, title, content, type (info/warning/success/error), isActive, createdBy, createdAt, expiresAt. Includes indexes on isActive and createdAt for performance.
+  - **Admin API**: Implemented full CRUD endpoints with Zod validation, proper auth (requireAuth + requireAdmin + validateCSRF), and RESTful error handling (201 Created, 204 No Content, 404 Not Found). Fixed critical req.authUser bug and added insertAnnouncementSchema validation.
+  - **Admin Interface**: Created announcements management tab with create/edit dialog, delete confirmation, type-based styling (4 variants with icons), and creator tracking. Integrated into admin dashboard with Megaphone icon.
+  - **User Banner**: Built dismissible announcement banner component for home page with localStorage persistence, type-specific Alert variants, and auto-fetch from public API (shows active, non-expired announcements limited to 5).
 - **October 21, 2025**: Completed analytics dashboard enhancements with real-time widgets and export functionality:
   - **Real-time Analytics**: Added `/api/admin/analytics/realtime` endpoint with active users (last 15 min), today's deposits/withdrawals (count + totals), and pending transaction counts. Frontend displays Live Overview section with 4 auto-refreshing cards (30s interval).
   - **Analytics Export**: Implemented `/api/admin/analytics/export` endpoint supporting CSV and JSON formats with proper headers and date-stamped filenames. Added export buttons to analytics page with download handlers and toast notifications.
@@ -58,7 +63,8 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Charts**: Recharts for data visualization.
 
 **Feature Specifications:**
-- **Admin Dashboard**: Comprehensive management for Deposits, Withdrawals, Users, Analytics, and Settings, including bulk deposit approval.
+- **Admin Dashboard**: Comprehensive management for Deposits, Withdrawals, Users, Analytics, Announcements, and Settings, including bulk deposit approval.
+- **Announcements System**: Platform-wide communication system with admin CRUD interface and user-facing dismissible banners. Supports 4 priority levels (info/warning/success/error), expiry dates, and active/inactive status. Public API serves active announcements to authenticated users on home page.
 - **Deposit/Withdrawal Systems**: 
     - **Deposits**: USDT to XNRT conversion with unique personal deposit addresses per user. Users can deposit directly from exchanges (Binance, OKX) without wallet linking, gas fees, or blockchain interaction. HD wallet derivation (BIP44 path m/44'/714'/0'/0/{index}) generates unique BSC addresses. Automated scanner watches all user addresses and auto-credits XNRT after 12 confirmations.
     - **Withdrawals**: XNRT to USDT conversion with admin approval and tracking.
