@@ -2,6 +2,11 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
+- **October 21, 2025**: Enhanced PWA mobile experience for iOS and Android:
+  - **iOS Optimizations**: Added Apple-specific meta tags (mobile-web-app-capable, status-bar-style, app-title), viewport-fit=cover for safe area support, and comprehensive safe area CSS variables (env(safe-area-inset-*)). Created splash screen documentation with generation instructions.
+  - **Android Enhancements**: Added display_override fallback modes, app categories (finance, lifestyle, productivity), IARC rating, and internationalization support (lang, dir).
+  - **Mobile Touch Improvements**: Implemented mobile-only 44x44px minimum touch targets (@media pointer: coarse), disabled tap highlights for custom ripple effects, prevented zoom on input focus (16px minimum), scoped iOS momentum scrolling to specific containers, and added pull-to-refresh control.
+  - **Accessibility**: Touch-callout disabled only on buttons/links to preserve iOS copy/paste on inputs. All changes scoped to mobile devices to prevent desktop layout disruption.
 - **October 20, 2025**: Fixed production errors and development ENOSPC issues:
   - **Vite Config**: Consolidated all node_modules into single vendor chunk to prevent React fragmentation and load-order issues. Enabled polling watcher with comprehensive ignore patterns to resolve ENOSPC file watcher limits.
   - **CSP Security**: Removed 'unsafe-eval' from production CSP (strict security). CSP disabled in development to allow HMR.
