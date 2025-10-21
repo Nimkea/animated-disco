@@ -21,23 +21,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/use-confetti";
 import { AnnouncementBanner } from "@/components/announcement-banner";
 
-/** ---------- Tokens for the cosmic gold palette (aligned with XNRT branding) ---------- */
-const tok = {
-  xnrt1: "#FFC247",
-  xnrt2: "#FF8F1F",
-  xp1: "#FFC247",
-  xp2: "#FFD966",
-  earned1: "#FFC247",
-  earned2: "#FFD966",
-  stake1: "#FF9B2F",
-  stake2: "#FFC247",
-  ref1: "#FFD966",
-  ref2: "#FFC247",
-  mine1: "#FFD966",
-  mine2: "#FF9B2F",
-};
-
-/** ---------- Coin icon that matches your screenshot ---------- */
 function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
   return (
     <svg
@@ -47,8 +30,8 @@ function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
     >
       <defs>
         <linearGradient id="coinRing" x1="0" x2="1">
-          <stop offset="0" stopColor={tok.xnrt1} />
-          <stop offset="1" stopColor={tok.xnrt2} />
+          <stop offset="0" stopColor="hsl(42, 90%, 50%)" />
+          <stop offset="1" stopColor="hsl(42, 90%, 60%)" />
         </linearGradient>
       </defs>
       <circle
@@ -67,7 +50,7 @@ function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
         cy="24"
         r="21"
         fill="none"
-        stroke={tok.xnrt1}
+        stroke="hsl(42, 90%, 50%)"
         strokeOpacity="0.12"
         strokeWidth="6"
       />
@@ -75,23 +58,16 @@ function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
   );
 }
 
-/** ---------- Small UI atoms ---------- */
-function Scanline() {
-  return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] opacity-40 bg-gradient-to-r from-[#FFC247] via-[#FFD966] to-[#FF9B2F]" />
-  );
-}
-
 function StatTile({
   label,
   value,
-  gradient,
+  colorClass,
   icon,
   href,
 }: {
   label: string;
   value: string | number;
-  gradient: [string, string];
+  colorClass: string;
   icon: React.ReactNode;
   href: string;
 }) {
@@ -101,43 +77,23 @@ function StatTile({
 
   const body = (
     <Card 
-      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl transition-all hover:translate-y-[-2px]"
-      style={{
-        boxShadow: "0 0 0 rgba(0,0,0,0)",
-        transition: "all 0.3s ease",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `0 12px 28px ${gradient[0]}40`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = "0 0 0 rgba(0,0,0,0)";
-      }}
+      className="group relative overflow-hidden rounded-2xl border-white/10 bg-white/5 backdrop-blur-md transition-all hover:translate-y-[-2px] hover:bg-white/[0.07]"
+      data-testid={`card-stat-${label.toLowerCase().replace(/\s+/g, "-")}`}
     >
-      <Scanline />
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p
-              className="mt-2 bg-clip-text text-3xl font-extrabold text-transparent"
-              style={{
-                backgroundImage: `linear-gradient(135deg, ${gradient[0]}, ${gradient[1]})`,
-                textShadow: `0 0 20px ${gradient[0]}33`,
-              }}
-              data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}
-            >
-              {num}
-            </p>
-          </div>
-          <div
-            className="grid h-10 w-10 place-items-center rounded-xl"
-            style={{
-              backgroundImage: `linear-gradient(135deg, ${gradient[0]}, ${gradient[1]})`,
-              boxShadow: `0 0 22px ${gradient[0]}44`,
-            }}
+      <CardContent className="flex items-center justify-between p-4">
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p
+            className="mt-1 text-2xl font-bold"
+            data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}
           >
-            <span className="text-slate-950">{icon}</span>
-          </div>
+            {num}
+          </p>
+        </div>
+        <div
+          className={`grid h-10 w-10 place-items-center rounded-full ${colorClass}`}
+        >
+          {icon}
         </div>
       </CardContent>
     </Card>
@@ -161,7 +117,7 @@ function QuickActionRow({
     <Link href={href}>
       <Button
         variant="outline"
-        className="w-full justify-between rounded-xl border-white/10 bg-white/[0.04] px-4 py-5 text-left backdrop-blur-md transition-all hover:translate-x-[3px] hover:bg-white/[0.07]"
+        className="w-full justify-between rounded-xl border-white/10 bg-white/[0.02] px-4 py-6 text-left backdrop-blur-sm transition-all hover:translate-x-[3px] hover:bg-white/[0.05]"
         data-testid={`button-quick-${title.toLowerCase().replace(/\s+/g, "-")}`}
       >
         <span className="flex items-center gap-3">
@@ -177,7 +133,6 @@ function QuickActionRow({
   );
 }
 
-/** ---------- Main Page ---------- */
 export default function Home() {
   const { toast } = useToast();
   const { celebrate } = useConfetti();
@@ -247,22 +202,14 @@ export default function Home() {
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="font-serif text-3xl font-bold">
-            Welcome,{" "}
-            <span 
-              className="bg-clip-text text-transparent"
-              style={{
-                backgroundImage: `linear-gradient(135deg, ${tok.xnrt1}, ${tok.xnrt2})`,
-              }}
-            >
-              {displayName}
-            </span>
+            Welcome, <span className="text-primary">{displayName}</span>
           </h1>
-          <p className="text-muted-foreground">Beyond a coin. It's hope</p>
+          <p className="text-sm text-muted-foreground">Beyond a coin. It's hope</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="glass-chip relative gap-2 px-4 py-2"
+            className="gap-2 border-white/10 bg-white/5 px-3 py-2 backdrop-blur-sm"
             data-testid="badge-streak"
           >
             <Flame className="h-4 w-4 text-primary" />
@@ -282,55 +229,47 @@ export default function Home() {
 
       {/* HERO GRID */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Balance (glass + coin glyph) */}
-        <Card className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-          <Scanline />
+        {/* Balance */}
+        <Card className="relative overflow-hidden rounded-2xl border-white/10 bg-white/5 backdrop-blur-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Total XNRT Balance
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-6">
-            <div className="flex items-end gap-3">
+            <div className="flex items-center gap-3">
               <CoinGlyph className="h-12 w-12" />
-              <div
-                className="bg-clip-text text-5xl font-black tracking-tight text-transparent"
-                style={{
-                  backgroundImage: `linear-gradient(135deg, ${tok.xnrt1}, ${tok.xnrt2})`,
-                  textShadow: `0 0 26px ${tok.xnrt1}40`,
-                }}
-                data-testid="text-balance"
-              >
-                {parseFloat(xnrtBalance).toLocaleString()}
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-4xl font-bold text-primary"
+                  data-testid="text-balance"
+                >
+                  {parseFloat(xnrtBalance).toLocaleString()}
+                </span>
+                <span className="text-xl font-semibold text-muted-foreground">XNRT</span>
               </div>
-              <span className="text-2xl font-extrabold text-muted-foreground">XNRT</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* XP & Level (progress + glow) */}
-        <Card className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-          <Scanline />
+        {/* XP & Level */}
+        <Card className="relative overflow-hidden rounded-2xl border-white/10 bg-white/5 backdrop-blur-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               XP & Level
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-end gap-2">
-                <Award className="h-9 w-9 text-primary drop-shadow-[0_0_18px_rgba(255,194,71,0.45)]" />
-                <span className="text-5xl font-black text-primary" data-testid="text-level">
+              <div className="flex items-center gap-2">
+                <Award className="h-9 w-9 text-primary" />
+                <span className="text-4xl font-bold text-primary" data-testid="text-level">
                   {level}
                 </span>
               </div>
               <div className="text-right">
                 <div
-                  className="bg-clip-text text-3xl font-extrabold text-transparent"
-                  style={{
-                    backgroundImage: `linear-gradient(135deg, ${tok.xp1}, ${tok.xp2})`,
-                    textShadow: `0 0 22px ${tok.xp1}60`,
-                  }}
+                  className="text-2xl font-bold text-foreground"
                   data-testid="text-xp"
                 >
                   {xp.toLocaleString()}
@@ -344,12 +283,8 @@ export default function Home() {
 
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full w-0 rounded-full transition-all duration-500"
-                style={{
-                  width: `${pct}%`,
-                  backgroundImage: `linear-gradient(90deg, ${tok.xp1}, ${tok.xp2})`,
-                  boxShadow: `0 0 16px ${tok.xp1}70`,
-                }}
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${pct}%` }}
               />
             </div>
           </CardContent>
@@ -361,66 +296,64 @@ export default function Home() {
         <StatTile
           label="Total Earned"
           value={balance?.totalEarned || "0"}
-          gradient={[tok.earned1, tok.earned2]}
-          icon={<TrendingUp className="h-5 w-5" />}
+          colorClass="bg-[hsl(var(--stat-green))]"
+          icon={<TrendingUp className="h-5 w-5 text-white" />}
           href="/wallet"
         />
         <StatTile
           label="Active Stakes"
           value={stats?.activeStakes || 0}
-          gradient={[tok.stake1, tok.stake2]}
-          icon={<Gem className="h-5 w-5" />}
+          colorClass="bg-[hsl(var(--stat-pink))]"
+          icon={<Gem className="h-5 w-5 text-white" />}
           href="/staking"
         />
         <StatTile
           label="Referrals"
           value={stats?.totalReferrals || 0}
-          gradient={[tok.ref1, tok.ref2]}
-          icon={<Users className="h-5 w-5" />}
+          colorClass="bg-[hsl(var(--stat-blue))]"
+          icon={<Users className="h-5 w-5 text-white" />}
           href="/referrals"
         />
         <StatTile
           label="Mining Sessions"
           value={stats?.miningSessions || 0}
-          gradient={[tok.mine1, tok.mine2]}
-          icon={<Pickaxe className="h-5 w-5" />}
+          colorClass="bg-[hsl(var(--stat-gold))]"
+          icon={<Pickaxe className="h-5 w-5 text-white" />}
           href="/mining"
         />
       </div>
 
       {/* ACTIONS + ACTIVITY */}
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-          <Scanline />
-          <CardHeader className="pb-2">
-            <CardTitle>Quick Actions</CardTitle>
+        <Card className="relative overflow-hidden rounded-2xl border-white/10 bg-white/5 backdrop-blur-md">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <QuickActionRow
               href="/staking"
-              icon={<Gem className="h-5 w-5 text-primary" />}
+              icon={<Gem className="h-5 w-5 text-[hsl(var(--stat-pink))]" />}
               title="Start Staking"
               hint="2–3 min • +30–60 XP"
             />
             <QuickActionRow
               href="/mining"
-              icon={<Pickaxe className="h-5 w-5 text-primary" />}
+              icon={<Pickaxe className="h-5 w-5 text-[hsl(var(--stat-blue))]" />}
               title="Start Mining"
               hint="5–10 min • +40–90 XP"
             />
             <QuickActionRow
               href="/tasks"
-              icon={<Award className="h-5 w-5 text-primary" />}
+              icon={<Award className="h-5 w-5 text-[hsl(var(--stat-gold))]" />}
               title="Complete Tasks"
               hint="1–2 min • +15–30 XP"
             />
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-          <Scanline />
-          <CardHeader className="pb-2">
-            <CardTitle>Recent Activity</CardTitle>
+        <Card className="relative overflow-hidden rounded-2xl border-white/10 bg-white/5 backdrop-blur-md">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -431,7 +364,7 @@ export default function Home() {
               ) : (
                 stats.recentActivity.slice(0, 5).map((activity: any) => (
                   <div key={activity.id} className="flex items-start gap-3 text-sm">
-                    <div className="mt-2 h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(255,194,71,.7)]" />
+                    <div className="mt-1.5 h-2 w-2 rounded-full bg-primary" />
                     <div className="flex-1">
                       <p className="text-foreground">{activity.description}</p>
                       <p className="text-xs text-muted-foreground">
