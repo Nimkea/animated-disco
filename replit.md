@@ -2,6 +2,11 @@
 XNRT is a React PWA off-chain gamification community earning platform where users earn in-app utility tokens (XNRT) through staking, mining, referrals, and task completion. It aims to provide a robust, secure, and engaging earning experience with a functional authentication system, automated earning mechanisms, and a comprehensive admin dashboard. The platform incorporates a complete branding refresh with professional XNRT icons and PWA assets, a smart deposit reporting system with auto-verification on BSC, and an automated deposit system with blockchain scanning.
 
 ## Recent Changes
+- **October 21, 2025**: Fixed announcement creation failure in admin panel:
+  - **Root Cause**: Frontend `apiRequest` function was being called with wrong parameter order. Expected `apiRequest(method, url, data)` but code used `apiRequest(url, { method, body })`.
+  - **Frontend Fix**: Corrected all three mutations (create/update/delete) in announcements.tsx to use proper signature: `apiRequest("POST", "/api/admin/announcements", data)`.
+  - **Backend Cleanup**: Fixed 6 LSP type errors in deposit-related endpoints (server/routes.ts) - corrected field names (detectedAt→createdAt, reportedAt→createdAt), added null safety for report.amount, fixed schema mismatches (txHash vs transactionHash), and removed non-existent fields (resolvedBy, adminNotes→notes).
+  - **Result**: All 9 LSP errors resolved. Announcement creation, editing, and deletion now work correctly. Admin can create announcements with title, content, type (info/warning/success/error), expiry date, and active status.
 - **October 21, 2025**: Fixed critical React crash caused by nested TooltipProvider components:
   - **Root Cause**: Two TooltipProvider instances (App.tsx and sidebar.tsx) created React context conflicts causing "Cannot read properties of null (reading 'useRef')" error that broke the entire app.
   - **Solution**: Removed TooltipProvider from App.tsx. SidebarProvider now provides the single TooltipProvider for all authenticated app tooltips with delayDuration={0}.
