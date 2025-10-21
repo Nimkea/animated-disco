@@ -45,6 +45,7 @@ model User {
   pushSubscriptions PushSubscription[]
   linkedWallets   LinkedWallet[]
   depositReports  DepositReport[]
+  announcements   Announcement[]
 }
 
 model Session {
@@ -361,4 +362,20 @@ model ScannerState {
   errorCount    Int      @default(0)
   lastError     String?
   updatedAt     DateTime @updatedAt
+}
+
+model Announcement {
+  id          String    @id @default(uuid())
+  title       String    @db.VarChar(255)
+  content     String    @db.Text
+  type        String    @default("info")
+  isActive    Boolean   @default(true)
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+
+  creator User @relation(fields: [createdBy], references: [id])
+
+  @@index([isActive])
+  @@index([createdAt])
 }

@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, generateAnonymizedHandle } from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
-import { STAKING_TIERS, type StakingTier } from "@shared/schema";
+import { STAKING_TIERS, type StakingTier, insertAnnouncementSchema } from "@shared/schema";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
@@ -2637,6 +2637,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching platform info:", error);
       res.status(500).json({ message: "Failed to fetch platform info" });
+    }
+  });
+
+  // ===== ANNOUNCEMENTS =====
+  // Public endpoint - Get active announcements
+  app.get('/api/announcements', async (req, res) => {
+    try {
+      const now = new Date();
+      const announcements = await prisma.announcement.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: now } }
+          ]
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      });
+      res.json(announcements);
+    } catch (error) {
+      console.error("Error fetching announcements:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // Admin - Get all announcements
+  app.get('/api/admin/announcements', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const announcements = await prisma.announcement.findMany({
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(announcements);
+    } catch (error) {
+      console.error("Error fetching announcements:", error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  // Admin - Create announcement
+  app.post('/api/admin/announcements', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const validationResult = insertAnnouncementSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: validationResult.error.errors 
+        });
+      }
+
+      const { title, content, type, isActive, expiresAt } = validationResult.data;
+
+      const announcement = await prisma.announcement.create({
+        data: {
+          title,
+          content,
+          type: type || 'info',
+          isActive: isActive !== undefined ? isActive : true,
+          createdBy: req.authUser!.id,
+          expiresAt: expiresAt ? new Date(expiresAt) : null
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      res.status(201).json(announcement);
+    } catch (error) {
+      console.error("Error creating announcement:", error);
+      res.status(500).json({ message: "Failed to create announcement" });
+    }
+  });
+
+  // Admin - Update announcement
+  app.put('/api/admin/announcements/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const partialSchema = insertAnnouncementSchema.partial();
+      const validationResult = partialSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: validationResult.error.errors 
+        });
+      }
+
+      const { title, content, type, isActive, expiresAt } = validationResult.data;
+
+      const announcement = await prisma.announcement.update({
+        where: { id },
+        data: {
+          ...(title !== undefined && { title }),
+          ...(content !== undefined && { content }),
+          ...(type !== undefined && { type }),
+          ...(isActive !== undefined && { isActive }),
+          ...(expiresAt !== undefined && { expiresAt: expiresAt ? new Date(expiresAt) : null })
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      res.json(announcement);
+    } catch (error: any) {
+      console.error("Error updating announcement:", error);
+      if (error.code === 'P2025') {
+        return res.status(404).json({ message: "Announcement not found" });
+      }
+      res.status(500).json({ message: "Failed to update announcement" });
+    }
+  });
+
+  // Admin - Delete announcement
+  app.delete('/api/admin/announcements/:id', requireAuth, requireAdmin, validateCSRF, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await prisma.announcement.delete({
+        where: { id }
+      });
+
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Error deleting announcement:", error);
+      if (error.code === 'P2025') {
+        return res.status(404).json({ message: "Announcement not found" });
+      }
+      res.status(500).json({ message: "Failed to delete announcement" });
     }
   });
 

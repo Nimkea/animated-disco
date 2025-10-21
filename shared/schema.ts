@@ -468,3 +468,34 @@ export const STAKING_TIERS = {
 } as const;
 
 export type StakingTier = keyof typeof STAKING_TIERS;
+
+// Announcements (admin-created platform announcements)
+export const announcements = pgTable("Announcement", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  type: varchar("type").default("info").notNull(), // info, warning, success, error
+  isActive: boolean("isActive").default(true).notNull(),
+  createdBy: varchar("createdBy").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+}, (table) => [
+  index("announcements_isActive_idx").on(table.isActive),
+  index("announcements_createdAt_idx").on(table.createdAt),
+]);
+
+// Announcement schemas for validation
+export const insertAnnouncementSchema = createInsertSchema(announcements, {
+  title: z.string().min(1, "Title is required").max(255, "Title too long"),
+  content: z.string().min(1, "Content is required"),
+  type: z.enum(["info", "warning", "success", "error"]),
+  isActive: z.boolean().optional(),
+  expiresAt: z.string().optional().nullable(),
+}).omit({
+  id: true,
+  createdBy: true,
+  createdAt: true,
+});
+
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+export type Announcement = typeof announcements.$inferSelect;

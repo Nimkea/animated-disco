@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Balance } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/use-confetti";
+import { AnnouncementBanner } from "@/components/announcement-banner";
 
 export default function Home() {
   const { toast } = useToast();
@@ -134,6 +135,9 @@ export default function Home() {
 
   return (
     <div className="space-y-6">
+      {/* Announcements */}
+      <AnnouncementBanner />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold font-serif">
