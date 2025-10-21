@@ -273,21 +273,15 @@
 
   /* Mobile Touch Optimizations */
   
-  /* Smooth scrolling on iOS */
-  * {
+  /* Smooth scrolling on iOS - scoped to scroll containers */
+  .overflow-auto, .overflow-scroll, [data-radix-scroll-area-viewport] {
     -webkit-overflow-scrolling: touch;
   }
 
   /* Disable tap highlight on mobile - we use custom ripple effects */
-  button, a, [role="button"], input, select, textarea {
+  button, a, [role="button"] {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
-  }
-
-  /* Better touch targets for mobile (minimum 44x44px) */
-  button, a[href], [role="button"] {
-    min-height: 44px;
-    min-width: 44px;
   }
 
   /* Prevent text selection on buttons and interactive elements */
@@ -328,5 +322,13 @@
   /* Pull-to-refresh on mobile - disable where needed */
   .no-pull-refresh {
     overscroll-behavior-y: contain;
+  }
+
+  /* Mobile-only touch targets (minimum 44x44px for accessibility) */
+  @media (pointer: coarse) {
+    button, a[href], [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
   }
 }
