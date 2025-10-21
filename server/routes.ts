@@ -1881,7 +1881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const unmatched = await prisma.unmatchedDeposit.findMany({
         where: { matched: false },
-        orderBy: { detectedAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
         take: 100
       });
       res.json(unmatched);
@@ -1985,7 +1985,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             select: { email: true, username: true }
           }
         },
-        orderBy: { reportedAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
         take: 100
       });
       res.json(reports);
@@ -2020,7 +2020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Credit user with reported amount
         const xnrtRate = Number(process.env.XNRT_RATE_USDT || 100);
         const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || 0);
-        const usdtAmount = parseFloat(report.amount.toString());
+        const usdtAmount = report.amount ? parseFloat(report.amount.toString()) : 0;
         const netUsdt = usdtAmount * (1 - platformFeeBps / 10_000);
         const xnrtAmount = netUsdt * xnrtRate;
 
@@ -2032,7 +2032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               type: "deposit",
               amount: new Prisma.Decimal(xnrtAmount),
               usdtAmount: new Prisma.Decimal(usdtAmount),
-              transactionHash: report.transactionHash,
+              transactionHash: report.txHash,
               status: "approved",
               adminNotes: adminNotes || "Credited from deposit report",
               approvedBy: req.authUser!.id,
@@ -2059,9 +2059,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             where: { id },
             data: {
               status: 'approved',
-              resolvedBy: req.authUser!.id,
               resolvedAt: new Date(),
-              adminNotes: adminNotes || null,
+              notes: adminNotes || null,
             }
           });
         });
@@ -2071,9 +2070,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           where: { id },
           data: {
             status: 'rejected',
-            resolvedBy: req.authUser!.id,
             resolvedAt: new Date(),
-            adminNotes: adminNotes || null,
+            notes: adminNotes || null,
           }
         });
       }
