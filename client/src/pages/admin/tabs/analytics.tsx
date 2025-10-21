@@ -1,12 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { 
   TrendingUp, 
   Users, 
   DollarSign, 
   Coins,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Activity,
+  Download,
+  FileDown,
+  RefreshCw
 } from "lucide-react";
 import {
   LineChart,
@@ -23,6 +29,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { useState, useEffect } from 'react';
 
 interface AnalyticsData {
   dailyTransactions: {
@@ -51,6 +58,23 @@ interface AnalyticsData {
   totalStakes: number;
 }
 
+interface RealtimeData {
+  activeUsers: number;
+  todayDeposits: {
+    count: number;
+    total: number;
+  };
+  todayWithdrawals: {
+    count: number;
+    total: number;
+  };
+  pendingTransactions: {
+    deposits: number;
+    withdrawals: number;
+    total: number;
+  };
+}
+
 const TIER_COLORS = {
   'Royal Sapphire': '#3b82f6',
   'Legendary Emerald': '#10b981',
@@ -59,9 +83,53 @@ const TIER_COLORS = {
 };
 
 export default function AnalyticsTab() {
+  const { toast } = useToast();
+  const [isExporting, setIsExporting] = useState(false);
+
   const { data: analytics, isLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics"],
   });
+
+  const { data: realtime, isLoading: realtimeLoading } = useQuery<RealtimeData>({
+    queryKey: ["/api/admin/analytics/realtime"],
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/admin/analytics/export?format=${format}`, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `xnrt-analytics-${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export successful",
+        description: `Analytics data exported as ${format.toUpperCase()}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: "Failed to export analytics data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -87,61 +155,167 @@ export default function AnalyticsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Header with Export Buttons */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold" data-testid="heading-analytics">Analytics Dashboard</h2>
+          <p className="text-muted-foreground">Platform performance and insights</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleExport('csv')}
+            disabled={isExporting}
+            data-testid="button-export-csv"
+          >
+            <FileDown className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleExport('json')}
+            disabled={isExporting}
+            data-testid="button-export-json"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export JSON
+          </Button>
+        </div>
+      </div>
+
+      {/* Real-time Overview */}
+      {!realtimeLoading && realtime && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="h-5 w-5 text-primary animate-pulse" />
+            <h3 className="text-lg font-semibold">Live Overview</h3>
+            <Badge variant="outline" className="ml-auto">
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Auto-refresh: 30s
+            </Badge>
+          </div>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+                <Activity className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-active-users">
+                  {realtime.activeUsers}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Last 15 minutes</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Today's Deposits</CardTitle>
+                <TrendingUp className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-today-deposits">
+                  {realtime.todayDeposits.count}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {realtime.todayDeposits.total.toLocaleString()} XNRT total
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Today's Withdrawals</CardTitle>
+                <DollarSign className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-today-withdrawals">
+                  {realtime.todayWithdrawals.count}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {realtime.todayWithdrawals.total.toLocaleString()} XNRT total
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+                <Coins className="h-4 w-4 text-yellow-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="stat-pending-transactions">
+                  {realtime.pendingTransactions.total}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {realtime.pendingTransactions.deposits} deposits · {realtime.pendingTransactions.withdrawals} withdrawals
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
       {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="stat-analytics-revenue">
-              {analytics.totalRevenue.toLocaleString()} XNRT
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">From withdrawal fees (2%)</p>
-          </CardContent>
-        </Card>
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Platform Overview</h3>
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-analytics-revenue">
+                {analytics.totalRevenue.toLocaleString()} XNRT
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">From withdrawal fees (2%)</p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Stakes</CardTitle>
-            <Coins className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="stat-analytics-stakes">
-              {analytics.totalStakes}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Across all tiers</p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Stakes</CardTitle>
+              <Coins className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-analytics-stakes">
+                {analytics.totalStakes}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Across all tiers</p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Referral Commissions</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="stat-analytics-commissions">
-              {analytics.referralStats.totalCommissions.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {analytics.referralStats.activeReferrers} active referrers
-            </p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Referral Commissions</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-analytics-commissions">
+                {analytics.referralStats.totalCommissions.toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {analytics.referralStats.activeReferrers} active referrers
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="stat-analytics-users">
-              {analytics.totalUsers}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Platform-wide</p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-analytics-users">
+                {analytics.totalUsers}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Platform-wide</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Charts Row 1 */}

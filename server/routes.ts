@@ -2383,6 +2383,172 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin Real-time Analytics
+  app.get('/api/admin/analytics/realtime', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      // Get active users (last 15 minutes)
+      const activeUsers = await prisma.activity.groupBy({
+        by: ['userId'],
+        where: {
+          createdAt: {
+            gte: fifteenMinutesAgo
+          }
+        }
+      });
+
+      // Get today's deposits
+      const todayDeposits = await prisma.transaction.aggregate({
+        where: {
+          type: 'deposit',
+          status: 'approved',
+          createdAt: {
+            gte: startOfToday
+          }
+        },
+        _count: true,
+        _sum: {
+          amount: true
+        }
+      });
+
+      // Get today's withdrawals
+      const todayWithdrawals = await prisma.transaction.aggregate({
+        where: {
+          type: 'withdrawal',
+          status: 'approved',
+          createdAt: {
+            gte: startOfToday
+          }
+        },
+        _count: true,
+        _sum: {
+          amount: true
+        }
+      });
+
+      // Get pending transactions
+      const [pendingDeposits, pendingWithdrawals] = await Promise.all([
+        prisma.transaction.count({
+          where: {
+            type: 'deposit',
+            status: 'pending'
+          }
+        }),
+        prisma.transaction.count({
+          where: {
+            type: 'withdrawal',
+            status: 'pending'
+          }
+        })
+      ]);
+
+      res.json({
+        activeUsers: activeUsers.length,
+        todayDeposits: {
+          count: todayDeposits._count,
+          total: Number(todayDeposits._sum.amount || 0)
+        },
+        todayWithdrawals: {
+          count: todayWithdrawals._count,
+          total: Number(todayWithdrawals._sum.amount || 0)
+        },
+        pendingTransactions: {
+          deposits: pendingDeposits,
+          withdrawals: pendingWithdrawals,
+          total: pendingDeposits + pendingWithdrawals
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching real-time analytics:", error);
+      res.status(500).json({ message: "Failed to fetch real-time analytics" });
+    }
+  });
+
+  // Admin Analytics Export
+  app.get('/api/admin/analytics/export', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const format = req.query.format as string || 'csv';
+      
+      const allTransactions = await storage.getAllTransactions();
+      const allUsers = await storage.getAllUsers();
+      const allStakes = await storage.getAllActiveStakes();
+      
+      // Calculate analytics data
+      const dailyData: Record<string, { deposits: number; withdrawals: number; revenue: number }> = {};
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      allTransactions.forEach(tx => {
+        if (tx.createdAt) {
+          const txDate = new Date(tx.createdAt);
+          if (txDate >= thirtyDaysAgo) {
+            const dateKey = txDate.toISOString().split('T')[0];
+            if (!dailyData[dateKey]) {
+              dailyData[dateKey] = { deposits: 0, withdrawals: 0, revenue: 0 };
+            }
+            
+            if (tx.type === 'deposit' && tx.status === 'approved') {
+              dailyData[dateKey].deposits += parseFloat(tx.amount);
+            } else if (tx.type === 'withdrawal' && tx.status === 'approved') {
+              dailyData[dateKey].withdrawals += parseFloat(tx.amount);
+              dailyData[dateKey].revenue += parseFloat(tx.amount) * 0.02;
+            }
+          }
+        }
+      });
+
+      const totalRevenue = Object.values(dailyData).reduce((sum, day) => sum + day.revenue, 0);
+
+      if (format === 'csv') {
+        // Generate CSV
+        let csv = 'Date,Deposits (XNRT),Withdrawals (XNRT),Revenue (XNRT)\n';
+        Object.entries(dailyData)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .forEach(([date, data]) => {
+            csv += `${date},${data.deposits},${data.withdrawals},${data.revenue}\n`;
+          });
+        
+        csv += `\nSummary\n`;
+        csv += `Total Users,${allUsers.length}\n`;
+        csv += `Total Active Stakes,${allStakes.length}\n`;
+        csv += `Total Revenue (30 days),${totalRevenue}\n`;
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=xnrt-analytics-${new Date().toISOString().split('T')[0]}.csv`);
+        res.send(csv);
+      } else {
+        // Generate JSON
+        const jsonData = {
+          exportDate: new Date().toISOString(),
+          summary: {
+            totalUsers: allUsers.length,
+            totalActiveStakes: allStakes.length,
+            totalRevenue30Days: totalRevenue
+          },
+          dailyTransactions: Object.entries(dailyData)
+            .map(([date, data]) => ({
+              date,
+              deposits: data.deposits,
+              withdrawals: data.withdrawals,
+              revenue: data.revenue
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date))
+        };
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=xnrt-analytics-${new Date().toISOString().split('T')[0]}.json`);
+        res.json(jsonData);
+      }
+    } catch (error) {
+      console.error("Error exporting analytics:", error);
+      res.status(500).json({ message: "Failed to export analytics" });
+    }
+  });
+
   // Admin Activity Logs
   app.get('/api/admin/activities', requireAuth, requireAdmin, async (req, res) => {
     try {
