@@ -887,6 +887,7 @@ export class DatabaseStorage implements IStorage {
     const transactions = await prisma.transaction.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      take: 1000, // Limit to 1000 most recent transactions
     });
     return transactions.map(convertPrismaTransaction);
   }
@@ -999,6 +1000,7 @@ export class DatabaseStorage implements IStorage {
     const transactions = await prisma.transaction.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      take: 1000, // Limit to 1000 most recent transactions
     });
     return transactions.map(convertPrismaTransaction);
   }
@@ -1456,7 +1458,7 @@ export class DatabaseStorage implements IStorage {
       // Category-specific: Calculate from activities
       const typeFilter = category === 'mining' ? 'mining' : category === 'staking' ? 'stak' : 'referral';
       
-      // Get all users
+      // Get top 100 users by overall XP to limit scope (performance optimization)
       const users = await prisma.user.findMany({
         select: {
           id: true,
@@ -1464,6 +1466,8 @@ export class DatabaseStorage implements IStorage {
           email: true,
           xp: true,
         },
+        orderBy: { xp: 'desc' },
+        take: 100,
       });
 
       // Calculate category XP for each user
