@@ -1,0 +1,224 @@
+short answer: yes—mostly polish + a couple HTML/a11y fixes. Here are the highest-impact tweaks (with tiny patches you can paste).
+
+---
+
+# 1) Fix invalid HTML: `<a><button>…`
+
+`QuickActionRow` currently renders a `Button` *inside* a Wouter `<Link>` (which is an `<a>`). That’s invalid HTML. Render the button **as the anchor**.
+
+```tsx
+// QuickActionRow
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+
+function QuickActionRow({ href, icon, title, hint }: { href: string; icon: React.ReactNode; title: string; hint: string; }) {
+  return (
+    <Button
+      asChild
+      variant="outline"
+      className="w-full justify-between rounded-xl border-white/10 bg-white/[0.02] px-4 py-6 text-left backdrop-blur-sm transition-all hover:translate-x-[3px] hover:bg-white/[0.05]"
+      data-testid={`button-quick-${title.toLowerCase().replace(/\s+/g, "-")}`}
+      aria-label={`${title} – ${hint}`}
+    >
+      <Link href={href}>
+        <span className="flex items-center gap-3">
+          {icon}
+          <span className="text-left">
+            <span className="block font-semibold">{title}</span>
+            <span className="block text-xs text-muted-foreground">{hint}</span>
+          </span>
+        </span>
+        <ArrowRight className="h-5 w-5" />
+      </Link>
+    </Button>
+  );
+}
+```
+
+(Your `StatTile` is fine because it wraps a `<div>` card, not a `<button>`.)
+
+---
+
+# 2) Make the coin SVG id-safe
+
+Multiple `CoinGlyph`s on a page can clash because `id="coinRing"` is global in the DOM. Use a unique id per render.
+
+```tsx
+import * as React from "react";
+function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
+  const id = React.useId(); // e.g. :r1:
+  const gradId = `coinRing-${id}`;
+  return (
+    <svg viewBox="0 0 48 48" className={className} aria-hidden="true" role="img">
+      <defs>
+        <linearGradient id={gradId} x1="0" x2="1">
+          <stop offset="0" stopColor="hsl(42, 90%, 50%)" />
+          <stop offset="1" stopColor="hsl(42, 90%, 60%)" />
+        </linearGradient>
+      </defs>
+      <circle cx="24" cy="24" r="18" fill="none" stroke={`url(#${gradId})`} strokeWidth="4" />
+      <circle cx="24" cy="24" r="10" fill="none" stroke={`url(#${gradId})`} strokeWidth="2" />
+      <path d="M16 24h16" stroke={`url(#${gradId})`} strokeWidth="2" />
+      <path d="M20 18h8M20 30h8" stroke={`url(#${gradId})`} strokeWidth="2" />
+      <circle cx="24" cy="24" r="21" fill="none" stroke="hsl(42, 90%, 50%)" strokeOpacity="0.12" strokeWidth="6" />
+    </svg>
+  );
+}
+```
+
+---
+
+# 3) Consistent number formatting (and no `NaN`)
+
+You format differently in different places. Centralize it so you never show “NaN”.
+
+```tsx
+// utils/number.ts
+export const nf = (n: number | string, opts?: Intl.NumberFormatOptions) => {
+  const num = typeof n === "string" ? Number(n.replace(/[^0-9.-]/g, "")) : Number(n);
+  const safe = Number.isFinite(num) ? num : 0;
+  return new Intl.NumberFormat(undefined, opts).format(safe);
+};
+```
+
+Use it:
+
+```tsx
+// Home()
+<span className="text-4xl font-bold text-primary" data-testid="text-balance">
+  {nf(xnrtBalance)}
+</span>
+
+// XP
+<div className="text-2xl font-bold" data-testid="text-xp">
+  {nf(xp)}
+</div>
+<div className="text-xs text-muted-foreground">
+  {nf(Math.max(0, (Math.floor(xp / 1000) + 1) * 1000 - xp))} XP to Lv {Math.floor(xp / 1000) + 2}
+</div>
+
+// StatTile
+const num = nf(value);
+```
+
+---
+
+# 4) Loading states for stats/balance (avoid “0” pop-in)
+
+Right now “0” flashes until queries resolve. Show light skeletons instead.
+
+```tsx
+const { data: balance, isLoading: balanceLoading } = useQuery<Balance>({ queryKey: ["/api/balance"], staleTime: 15_000 });
+const { data: stats, isLoading: statsLoading } = useQuery<{ /* … */ }>({ queryKey: ["/api/stats"], staleTime: 15_000 });
+
+{/* Balance card content */}
+{balanceLoading ? (
+  <div className="h-10 w-40 rounded bg-white/10 animate-pulse" />
+) : (
+  <div className="flex items-center gap-3">…</div>
+)}
+
+{/* Stat tiles */}
+{statsLoading ? (
+  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    {Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} className="h-20 rounded-2xl border-white/10 bg-white/5 animate-pulse" />
+    ))}
+  </div>
+) : (
+  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">…existing tiles…</div>
+)}
+```
+
+Also add `refetchOnWindowFocus: false` if you want calmer behavior.
+
+---
+
+# 5) Correct types for API data
+
+You typed `createdAt: Date`, but over-the-wire it’s a string. Make types match and parse explicitly.
+
+```ts
+type Activity = { id: string; type: string; description: string; createdAt: string };
+
+const { data: stats } = useQuery<{
+  activeStakes: number;
+  miningSessions: number;
+  totalReferrals: number;
+  recentActivity: Activity[];
+}>({ queryKey: ["/api/stats"] });
+```
+
+```tsx
+// render
+new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
+  .format(new Date(activity.createdAt))
+```
+
+---
+
+# 6) Strongly type `checkinMutation` response
+
+…and surface server errors cleanly.
+
+```ts
+type CheckinResponse = {
+  streak: number;
+  xnrtReward: number;
+  xpReward: number;
+};
+
+const checkinMutation = useMutation<CheckinResponse, Error>({
+  mutationFn: async () => {
+    const res = await apiRequest("POST", "/api/checkin");
+    if (!res.ok) throw new Error((await res.text()) || "Check-in failed");
+    return res.json();
+  },
+  onSuccess: (data) => { /* unchanged */ },
+  onError: (error) => {
+    toast({
+      title: "Check-in Failed",
+      description: error.message ?? "Already checked in today",
+      variant: "destructive",
+    });
+  },
+});
+```
+
+---
+
+# 7) Small a11y touches
+
+* Add `role="status"` to skeleton text blocks where appropriate.
+* Give icons `aria-hidden="true"` (Lucide already sets this, but safe to enforce on custom SVG).
+* Provide `aria-label` on action buttons (I added one to `QuickActionRow` above).
+
+---
+
+# 8) Micro-performance (optional)
+
+* `StatTile` and `QuickActionRow` can be `React.memo`—they only change when props do.
+* Precompute `const levelToNext = Math.floor(xp / 1000) + 2;` to avoid recompute in JSX.
+* Extract `clamp` util:
+
+  ```ts
+  const clamp = (n: number, min = 0, max = 100) => Math.min(max, Math.max(min, n));
+  const pct = clamp((xp % 1000) / 10);
+  ```
+
+---
+
+# 9) Empty state copy (tone)
+
+The “Recent Activity” empty copy is friendly already; consider contextual CTAs:
+
+```tsx
+<p className="py-8 text-center text-sm text-muted-foreground">
+  No recent activity. <Link href="/tasks" className="underline">Complete a task</Link> or
+  <Link href="/staking" className="underline"> start staking</Link> to see updates here.
+</p>
+```
+
+---
+
+If you want, I can paste a ready-to-commit diff that applies 1–6 in one go.
