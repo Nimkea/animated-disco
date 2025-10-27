@@ -8,6 +8,9 @@ import { Pickaxe, Zap, Clock } from "lucide-react";
 import type { MiningSession } from "@shared/schema";
 import { isUnauthorizedError, handleUnauthorized } from "@/lib/authUtils";
 import { useAuth } from "@/hooks/useAuth";
+import { nf } from "@/lib/number";
+
+const XP_TO_XNRT_RATE = 0.5;
 
 export default function Mining() {
   const { toast } = useToast();
@@ -16,10 +19,13 @@ export default function Mining() {
   const { data: currentSession } = useQuery<MiningSession>({
     queryKey: ["/api/mining/current"],
     refetchInterval: 5000,
+    staleTime: 3000,
   });
 
-  const { data: sessions } = useQuery<MiningSession[]>({
+  const { data: sessions, isLoading: sessionsLoading } = useQuery<MiningSession[]>({
     queryKey: ["/api/mining/history"],
+    staleTime: 15000,
+    refetchOnWindowFocus: false,
   });
 
   // Process mining rewards automatically on interval
@@ -199,11 +205,11 @@ export default function Mining() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Base Reward:</span>
-                    <span className="font-bold text-chart-2 text-xl">{currentSession.baseReward} XP</span>
+                    <span className="font-bold text-chart-2 text-xl">{nf(currentSession.baseReward)} XP</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">XNRT Conversion:</span>
-                    <span className="font-bold text-chart-2 text-xl">{(currentSession.baseReward * 0.5).toFixed(1)} XNRT</span>
+                    <span className="font-bold text-chart-2 text-xl">{(currentSession.baseReward * XP_TO_XNRT_RATE).toFixed(1)} XNRT</span>
                   </div>
                 </div>
               </>
@@ -212,7 +218,7 @@ export default function Mining() {
             {isReady && (
               <div className="text-center space-y-2">
                 <p className="text-lg font-semibold text-chart-2">Ready to Mine!</p>
-                <p className="text-sm text-muted-foreground">Earn {baseReward} XP and {(baseReward * 0.5).toFixed(1)} XNRT automatically after 24 hours</p>
+                <p className="text-sm text-muted-foreground">Earn {nf(baseReward)} XP and {(baseReward * XP_TO_XNRT_RATE).toFixed(1)} XNRT automatically after 24 hours</p>
               </div>
             )}
           </CardContent>
@@ -225,45 +231,99 @@ export default function Mining() {
           <CardDescription>Your recent mining sessions</CardDescription>
         </CardHeader>
         <CardContent>
-          {!sessions || sessions.length === 0 ? (
+          {sessionsLoading ? (
+            <div className="space-y-2.5 sm:space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-20 rounded-xl border-white/10 bg-white/5 animate-pulse" role="status" aria-label="Loading sessions" />
+              ))}
+            </div>
+          ) : !sessions || sessions.length === 0 ? (
             <div className="text-center py-12">
               <Pickaxe className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No mining sessions yet</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {sessions.slice(0, 10).map((session) => (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between p-4 border border-border rounded-md hover-elevate"
-                  data-testid={`session-${session.id}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-md flex items-center justify-center ${
-                      session.status === "completed" ? "bg-chart-2/20" : "bg-muted"
-                    }`}>
-                      <Pickaxe className={session.status === "completed" ? "text-chart-2" : "text-muted-foreground"} />
-                    </div>
-                    <div>
-                      <p className="font-semibold">Mining Session</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(session.startTime).toLocaleString()}
-                      </p>
+            <div className="space-y-2.5 sm:space-y-3">
+              {sessions.slice(0, 10).map((session) => {
+                const started = new Date(session.startTime);
+                const ended = session.endTime ? new Date(session.endTime) : null;
+                const durationHrs = ended
+                  ? Math.max(1, Math.round((+ended - +started) / 3_600_000))
+                  : 24;
+
+                const statusClass =
+                  session.status === "completed"
+                    ? "border-chart-2/30 bg-chart-2/10 text-chart-2"
+                    : "border-muted bg-muted/50 text-muted-foreground";
+
+                return (
+                  <div
+                    key={session.id}
+                    className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 transition-colors hover:bg-white/[0.05]"
+                    data-testid={`session-${session.id}`}
+                  >
+                    {/* subtle decorative grid */}
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-[0.04] sm:opacity-[0.06]"
+                      aria-hidden="true"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(255,255,255,.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,.3) 1px, transparent 1px)",
+                        backgroundSize: "20px 20px",
+                      }}
+                    />
+                    <div className="relative z-10 flex items-center gap-3 sm:gap-4">
+                      {/* icon plate */}
+                      <div
+                        className={`grid h-10 w-10 sm:h-12 sm:w-12 place-items-center rounded-lg ${
+                          session.status === "completed" ? "bg-chart-2/20" : "bg-muted"
+                        }`}
+                      >
+                        <Pickaxe
+                          className={
+                            session.status === "completed"
+                              ? "text-chart-2"
+                              : "text-muted-foreground"
+                          }
+                          aria-hidden="true"
+                        />
+                      </div>
+
+                      {/* details */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold leading-none text-sm sm:text-base">Mining Session</p>
+                          <Badge
+                            variant="outline"
+                            className={`h-5 sm:h-6 rounded-full px-2 text-[10px] sm:text-[11px] capitalize border ${statusClass}`}
+                          >
+                            {session.status}
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs text-muted-foreground">
+                          {new Intl.DateTimeFormat(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          }).format(started)}
+                          {ended && (
+                            <span className="hidden sm:inline"> · {durationHrs}h</span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* rewards */}
+                      <div className="text-right">
+                        <div className="font-bold text-chart-2 text-sm sm:text-base">
+                          +{nf(session.finalReward)} XP
+                        </div>
+                        <div className="text-[11px] sm:text-sm text-muted-foreground">
+                          +{(session.finalReward * XP_TO_XNRT_RATE).toFixed(1)} XNRT
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2">
-                      <div className="font-bold text-chart-2">+{session.finalReward} XP</div>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      +{(session.finalReward * 0.5).toFixed(1)} XNRT
-                    </div>
-                    <Badge variant={session.status === "completed" ? "default" : "secondary"} className="mt-1">
-                      {session.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
