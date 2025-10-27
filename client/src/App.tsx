@@ -6,7 +6,7 @@ import { queryClient, initCSRFToken } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { MobileTopNav } from "@/components/mobile-top-nav";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { PWAUpdateNotification } from "@/components/pwa-update-notification";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -157,7 +157,7 @@ function AuthenticatedApp() {
 
   return (
     <SidebarProvider style={style} defaultOpen={true}>
-      <MobileTopNav onChatOpen={() => setIsChatOpen(true)} />
+      <MobileBottomNav onChatOpen={() => setIsChatOpen(true)} />
       <div className="flex h-screen w-full">
         <AppSidebar onChatOpen={() => setIsChatOpen(true)} />
         <div className="flex flex-col flex-1 overflow-hidden">
@@ -175,7 +175,7 @@ function AuthenticatedApp() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto p-6 pt-[72px] md:pt-6 bg-background">
+          <main className="flex-1 overflow-auto p-6 pb-24 md:pb-6 bg-background">
             <ErrorBoundary>
               <Switch>
                 <Route path="/" component={Home} />

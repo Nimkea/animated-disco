@@ -18,13 +18,13 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 - **Design System**: Unified cosmic theme with black starfield backgrounds, a luxurious golden color palette, and glassmorphic elements.
 - **Navigation**: 
   - Desktop: Collapsible sidebar with full navigation menu
-  - Mobile: Fixed top bar with primary navigation (Home, Wallet, Deposit, Withdrawal, Staking, Mining, More) and bottom drawer for secondary items (Referrals, Leaderboard, Tasks, Achievements, Rewards, Profile, Chat Support, Logout)
+  - Mobile: Modern bottom navigation bar with 5 fixed tabs (Home, Wallet, Mining, Staking, More) featuring glow effects on active tabs. "More" tab opens a floating glassmorphic drawer with grouped items organized into Account (Profile, Rewards, Achievements), Transactions (Deposit, Withdrawal), Social (Referrals, Leaderboard), Tasks & Support (Tasks, Chat Support, Logout)
 - **Authentication Experience**: Glassmorphic `/auth` page with `backdrop-blur` effects, tabbed Login/Register interface, and `framer-motion` animations. Includes FloatingLabelInput and PasswordStrength components.
 - **Error Handling**: `ErrorBoundary` for graceful failure recovery.
 - **Loading States**: Content-aware skeleton screens.
 - **Confirmation Flows**: Critical actions require user confirmation.
 - **Components**: Leverages Shadcn/ui with Radix UI primitives.
-- **Responsiveness**: Mobile-first approach with dedicated mobile top navigation.
+- **Responsiveness**: Mobile-first approach with modern bottom navigation optimized for thumb-reach accessibility.
 - **Animations**: `Framer-motion` for dynamic UI, `ShineButton` and `TiltCard` for engaging interactions.
 - **Support**: Integrated FAQ ChatBot with smart keyword matching and email fallback, repositioned to sidebar for authenticated users.
 
