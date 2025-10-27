@@ -27,19 +27,92 @@ import ResetPassword from "@/pages/auth/reset-password";
 import VerifyEmail from "@/pages/auth/verify-email";
 
 // Lazy load all authenticated pages for faster initial load
-const Home = lazy(() => import("@/pages/home"));
-const Wallet = lazy(() => import("@/pages/wallet"));
-const Deposit = lazy(() => import("@/pages/deposit"));
-const Withdrawal = lazy(() => import("@/pages/withdrawal"));
-const Profile = lazy(() => import("@/pages/profile"));
-const Tasks = lazy(() => import("@/pages/tasks"));
-const Achievements = lazy(() => import("@/pages/achievements"));
-const Rewards = lazy(() => import("@/pages/rewards"));
-const Staking = lazy(() => import("@/pages/staking"));
-const Mining = lazy(() => import("@/pages/mining"));
-const Referrals = lazy(() => import("@/pages/referrals"));
-const Leaderboard = lazy(() => import("@/pages/leaderboard"));
+const HomePage = lazy(() => import("@/pages/home"));
+const WalletPage = lazy(() => import("@/pages/wallet"));
+const DepositPage = lazy(() => import("@/pages/deposit"));
+const WithdrawalPage = lazy(() => import("@/pages/withdrawal"));
+const ProfilePage = lazy(() => import("@/pages/profile"));
+const TasksPage = lazy(() => import("@/pages/tasks"));
+const AchievementsPage = lazy(() => import("@/pages/achievements"));
+const RewardsPage = lazy(() => import("@/pages/rewards"));
+const StakingPage = lazy(() => import("@/pages/staking"));
+const MiningPage = lazy(() => import("@/pages/mining"));
+const ReferralsPage = lazy(() => import("@/pages/referrals"));
+const LeaderboardPage = lazy(() => import("@/pages/leaderboard"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
+
+// Create Suspense wrappers for lazy-loaded pages
+const Home = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <HomePage />
+  </Suspense>
+);
+
+const Wallet = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <WalletPage />
+  </Suspense>
+);
+
+const Deposit = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <DepositPage />
+  </Suspense>
+);
+
+const Withdrawal = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <WithdrawalPage />
+  </Suspense>
+);
+
+const Profile = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <ProfilePage />
+  </Suspense>
+);
+
+const Tasks = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <TasksPage />
+  </Suspense>
+);
+
+const Achievements = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <AchievementsPage />
+  </Suspense>
+);
+
+const Rewards = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <RewardsPage />
+  </Suspense>
+);
+
+const Staking = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <StakingPage />
+  </Suspense>
+);
+
+const Mining = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <MiningPage />
+  </Suspense>
+);
+
+const Referrals = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <ReferralsPage />
+  </Suspense>
+);
+
+const Leaderboard = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <LeaderboardPage />
+  </Suspense>
+);
 
 /** Admin-protected Dashboard component */
 function ProtectedAdminDashboard() {
@@ -104,30 +177,22 @@ function AuthenticatedApp() {
 
           <main className="flex-1 overflow-auto p-6 pt-[72px] md:pt-6 bg-background">
             <ErrorBoundary>
-              <Suspense
-                fallback={
-                  <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                    Loading…
-                  </div>
-                }
-              >
-                <Switch>
-                  <Route path="/" component={Home} />
-                  <Route path="/wallet" component={Wallet} />
-                  <Route path="/deposit" component={Deposit} />
-                  <Route path="/withdrawal" component={Withdrawal} />
-                  <Route path="/staking" component={Staking} />
-                  <Route path="/mining" component={Mining} />
-                  <Route path="/referrals" component={Referrals} />
-                  <Route path="/profile" component={Profile} />
-                  <Route path="/tasks" component={Tasks} />
-                  <Route path="/achievements" component={Achievements} />
-                  <Route path="/rewards" component={Rewards} />
-                  <Route path="/leaderboard" component={Leaderboard} />
-                  <Route path="/admin" component={ProtectedAdminDashboard} />
-                  <Route component={NotFound} />
-                </Switch>
-              </Suspense>
+              <Switch>
+                <Route path="/" component={Home} />
+                <Route path="/wallet" component={Wallet} />
+                <Route path="/deposit" component={Deposit} />
+                <Route path="/withdrawal" component={Withdrawal} />
+                <Route path="/staking" component={Staking} />
+                <Route path="/mining" component={Mining} />
+                <Route path="/referrals" component={Referrals} />
+                <Route path="/profile" component={Profile} />
+                <Route path="/tasks" component={Tasks} />
+                <Route path="/achievements" component={Achievements} />
+                <Route path="/rewards" component={Rewards} />
+                <Route path="/leaderboard" component={Leaderboard} />
+                <Route path="/admin" component={ProtectedAdminDashboard} />
+                <Route component={NotFound} />
+              </Switch>
             </ErrorBoundary>
           </main>
         </div>
