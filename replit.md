@@ -30,6 +30,7 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 
 **Technical Implementations:**
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Wouter for routing, and TanStack Query for data management.
+  - **React Deduplication**: Vite configured with `resolve.dedupe: ['react', 'react-dom']` to prevent duplicate React instances that cause hook errors
 - **Backend**: Express.js with TypeScript.
 - **Database**: PostgreSQL (Neon) using Drizzle ORM for schema and session management, and Prisma ORM for database operations.
 - **Authentication**: Hybrid system supporting Replit OIDC (Passport.js) and traditional email/password, with secure password reset, email verification, and session management.
