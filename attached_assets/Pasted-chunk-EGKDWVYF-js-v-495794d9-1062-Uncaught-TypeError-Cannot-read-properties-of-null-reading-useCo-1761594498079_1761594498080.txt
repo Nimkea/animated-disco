@@ -1,0 +1,181 @@
+chunk-EGKDWVYF.js?v=495794d9:1062 Uncaught TypeError: Cannot read properties of null (reading 'useContext')
+    at Object.useContext (chunk-EGKDWVYF.js?v=495794d9:1062:29)
+    at useIsRestoring (@tanstack_react-query.js?v=495794d9:3101:35)
+    at useBaseQuery (@tanstack_react-query.js?v=495794d9:3272:23)
+    at useQuery (@tanstack_react-query.js?v=495794d9:3350:10)
+    at useAuth (useAuth.ts:4:37)
+    at AppContent (App.tsx:165:42)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1066 Uncaught TypeError: Cannot read properties of null (reading 'useState')
+    at Object.useState (chunk-EGKDWVYF.js?v=495794d9:1066:29)
+    at useToast (use-toast.ts:172:35)
+    at Toaster (toaster.tsx:12:22)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-5FIUFYUJ.js?v=a5169469:3699:24)
+    at invokeGuardedCallback (chunk-5FIUFYUJ.js?v=a5169469:3733:39)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19765:15)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1066 Uncaught TypeError: Cannot read properties of null (reading 'useState')
+    at useState (chunk-EGKDWVYF.js?v=495794d9:1066:29)
+    at PWAInstallPrompt (pwa-install-prompt.tsx:13:47)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-5FIUFYUJ.js?v=a5169469:3699:24)
+    at invokeGuardedCallback (chunk-5FIUFYUJ.js?v=a5169469:3733:39)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19765:15)
+    at performUnitOfWork (chunk-5FIUFYUJ.js?v=a5169469:19198:20)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1066 Uncaught TypeError: Cannot read properties of null (reading 'useState')
+    at useState (chunk-EGKDWVYF.js?v=495794d9:1066:29)
+    at PWAUpdateNotification (pwa-update-notification.tsx:7:39)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-5FIUFYUJ.js?v=a5169469:3699:24)
+    at invokeGuardedCallback (chunk-5FIUFYUJ.js?v=a5169469:3733:39)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19765:15)
+    at performUnitOfWork (chunk-5FIUFYUJ.js?v=a5169469:19198:20)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1062 Uncaught TypeError: Cannot read properties of null (reading 'useContext')
+    at Object.useContext (chunk-EGKDWVYF.js?v=495794d9:1062:29)
+    at useIsRestoring (@tanstack_react-query.js?v=495794d9:3101:35)
+    at useBaseQuery (@tanstack_react-query.js?v=495794d9:3272:23)
+    at useQuery (@tanstack_react-query.js?v=495794d9:3350:10)
+    at useAuth (useAuth.ts:4:37)
+    at AppContent (App.tsx:165:42)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1066 Uncaught TypeError: Cannot read properties of null (reading 'useState')
+    at Object.useState (chunk-EGKDWVYF.js?v=495794d9:1066:29)
+    at useToast (use-toast.ts:172:35)
+    at Toaster (toaster.tsx:12:22)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-5FIUFYUJ.js?v=a5169469:3699:24)
+    at invokeGuardedCallback (chunk-5FIUFYUJ.js?v=a5169469:3733:39)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19765:15)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1066 Uncaught TypeError: Cannot read properties of null (reading 'useState')
+    at useState (chunk-EGKDWVYF.js?v=495794d9:1066:29)
+    at PWAInstallPrompt (pwa-install-prompt.tsx:13:47)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-5FIUFYUJ.js?v=a5169469:3699:24)
+    at invokeGuardedCallback (chunk-5FIUFYUJ.js?v=a5169469:3733:39)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19765:15)
+    at performUnitOfWork (chunk-5FIUFYUJ.js?v=a5169469:19198:20)Understand this error
+2chunk-EGKDWVYF.js?v=495794d9:136 Warning: Invalid hook call. Hooks can only be called inside of the body of a function component. This could happen for one of the following reasons:
+1. You might have mismatching versions of React and the renderer (such as React DOM)
+2. You might be breaking the Rules of Hooks
+3. You might have more than one copy of React in the same app
+See https://reactjs.org/link/invalid-hook-call for tips about how to debug and fix this problem.
+printWarning @ chunk-EGKDWVYF.js?v=495794d9:136Understand this error
+chunk-EGKDWVYF.js?v=495794d9:1066 Uncaught TypeError: Cannot read properties of null (reading 'useState')
+    at useState (chunk-EGKDWVYF.js?v=495794d9:1066:29)
+    at PWAUpdateNotification (pwa-update-notification.tsx:7:39)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at HTMLUnknownElement.callCallback2 (chunk-5FIUFYUJ.js?v=a5169469:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-5FIUFYUJ.js?v=a5169469:3699:24)
+    at invokeGuardedCallback (chunk-5FIUFYUJ.js?v=a5169469:3733:39)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19765:15)
+    at performUnitOfWork (chunk-5FIUFYUJ.js?v=a5169469:19198:20)Understand this error
+chunk-5FIUFYUJ.js?v=a5169469:14032 The above error occurred in the <AppContent> component:
+
+    at AppContent (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/App.tsx?v=UaJmO9H5a1-0e0c9aUi0h:364:42)
+    at QueryClientProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=a5169469:3086:3)
+    at App
+    at ThemeProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/contexts/theme-context.tsx?v=UaJmO9H5a1-0e0c9aUi0h:38:33)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-5FIUFYUJ.js?v=a5169469:14032Understand this error
+chunk-5FIUFYUJ.js?v=a5169469:14032 The above error occurred in the <Toaster> component:
+
+    at Toaster (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/components/ui/toaster.tsx:29:22)
+    at QueryClientProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=a5169469:3086:3)
+    at App
+    at ThemeProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/contexts/theme-context.tsx?v=UaJmO9H5a1-0e0c9aUi0h:38:33)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-5FIUFYUJ.js?v=a5169469:14032Understand this error
+chunk-5FIUFYUJ.js?v=a5169469:14032 The above error occurred in the <PWAInstallPrompt> component:
+
+    at PWAInstallPrompt (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/components/pwa-install-prompt.tsx:25:47)
+    at QueryClientProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=a5169469:3086:3)
+    at App
+    at ThemeProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/contexts/theme-context.tsx?v=UaJmO9H5a1-0e0c9aUi0h:38:33)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-5FIUFYUJ.js?v=a5169469:14032Understand this error
+chunk-5FIUFYUJ.js?v=a5169469:14032 The above error occurred in the <PWAUpdateNotification> component:
+
+    at PWAUpdateNotification (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/components/pwa-update-notification.tsx:24:39)
+    at QueryClientProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=a5169469:3086:3)
+    at App
+    at ThemeProvider (https://5421fea1-f708-44dc-9d24-5faccf7f3482-00-2uci8eo16l8vw.janeway.replit.dev/src/contexts/theme-context.tsx?v=UaJmO9H5a1-0e0c9aUi0h:38:33)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-5FIUFYUJ.js?v=a5169469:14032Understand this error
+chunk-5FIUFYUJ.js?v=a5169469:19413 Uncaught TypeError: Cannot read properties of null (reading 'useContext')
+    at Object.useContext (chunk-EGKDWVYF.js?v=495794d9:1062:29)
+    at useIsRestoring (@tanstack_react-query.js?v=495794d9:3101:35)
+    at useBaseQuery (@tanstack_react-query.js?v=495794d9:3272:23)
+    at useQuery (@tanstack_react-query.js?v=495794d9:3350:10)
+    at useAuth (useAuth.ts:4:37)
+    at AppContent (App.tsx:165:42)
+    at renderWithHooks (chunk-5FIUFYUJ.js?v=a5169469:11548:26)
+    at mountIndeterminateComponent (chunk-5FIUFYUJ.js?v=a5169469:14926:21)
+    at beginWork (chunk-5FIUFYUJ.js?v=a5169469:15914:22)
+    at beginWork$1 (chunk-5FIUFYUJ.js?v=a5169469:19753:22)
