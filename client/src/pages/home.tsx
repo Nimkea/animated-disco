@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,16 +21,21 @@ import type { Balance } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/use-confetti";
 import { AnnouncementBanner } from "@/components/announcement-banner";
+import { nf } from "@/lib/number";
 
 function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
+  const id = React.useId();
+  const gradId = `coinRing-${id}`;
+  
   return (
     <svg
       viewBox="0 0 48 48"
       className={className}
       aria-hidden="true"
+      role="img"
     >
       <defs>
-        <linearGradient id="coinRing" x1="0" x2="1">
+        <linearGradient id={gradId} x1="0" x2="1">
           <stop offset="0" stopColor="hsl(42, 90%, 50%)" />
           <stop offset="1" stopColor="hsl(42, 90%, 60%)" />
         </linearGradient>
@@ -39,12 +45,12 @@ function CoinGlyph({ className = "h-10 w-10" }: { className?: string }) {
         cy="24"
         r="18"
         fill="none"
-        stroke="url(#coinRing)"
+        stroke={`url(#${gradId})`}
         strokeWidth="4"
       />
-      <circle cx="24" cy="24" r="10" fill="none" stroke="url(#coinRing)" strokeWidth="2" />
-      <path d="M16 24h16" stroke="url(#coinRing)" strokeWidth="2" />
-      <path d="M20 18h8M20 30h8" stroke="url(#coinRing)" strokeWidth="2" />
+      <circle cx="24" cy="24" r="10" fill="none" stroke={`url(#${gradId})`} strokeWidth="2" />
+      <path d="M16 24h16" stroke={`url(#${gradId})`} strokeWidth="2" />
+      <path d="M20 18h8M20 30h8" stroke={`url(#${gradId})`} strokeWidth="2" />
       <circle
         cx="24"
         cy="24"
@@ -71,9 +77,7 @@ function StatTile({
   icon: React.ReactNode;
   href: string;
 }) {
-  const num = typeof value === "string" 
-    ? (isNaN(parseFloat(value.replace(/[^0-9.-]/g, ""))) ? 0 : parseFloat(value.replace(/[^0-9.-]/g, ""))).toLocaleString()
-    : value;
+  const num = nf(value);
 
   const body = (
     <Card 
@@ -114,12 +118,14 @@ function QuickActionRow({
   hint: string;
 }) {
   return (
-    <Link href={href}>
-      <Button
-        variant="outline"
-        className="w-full justify-between rounded-xl border-white/10 bg-white/[0.02] px-4 py-6 text-left backdrop-blur-sm transition-all hover:translate-x-[3px] hover:bg-white/[0.05]"
-        data-testid={`button-quick-${title.toLowerCase().replace(/\s+/g, "-")}`}
-      >
+    <Button
+      asChild
+      variant="outline"
+      className="w-full justify-between rounded-xl border-white/10 bg-white/[0.02] px-4 py-6 text-left backdrop-blur-sm transition-all hover:translate-x-[3px] hover:bg-white/[0.05]"
+      data-testid={`button-quick-${title.toLowerCase().replace(/\s+/g, "-")}`}
+      aria-label={`${title} – ${hint}`}
+    >
+      <Link href={href}>
         <span className="flex items-center gap-3">
           {icon}
           <span className="text-left">
@@ -128,31 +134,53 @@ function QuickActionRow({
           </span>
         </span>
         <ArrowRight className="h-5 w-5" />
-      </Button>
-    </Link>
+      </Link>
+    </Button>
   );
 }
+
+type Activity = { 
+  id: string; 
+  type: string; 
+  description: string; 
+  createdAt: string;
+};
+
+type CheckinResponse = {
+  streak: number;
+  xnrtReward: number;
+  xpReward: number;
+};
 
 export default function Home() {
   const { toast } = useToast();
   const { celebrate } = useConfetti();
   const { user, isLoading: userLoading } = useAuth();
 
-  const { data: balance } = useQuery<Balance>({ queryKey: ["/api/balance"] });
+  const { data: balance, isLoading: balanceLoading } = useQuery<Balance>({ 
+    queryKey: ["/api/balance"],
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
 
-  const { data: stats } = useQuery<{
+  const { data: stats, isLoading: statsLoading } = useQuery<{
     activeStakes: number;
     miningSessions: number;
     totalReferrals: number;
-    recentActivity: Array<{ id: string; type: string; description: string; createdAt: Date }>;
-  }>({ queryKey: ["/api/stats"] });
+    recentActivity: Activity[];
+  }>({ 
+    queryKey: ["/api/stats"],
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
 
-  const checkinMutation = useMutation({
+  const checkinMutation = useMutation<CheckinResponse, Error>({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/checkin");
+      if (!res.ok) throw new Error((await res.text()) || "Check-in failed");
       return await res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       const streakMilestones = [7, 14, 30, 60, 90, 180, 365];
       const isStreakMilestone = streakMilestones.includes(data.streak);
 
@@ -174,7 +202,7 @@ export default function Home() {
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
-    onError: (error: any) => {
+    onError: (error) => {
       toast({
         title: "Check-in Failed",
         description: error.message || "Already checked in today",
@@ -237,18 +265,22 @@ export default function Home() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-6">
-            <div className="flex items-center gap-3">
-              <CoinGlyph className="h-12 w-12" />
-              <div className="flex items-baseline gap-2">
-                <span
-                  className="text-4xl font-bold text-primary"
-                  data-testid="text-balance"
-                >
-                  {parseFloat(xnrtBalance).toLocaleString()}
-                </span>
-                <span className="text-xl font-semibold text-muted-foreground">XNRT</span>
+            {balanceLoading ? (
+              <div className="h-10 w-48 rounded bg-white/10 animate-pulse" role="status" aria-label="Loading balance" />
+            ) : (
+              <div className="flex items-center gap-3">
+                <CoinGlyph className="h-12 w-12" />
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className="text-4xl font-bold text-primary"
+                    data-testid="text-balance"
+                  >
+                    {nf(xnrtBalance)}
+                  </span>
+                  <span className="text-xl font-semibold text-muted-foreground">XNRT</span>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -272,10 +304,10 @@ export default function Home() {
                   className="text-2xl font-bold text-foreground"
                   data-testid="text-xp"
                 >
-                  {xp.toLocaleString()}
+                  {nf(xp)}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {Math.max(0, (Math.floor(xp / 1000) + 1) * 1000 - xp).toLocaleString()} XP
+                  {nf(Math.max(0, (Math.floor(xp / 1000) + 1) * 1000 - xp))} XP
                   to Lv {Math.floor(xp / 1000) + 2}
                 </div>
               </div>
@@ -292,36 +324,44 @@ export default function Home() {
       </div>
 
       {/* STATS GRID */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatTile
-          label="Total Earned"
-          value={balance?.totalEarned || "0"}
-          colorClass="bg-[hsl(var(--stat-green))]"
-          icon={<TrendingUp className="h-5 w-5 text-white" />}
-          href="/wallet"
-        />
-        <StatTile
-          label="Active Stakes"
-          value={stats?.activeStakes || 0}
-          colorClass="bg-[hsl(var(--stat-pink))]"
-          icon={<Gem className="h-5 w-5 text-white" />}
-          href="/staking"
-        />
-        <StatTile
-          label="Referrals"
-          value={stats?.totalReferrals || 0}
-          colorClass="bg-[hsl(var(--stat-blue))]"
-          icon={<Users className="h-5 w-5 text-white" />}
-          href="/referrals"
-        />
-        <StatTile
-          label="Mining Sessions"
-          value={stats?.miningSessions || 0}
-          colorClass="bg-[hsl(var(--stat-gold))]"
-          icon={<Pickaxe className="h-5 w-5 text-white" />}
-          href="/mining"
-        />
-      </div>
+      {statsLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-20 rounded-2xl border-white/10 bg-white/5 animate-pulse" role="status" aria-label="Loading stats" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label="Total Earned"
+            value={balance?.totalEarned || "0"}
+            colorClass="bg-[hsl(var(--stat-green))]"
+            icon={<TrendingUp className="h-5 w-5 text-white" />}
+            href="/wallet"
+          />
+          <StatTile
+            label="Active Stakes"
+            value={stats?.activeStakes || 0}
+            colorClass="bg-[hsl(var(--stat-pink))]"
+            icon={<Gem className="h-5 w-5 text-white" />}
+            href="/staking"
+          />
+          <StatTile
+            label="Referrals"
+            value={stats?.totalReferrals || 0}
+            colorClass="bg-[hsl(var(--stat-blue))]"
+            icon={<Users className="h-5 w-5 text-white" />}
+            href="/referrals"
+          />
+          <StatTile
+            label="Mining Sessions"
+            value={stats?.miningSessions || 0}
+            colorClass="bg-[hsl(var(--stat-gold))]"
+            icon={<Pickaxe className="h-5 w-5 text-white" />}
+            href="/mining"
+          />
+        </div>
+      )}
 
       {/* ACTIONS + ACTIVITY */}
       <div className="grid gap-6 md:grid-cols-2">
@@ -362,13 +402,16 @@ export default function Home() {
                   No recent activity. Start earning to see your activity here!
                 </p>
               ) : (
-                stats.recentActivity.slice(0, 5).map((activity: any) => (
+                stats.recentActivity.slice(0, 5).map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3 text-sm">
                     <div className="mt-1.5 h-2 w-2 rounded-full bg-primary" />
                     <div className="flex-1">
                       <p className="text-foreground">{activity.description}</p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(activity.createdAt).toLocaleString()}
+                        {new Intl.DateTimeFormat(undefined, { 
+                          dateStyle: "medium", 
+                          timeStyle: "short" 
+                        }).format(new Date(activity.createdAt))}
                       </p>
                     </div>
                   </div>
