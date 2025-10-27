@@ -16,7 +16,7 @@ import { ChatBot } from "@/components/chat-bot";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotificationBadge } from "@/hooks/use-notification-badge";
 
-// Eager (lightweight) pages
+// Eager (lightweight) pages - only auth and landing
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Login from "@/pages/auth/login";
@@ -25,16 +25,16 @@ import Auth from "@/pages/auth/auth";
 import ForgotPassword from "@/pages/auth/forgot-password";
 import ResetPassword from "@/pages/auth/reset-password";
 import VerifyEmail from "@/pages/auth/verify-email";
-import Home from "@/pages/home";
-import Wallet from "@/pages/wallet";
-import Deposit from "@/pages/deposit";
-import Withdrawal from "@/pages/withdrawal";
-import Profile from "@/pages/profile";
-import Tasks from "@/pages/tasks";
-import Achievements from "@/pages/achievements";
-import Rewards from "@/pages/rewards";
 
-// Lazy (heavier) pages to speed up first paint
+// Lazy load all authenticated pages for faster initial load
+const Home = lazy(() => import("@/pages/home"));
+const Wallet = lazy(() => import("@/pages/wallet"));
+const Deposit = lazy(() => import("@/pages/deposit"));
+const Withdrawal = lazy(() => import("@/pages/withdrawal"));
+const Profile = lazy(() => import("@/pages/profile"));
+const Tasks = lazy(() => import("@/pages/tasks"));
+const Achievements = lazy(() => import("@/pages/achievements"));
+const Rewards = lazy(() => import("@/pages/rewards"));
 const Staking = lazy(() => import("@/pages/staking"));
 const Mining = lazy(() => import("@/pages/mining"));
 const Referrals = lazy(() => import("@/pages/referrals"));
