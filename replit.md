@@ -57,7 +57,11 @@ XNRT utilizes a robust architecture designed for performance, scalability, and s
 **System Design Choices:**
 - **Automation**: All core earning mechanisms and deposit systems are fully automated.
 - **Security**: Implemented `requireAuth`/`requireAdmin` middleware, atomic database operations, input validation, rate limiting, `helmet`, signature verification for wallet linking, and unique constraints for transaction hashes.
-- **Performance**: Optimized Prisma queries, reduced API polling, and Workbox caching.
+- **Performance**: 
+  - Lazy loading all authenticated pages (Home, Wallet, Deposit, Withdrawal, Staking, Mining, Referrals, Leaderboard, Tasks, Achievements, Rewards, Profile) for faster initial load
+  - Code splitting via Vite to reduce initial bundle size
+  - Optimized Prisma queries and reduced API polling
+  - Workbox caching for PWA assets
 - **Progressive Enhancement**: Feature flags enable phased rollout.
 - **Code Quality**: Zero LSP/TypeScript errors, 100% type-safe, and E2E test coverage.
 - **Database Schema Alignment**: 100% schema alignment between Drizzle and Prisma.
