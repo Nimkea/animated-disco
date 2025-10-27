@@ -6,6 +6,7 @@ import { queryClient, initCSRFToken } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { MobileTopNav } from "@/components/mobile-top-nav";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { PWAUpdateNotification } from "@/components/pwa-update-notification";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -83,10 +84,11 @@ function AuthenticatedApp() {
 
   return (
     <SidebarProvider style={style} defaultOpen={true}>
+      <MobileTopNav onChatOpen={() => setIsChatOpen(true)} />
       <div className="flex h-screen w-full">
         <AppSidebar onChatOpen={() => setIsChatOpen(true)} />
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between p-4 border-b border-border bg-background">
+          <header className="md:flex hidden items-center justify-between p-4 border-b border-border bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-4">
               <div className="text-sm text-muted-foreground">
@@ -100,7 +102,7 @@ function AuthenticatedApp() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto p-6 bg-background">
+          <main className="flex-1 overflow-auto p-6 pt-[72px] md:pt-6 bg-background">
             <ErrorBoundary>
               <Suspense
                 fallback={
