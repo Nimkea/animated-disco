@@ -2849,33 +2849,42 @@ Issued: ${issuedAt}`;
           });
         }
 
+        // Determine mint amount (net after fee if available, else gross)
+        const netAmt = withdrawal.netAmount
+          ? parseFloat(withdrawal.netAmount).toString()
+          : withdrawAmount.toString();
+
+        // If the token service is configured, mint on-chain FIRST (fail-closed).
+        // Balance is only deducted and the withdrawal marked approved when the
+        // on-chain transaction is confirmed. This ensures users are never debited
+        // without receiving real tokens.
+        let onChainTxHash: string | undefined;
+        if (isTokenServiceReady()) {
+          if (!withdrawal.walletAddress) {
+            return res.status(400).json({
+              message: "Cannot approve: withdrawal has no destination wallet address",
+            });
+          }
+          // Mint first — throws on failure, which aborts the approval entirely
+          onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
+          console.log(
+            `[Withdrawal] On-chain mint OK: ${onChainTxHash} → ${withdrawal.walletAddress}`
+          );
+        }
+
+        // Deduct balance and mark approved only after mint succeeds (or skipped)
         await storage.updateBalance(withdrawal.userId, {
           [sourceBalanceKey]: (currentBalance - withdrawAmount).toString(),
         });
 
         await storage.updateTransaction(id, { status: "approved" });
 
-        // Attempt on-chain mint if token service is configured
-        let onChainTxHash: string | undefined;
-        if (isTokenServiceReady() && withdrawal.walletAddress) {
-          try {
-            const netAmt = withdrawal.netAmount
-              ? parseFloat(withdrawal.netAmount).toString()
-              : withdrawAmount.toString();
-            onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
-            // Store on-chain tx hash back on the transaction record
-            await prisma.transaction.update({
-              where: { id },
-              data: { transactionHash: onChainTxHash },
-            });
-            console.log(
-              `[Withdrawal] On-chain mint OK: ${onChainTxHash} → ${withdrawal.walletAddress}`
-            );
-          } catch (mintErr: any) {
-            console.error(
-              `[Withdrawal] On-chain mint FAILED (approval still stands): ${mintErr?.message}`
-            );
-          }
+        // Persist tx hash if available
+        if (onChainTxHash) {
+          await prisma.transaction.update({
+            where: { id },
+            data: { transactionHash: onChainTxHash },
+          });
         }
 
         await storage.createActivity({

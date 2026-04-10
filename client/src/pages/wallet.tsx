@@ -238,7 +238,7 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
   const isDeposit = transaction.type === "deposit";
   const Icon = isDeposit ? ArrowDownToLine : ArrowUpFromLine;
 
-  const txHash: string | null = (transaction as any).transactionHash ?? null;
+  const txHash: string | null = transaction.transactionHash ?? null;
   const isApproved = transaction.status === "approved" || transaction.status === "paid";
   const showOnChainLink = isApproved && txHash;
 

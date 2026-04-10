@@ -33,6 +33,23 @@ if (!PRIVATE_KEY) {
 
 // ─── Compile ─────────────────────────────────────────────────────────────────
 
+function resolveImport(importPath: string): { contents: string } | { error: string } {
+  // Resolve @openzeppelin/... from node_modules
+  if (importPath.startsWith("@openzeppelin/")) {
+    const resolved = path.join(__dirname, "..", "node_modules", importPath);
+    if (fs.existsSync(resolved)) {
+      return { contents: fs.readFileSync(resolved, "utf8") };
+    }
+    return { error: `@openzeppelin import not found: ${resolved}` };
+  }
+  // Resolve relative imports
+  const resolved = path.join(__dirname, importPath);
+  if (fs.existsSync(resolved)) {
+    return { contents: fs.readFileSync(resolved, "utf8") };
+  }
+  return { error: `Import not found: ${importPath}` };
+}
+
 function compileContract(): { abi: any[]; bytecode: string } {
   const contractPath = path.join(__dirname, "XNRTToken.sol");
   const source = fs.readFileSync(contractPath, "utf8");
@@ -53,7 +70,9 @@ function compileContract(): { abi: any[]; bytecode: string } {
   };
 
   console.log("Compiling XNRTToken.sol ...");
-  const output = JSON.parse(solc.compile(JSON.stringify(input)));
+  const output = JSON.parse(
+    solc.compile(JSON.stringify(input), { import: resolveImport })
+  );
 
   if (output.errors) {
     const errors = output.errors.filter((e: any) => e.severity === "error");
@@ -103,7 +122,8 @@ async function deploy() {
   const factory = new ethers.ContractFactory(abi, bytecode, wallet);
   console.log("Deploying XNRTToken ...");
 
-  const contract = await factory.deploy();
+  // Pass deployer address as initialOwner (required by OZ Ownable 5.x)
+  const contract = await factory.deploy(wallet.address);
   const receipt = await contract.deploymentTransaction()!.wait(1);
 
   const address = await contract.getAddress();
