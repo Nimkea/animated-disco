@@ -21,6 +21,16 @@ import { deriveDepositAddress } from "./services/hdWallet";
 
 export const prisma = new PrismaClient();
 
+/* ─────────────────────── Trust Loan configuration ──────────────────────── */
+const TRUST_LOAN_CONFIG = {
+  programKey: "trust_loan",
+  durationDays: 30,
+  amountXnrt: 10000,
+  requiredReferrals: 3,
+  requiredInvestingReferrals: 2,
+  minInvestUsdtPerReferral: 100,
+} as const;
+
 /* ----------------------------- Trust Loan helper ---------------------------- */
 async function getDirectReferralStats(userId: string) {
   // Count L1 referrals
@@ -945,9 +955,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const issuedAt = new Date();
 
       await prisma.walletNonce.upsert({
-        where: { userId_walletAddress: { userId, walletAddress: address } },
-        update: { nonce, expiresAt },
-        create: { userId, walletAddress: address, nonce, expiresAt },
+        where: { userId_address: { userId, address } },
+        update: { nonce: String(nonce), expiresAt },
+        create: { userId, address, nonce: String(nonce), expiresAt },
       });
 
       const message = `XNRT Wallet Link
@@ -983,7 +993,7 @@ Issued: ${issuedAt.toISOString()}`;
 
         const rec = await prisma.walletNonce.findUnique({
           where: {
-            userId_walletAddress: { userId, walletAddress: normalized },
+            userId_address: { userId, address: normalized },
           },
         });
 
@@ -1036,6 +1046,7 @@ Issued: ${issuedAt}`;
               userId,
               address: normalized,
               signature,
+              nonce: rec.nonce,
             },
           }),
         ]);
@@ -1163,7 +1174,6 @@ Issued: ${issuedAt}`;
             data: {
               userId,
               txHash: transactionHash,
-              toAddress: treasuryAddress,
               amount: new Prisma.Decimal(amountNum),
               notes: description || `Verification: ${verification.reason}`,
               status: "pending",
@@ -1262,15 +1272,10 @@ Issued: ${issuedAt}`;
               fromAddress,
               toAddress: treasuryAddress,
               amount: new Prisma.Decimal(usdtAmount),
-              txHash: transactionHash,
-              reason:
-                typeof description === "string" && description.trim().length > 0
-                  ? description.trim()
-                  : `Verified on-chain but wallet not linked (from: ${
-                      fromAddress || "unknown"
-                    }) - ${verification.reason || "no reason"}`,
+              transactionHash,
+              blockNumber: receipt?.blockNumber ?? 0,
               confirmations: verification.confirmations ?? 0,
-              resolved: false,
+              matched: false,
             },
           });
 
@@ -2464,7 +2469,7 @@ Issued: ${issuedAt}`;
     async (_req, res) => {
       try {
         const unmatched = await prisma.unmatchedDeposit.findMany({
-          where: { resolved: false },
+          where: { matched: false },
           orderBy: { createdAt: "desc" },
           take: 100,
         });
