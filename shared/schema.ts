@@ -1,437 +1,400 @@
-// Referenced from Replit Auth blueprint for user authentication
-import { sql } from 'drizzle-orm';
-import {
-  index,
-  jsonb,
-  pgTable,
-  timestamp,
-  varchar,
-  integer,
-  decimal,
-  text,
-  boolean,
-  unique,
-} from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// JWT Session table - for authentication
-export const sessions = pgTable("Session", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jwtId: varchar("jwtId").unique().notNull(),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  revokedAt: timestamp("revokedAt"),
-}, (table) => [
-  index("sessions_userId_idx").on(table.userId),
-  index("sessions_jwtId_idx").on(table.jwtId),
-]);
+// ─── User ─────────────────────────────────────────────────────────────────────
 
-// User storage table - Extended for XNRT platform
-export const users = pgTable("User", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique().notNull(),
-  username: varchar("username").unique().notNull(),
-  passwordHash: varchar("passwordHash").notNull(),
-  referralCode: varchar("referralCode").unique().notNull(),
-  referredBy: varchar("referredBy"),
-  emailVerified: boolean("emailVerified").default(false).notNull(),
-  emailVerificationToken: varchar("emailVerificationToken"),
-  emailVerificationExpires: timestamp("emailVerificationExpires"),
-  isAdmin: boolean("isAdmin").default(false).notNull(),
-  xp: integer("xp").default(0).notNull(),
-  level: integer("level").default(1).notNull(),
-  streak: integer("streak").default(0).notNull(),
-  lastCheckIn: timestamp("lastCheckIn"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull(),
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  passwordHash: string;
+  referralCode: string;
+  referredBy?: string | null;
+  emailVerified: boolean;
+  emailVerificationToken?: string | null;
+  emailVerificationExpires?: Date | null;
+  isAdmin: boolean;
+  xp: number;
+  level: number;
+  streak: number;
+  lastCheckIn?: Date | null;
+  depositAddress?: string | null;
+  derivationIndex?: number | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  profileImageUrl?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type UpsertUser = Partial<User> & { id?: string };
+
+// ─── Balance ─────────────────────────────────────────────────────────────────
+
+export interface Balance {
+  id: string;
+  userId: string;
+  xnrtBalance: string;
+  stakingBalance: string;
+  miningBalance: string;
+  referralBalance: string;
+  totalEarned: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type InsertBalance = {
+  userId: string;
+  xnrtBalance?: string;
+  stakingBalance?: string;
+  miningBalance?: string;
+  referralBalance?: string;
+  totalEarned?: string;
+};
+
+// ─── Stake ───────────────────────────────────────────────────────────────────
+
+export interface Stake {
+  id: string;
+  userId: string;
+  tier: string;
+  amount: string;
+  dailyRate: string;
+  duration: number;
+  startDate: Date;
+  endDate: Date;
+  totalProfit: string;
+  lastProfitDate?: Date | null;
+  status: string;
+  isLoan?: boolean;
+  loanProgram?: string | null;
+  unlockMet?: boolean;
+  requiredReferrals?: number;
+  requiredInvestingReferrals?: number;
+  minInvestUsdtPerReferral?: string;
+  createdAt: Date;
+}
+
+export const insertStakeSchema = z.object({
+  userId: z.string(),
+  tier: z.string(),
+  amount: z.string(),
+  dailyRate: z.string(),
+  duration: z.number().int(),
+  startDate: z.date().optional(),
+  endDate: z.date(),
+  totalProfit: z.string().optional().default("0"),
+  lastProfitDate: z.date().nullable().optional(),
+  status: z.string().optional().default("active"),
 });
 
-// User balances
-export const balances = pgTable("Balance", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").unique().notNull().references(() => users.id, { onDelete: "cascade" }),
-  xnrtBalance: decimal("xnrtBalance", { precision: 38, scale: 18 }).default("0").notNull(),
-  stakingBalance: decimal("stakingBalance", { precision: 38, scale: 18 }).default("0").notNull(),
-  miningBalance: decimal("miningBalance", { precision: 38, scale: 18 }).default("0").notNull(),
-  referralBalance: decimal("referralBalance", { precision: 38, scale: 18 }).default("0").notNull(),
-  totalEarned: decimal("totalEarned", { precision: 38, scale: 18 }).default("0").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull(),
-});
-
-// Staking tiers
-export const stakes = pgTable("Stake", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  tier: varchar("tier").notNull(), // royal_sapphire, legendary_emerald, imperial_platinum, mythic_diamond
-  amount: decimal("amount", { precision: 38, scale: 18 }).notNull(),
-  dailyRate: decimal("dailyRate", { precision: 8, scale: 6 }).notNull(), // 1.1, 1.4, 1.5, 2.0
-  duration: integer("duration").notNull(), // 15, 30, 45, 90 days
-  startDate: timestamp("startDate").defaultNow().notNull(),
-  endDate: timestamp("endDate").notNull(),
-  totalProfit: decimal("totalProfit", { precision: 38, scale: 18 }).default("0").notNull(),
-  lastProfitDate: timestamp("lastProfitDate"),
-  status: varchar("status").default("active").notNull(), // active, completed, withdrawn
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("stakes_userId_idx").on(table.userId),
-  index("stakes_status_idx").on(table.status),
-  index("stakes_userId_createdAt_idx").on(table.userId, table.createdAt),
-]);
-
-// Mining sessions
-export const miningSessions = pgTable("MiningSession", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  baseReward: integer("baseReward").default(10).notNull(),
-  adBoostCount: integer("adBoostCount").default(0).notNull(),
-  boostPercentage: integer("boostPercentage").default(0).notNull(),
-  finalReward: integer("finalReward").default(10).notNull(),
-  startTime: timestamp("startTime").defaultNow().notNull(),
-  endTime: timestamp("endTime"),
-  nextAvailable: timestamp("nextAvailable").notNull(),
-  status: varchar("status").default("active").notNull(), // active, completed
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("mining_sessions_userId_idx").on(table.userId),
-  index("mining_sessions_status_idx").on(table.status),
-]);
-
-// Referrals
-export const referrals = pgTable("Referral", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  referrerId: varchar("referrerId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  referredUserId: varchar("referredUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  level: integer("level").notNull(), // 1, 2, 3
-  totalCommission: decimal("totalCommission", { precision: 38, scale: 18 }).default("0").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("referrals_referrerId_idx").on(table.referrerId),
-  index("referrals_referredUserId_idx").on(table.referredUserId),
-]);
-
-// Transactions (deposits & withdrawals)
-export const transactions = pgTable("Transaction", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  type: varchar("type").notNull(), // deposit, withdrawal
-  amount: decimal("amount", { precision: 38, scale: 18 }).notNull(),
-  usdtAmount: decimal("usdtAmount", { precision: 38, scale: 18 }),
-  source: varchar("source"), // For withdrawals: main, referral
-  walletAddress: text("walletAddress"),
-  transactionHash: text("transactionHash"),
-  proofImageUrl: varchar("proofImageUrl"),
-  status: varchar("status").default("pending").notNull(), // pending, approved, rejected, paid
-  adminNotes: text("adminNotes"),
-  fee: decimal("fee", { precision: 38, scale: 18 }),
-  netAmount: decimal("netAmount", { precision: 38, scale: 18 }),
-  approvedBy: varchar("approvedBy"),
-  approvedAt: timestamp("approvedAt"),
-  verified: boolean("verified").default(false).notNull(),
-  confirmations: integer("confirmations").default(0).notNull(),
-  verificationData: jsonb("verificationData"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("transactions_userId_idx").on(table.userId),
-  index("transactions_type_idx").on(table.type),
-  index("transactions_status_idx").on(table.status),
-  index("transactions_createdAt_idx").on(table.createdAt),
-  index("transactions_userId_createdAt_idx").on(table.userId, table.createdAt),
-  unique("transactions_txhash_unique").on(table.transactionHash),
-]);
-
-// Tasks
-export const tasks = pgTable("Task", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  title: varchar("title").notNull(),
-  description: text("description").notNull(),
-  xpReward: integer("xpReward").notNull(),
-  xnrtReward: decimal("xnrtReward", { precision: 38, scale: 18 }).default("0").notNull(),
-  category: varchar("category").notNull(), // daily, weekly, special
-  requirements: text("requirements"),
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  unique("tasks_title_unique").on(table.title),
-]);
-
-// User task completions
-export const userTasks = pgTable("UserTask", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  taskId: varchar("taskId").notNull().references(() => tasks.id, { onDelete: "cascade" }),
-  progress: integer("progress").default(0).notNull(),
-  maxProgress: integer("maxProgress").default(1).notNull(),
-  completed: boolean("completed").default(false).notNull(),
-  completedAt: timestamp("completedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("user_tasks_userId_idx").on(table.userId),
-  index("user_tasks_taskId_idx").on(table.taskId),
-  unique("user_tasks_user_task_unique").on(table.userId, table.taskId),
-]);
-
-// Achievements
-export const achievements = pgTable("Achievement", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  title: varchar("title").notNull(),
-  description: text("description").notNull(),
-  icon: varchar("icon").notNull(),
-  category: varchar("category").notNull(), // earnings, referrals, streaks, mining
-  requirement: integer("requirement").notNull(),
-  xpReward: integer("xpReward").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  unique("achievements_title_unique").on(table.title),
-]);
-
-// User achievements
-export const userAchievements = pgTable("UserAchievement", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  achievementId: varchar("achievementId").notNull().references(() => achievements.id, { onDelete: "cascade" }),
-  unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
-}, (table) => [
-  index("user_achievements_userId_idx").on(table.userId),
-  index("user_achievements_achievementId_idx").on(table.achievementId),
-]);
-
-// Activity feed
-export const activities = pgTable("Activity", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  type: varchar("type").notNull(), // stake_created, mining_completed, referral_earned, task_completed, etc.
-  description: text("description").notNull(),
-  metadata: varchar("metadata"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("activities_user_id_idx").on(table.userId),
-  index("activities_created_at_idx").on(table.createdAt),
-  index("activities_userId_createdAt_idx").on(table.userId, table.createdAt),
-]);
-
-// Notifications
-export const notifications = pgTable("Notification", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  type: varchar("type").notNull(), // referral_commission, new_referral, achievement_unlocked, etc.
-  title: varchar("title").notNull(),
-  message: text("message").notNull(),
-  metadata: varchar("metadata"),
-  read: boolean("read").default(false).notNull(),
-  deliveryAttempts: integer("deliveryAttempts"),
-  deliveredAt: timestamp("deliveredAt"),
-  lastAttemptAt: timestamp("lastAttemptAt"),
-  pendingPush: boolean("pendingPush").default(false).notNull(),
-  pushError: text("pushError"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("notifications_user_id_idx").on(table.userId),
-  index("notifications_read_idx").on(table.read),
-  index("notifications_created_at_idx").on(table.createdAt),
-  index("notifications_pending_push_idx").on(table.pendingPush),
-]);
-
-// Push Subscriptions
-export const pushSubscriptions = pgTable("PushSubscription", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  endpoint: text("endpoint").notNull(),
-  p256dh: text("p256dh").notNull(),
-  auth: text("auth").notNull(),
-  expirationTime: timestamp("expirationTime"),
-  enabled: boolean("enabled").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().$onUpdate(() => sql`now()`).notNull(),
-}, (table) => [
-  index("push_subscriptions_user_id_idx").on(table.userId),
-  index("push_subscriptions_endpoint_idx").on(table.endpoint),
-  unique("push_subscriptions_user_endpoint_unique").on(table.userId, table.endpoint),
-]);
-
-// Password Reset
-export const passwordResets = pgTable("PasswordReset", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  token: varchar("token").unique().notNull(),
-  userId: varchar("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
-  expiresAt: timestamp("expiresAt").notNull(),
-  usedAt: timestamp("usedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-}, (table) => [
-  index("password_resets_userId_idx").on(table.userId),
-  index("password_resets_token_idx").on(table.token),
-]);
-
-// Relations
-export const usersRelations = relations(users, ({ one, many }) => ({
-  balance: one(balances, {
-    fields: [users.id],
-    references: [balances.userId],
-  }),
-  stakes: many(stakes),
-  miningSessions: many(miningSessions),
-  referredUsers: many(referrals, { relationName: "referrer" }),
-  referrer: many(referrals, { relationName: "referred" }),
-  transactions: many(transactions),
-  userTasks: many(userTasks),
-  userAchievements: many(userAchievements),
-  activities: many(activities),
-  notifications: many(notifications),
-  pushSubscriptions: many(pushSubscriptions),
-  sessions: many(sessions),
-  passwordResets: many(passwordResets),
-}));
-
-export const balancesRelations = relations(balances, ({ one }) => ({
-  user: one(users, {
-    fields: [balances.userId],
-    references: [users.id],
-  }),
-}));
-
-export const stakesRelations = relations(stakes, ({ one }) => ({
-  user: one(users, {
-    fields: [stakes.userId],
-    references: [users.id],
-  }),
-}));
-
-export const miningSessionsRelations = relations(miningSessions, ({ one }) => ({
-  user: one(users, {
-    fields: [miningSessions.userId],
-    references: [users.id],
-  }),
-}));
-
-export const referralsRelations = relations(referrals, ({ one }) => ({
-  referrer: one(users, {
-    fields: [referrals.referrerId],
-    references: [users.id],
-    relationName: "referrer",
-  }),
-  referredUser: one(users, {
-    fields: [referrals.referredUserId],
-    references: [users.id],
-    relationName: "referred",
-  }),
-}));
-
-export const transactionsRelations = relations(transactions, ({ one }) => ({
-  user: one(users, {
-    fields: [transactions.userId],
-    references: [users.id],
-  }),
-}));
-
-export const userTasksRelations = relations(userTasks, ({ one }) => ({
-  user: one(users, {
-    fields: [userTasks.userId],
-    references: [users.id],
-  }),
-  task: one(tasks, {
-    fields: [userTasks.taskId],
-    references: [tasks.id],
-  }),
-}));
-
-export const userAchievementsRelations = relations(userAchievements, ({ one }) => ({
-  user: one(users, {
-    fields: [userAchievements.userId],
-    references: [users.id],
-  }),
-  achievement: one(achievements, {
-    fields: [userAchievements.achievementId],
-    references: [achievements.id],
-  }),
-}));
-
-export const activitiesRelations = relations(activities, ({ one }) => ({
-  user: one(users, {
-    fields: [activities.userId],
-    references: [users.id],
-  }),
-}));
-
-export const notificationsRelations = relations(notifications, ({ one }) => ({
-  user: one(users, {
-    fields: [notifications.userId],
-    references: [users.id],
-  }),
-}));
-
-export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
-  user: one(users, {
-    fields: [pushSubscriptions.userId],
-    references: [users.id],
-  }),
-}));
-
-export const sessionsRelations = relations(sessions, ({ one }) => ({
-  user: one(users, {
-    fields: [sessions.userId],
-    references: [users.id],
-  }),
-}));
-
-export const passwordResetsRelations = relations(passwordResets, ({ one }) => ({
-  user: one(users, {
-    fields: [passwordResets.userId],
-    references: [users.id],
-  }),
-}));
-
-// Types
-export type User = typeof users.$inferSelect;
-export type UpsertUser = typeof users.$inferInsert;
-
-export type Balance = typeof balances.$inferSelect;
-export type InsertBalance = typeof balances.$inferInsert;
-
-export type Stake = typeof stakes.$inferSelect;
-export const insertStakeSchema = createInsertSchema(stakes).omit({ id: true, createdAt: true });
 export type InsertStake = z.infer<typeof insertStakeSchema>;
 
-export type MiningSession = typeof miningSessions.$inferSelect;
-export const insertMiningSessionSchema = createInsertSchema(miningSessions).omit({ id: true, createdAt: true });
+// ─── MiningSession ───────────────────────────────────────────────────────────
+
+export interface MiningSession {
+  id: string;
+  userId: string;
+  baseReward: number;
+  adBoostCount: number;
+  boostPercentage: number;
+  finalReward: number;
+  startTime: Date;
+  endTime?: Date | null;
+  nextAvailable: Date;
+  status: string;
+  createdAt: Date;
+}
+
+export const insertMiningSessionSchema = z.object({
+  userId: z.string(),
+  baseReward: z.number().int().optional().default(10),
+  adBoostCount: z.number().int().optional().default(0),
+  boostPercentage: z.number().int().optional().default(0),
+  finalReward: z.number().int().optional().default(10),
+  startTime: z.date().optional(),
+  endTime: z.date().nullable().optional(),
+  nextAvailable: z.date(),
+  status: z.string().optional().default("active"),
+});
+
 export type InsertMiningSession = z.infer<typeof insertMiningSessionSchema>;
 
-export type Referral = typeof referrals.$inferSelect;
-export type InsertReferral = typeof referrals.$inferInsert;
+// ─── Referral ────────────────────────────────────────────────────────────────
 
-export type Transaction = typeof transactions.$inferSelect;
-export const insertTransactionSchema = createInsertSchema(transactions).omit({ id: true, createdAt: true });
+export interface Referral {
+  id: string;
+  referrerId: string;
+  referredUserId: string;
+  level: number;
+  totalCommission: string;
+  createdAt: Date;
+}
+
+export type InsertReferral = {
+  referrerId: string;
+  referredUserId: string;
+  level: number;
+  totalCommission?: string;
+};
+
+// ─── Transaction ─────────────────────────────────────────────────────────────
+
+export interface Transaction {
+  id: string;
+  userId: string;
+  type: string;
+  amount: string;
+  usdtAmount?: string | null;
+  source?: string | null;
+  walletAddress?: string | null;
+  transactionHash?: string | null;
+  proofImageUrl?: string | null;
+  status: string;
+  adminNotes?: string | null;
+  fee?: string | null;
+  netAmount?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: Date | null;
+  verified: boolean;
+  confirmations: number;
+  verificationData?: any;
+  createdAt: Date;
+  user?: { email: string; username: string };
+}
+
+export const insertTransactionSchema = z.object({
+  userId: z.string(),
+  type: z.string(),
+  amount: z.string(),
+  usdtAmount: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
+  walletAddress: z.string().nullable().optional(),
+  transactionHash: z.string().nullable().optional(),
+  proofImageUrl: z.string().nullable().optional(),
+  status: z.string().optional().default("pending"),
+  adminNotes: z.string().nullable().optional(),
+  fee: z.string().nullable().optional(),
+  netAmount: z.string().nullable().optional(),
+  approvedBy: z.string().nullable().optional(),
+  approvedAt: z.date().nullable().optional(),
+  verified: z.boolean().optional().default(false),
+  confirmations: z.number().int().optional().default(0),
+  verificationData: z.any().optional(),
+});
+
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 
-export type Task = typeof tasks.$inferSelect;
-export type InsertTask = typeof tasks.$inferInsert;
+// ─── Task ────────────────────────────────────────────────────────────────────
 
-export type UserTask = typeof userTasks.$inferSelect;
-export type InsertUserTask = typeof userTasks.$inferInsert;
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  xnrtReward: string;
+  category: string;
+  requirements?: string | null;
+  isActive: boolean;
+  createdAt: Date;
+}
 
-export type Achievement = typeof achievements.$inferSelect;
-export type InsertAchievement = typeof achievements.$inferInsert;
+export type InsertTask = {
+  title: string;
+  description: string;
+  xpReward: number;
+  xnrtReward?: string;
+  category: string;
+  requirements?: string | null;
+  isActive?: boolean;
+};
 
-export type UserAchievement = typeof userAchievements.$inferSelect;
-export type InsertUserAchievement = typeof userAchievements.$inferInsert;
+// ─── UserTask ────────────────────────────────────────────────────────────────
 
-export type Activity = typeof activities.$inferSelect;
-export type InsertActivity = typeof activities.$inferInsert;
+export interface UserTask {
+  id: string;
+  userId: string;
+  taskId: string;
+  progress: number;
+  maxProgress: number;
+  completed: boolean;
+  completedAt?: Date | null;
+  createdAt: Date;
+}
 
-export type Notification = typeof notifications.$inferSelect;
-export type InsertNotification = typeof notifications.$inferInsert;
+export type InsertUserTask = {
+  userId: string;
+  taskId: string;
+  progress?: number;
+  maxProgress?: number;
+  completed?: boolean;
+  completedAt?: Date | null;
+};
 
-export type PushSubscription = typeof pushSubscriptions.$inferSelect;
-export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+// ─── Achievement ─────────────────────────────────────────────────────────────
 
-export type Session = typeof sessions.$inferSelect;
-export type InsertSession = typeof sessions.$inferInsert;
+export interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  category: string;
+  requirement: number;
+  xpReward: number;
+  createdAt: Date;
+}
 
-export type PasswordReset = typeof passwordResets.$inferSelect;
-export type InsertPasswordReset = typeof passwordResets.$inferInsert;
+export type InsertAchievement = {
+  title: string;
+  description: string;
+  icon: string;
+  category: string;
+  requirement: number;
+  xpReward: number;
+};
 
-// Staking tier configurations
+// ─── UserAchievement ─────────────────────────────────────────────────────────
+
+export interface UserAchievement {
+  id: string;
+  userId: string;
+  achievementId: string;
+  unlockedAt: Date;
+}
+
+export type InsertUserAchievement = {
+  userId: string;
+  achievementId: string;
+  unlockedAt?: Date;
+};
+
+// ─── Activity ────────────────────────────────────────────────────────────────
+
+export interface Activity {
+  id: string;
+  userId: string;
+  type: string;
+  description: string;
+  metadata?: string | null;
+  createdAt: Date;
+}
+
+export type InsertActivity = {
+  userId: string;
+  type: string;
+  description: string;
+  metadata?: string | null;
+};
+
+// ─── Notification ────────────────────────────────────────────────────────────
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  metadata?: any;
+  read: boolean;
+  deliveryAttempts?: number | null;
+  deliveredAt?: Date | null;
+  lastAttemptAt?: Date | null;
+  pendingPush: boolean;
+  pushError?: string | null;
+  createdAt: Date;
+}
+
+export type InsertNotification = {
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  metadata?: any;
+  read?: boolean;
+  pendingPush?: boolean;
+};
+
+// ─── PushSubscription ─────────────────────────────────────────────────────────
+
+export interface PushSubscription {
+  id: string;
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  expirationTime?: Date | null;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type InsertPushSubscription = {
+  userId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  expirationTime?: Date | null;
+  enabled?: boolean;
+};
+
+// ─── Session ─────────────────────────────────────────────────────────────────
+
+export interface Session {
+  id: string;
+  jwtId: string;
+  userId: string;
+  createdAt: Date;
+  revokedAt?: Date | null;
+}
+
+export type InsertSession = {
+  jwtId: string;
+  userId: string;
+  revokedAt?: Date | null;
+};
+
+// ─── PasswordReset ───────────────────────────────────────────────────────────
+
+export interface PasswordReset {
+  id: string;
+  token: string;
+  userId: string;
+  expiresAt: Date;
+  usedAt?: Date | null;
+  createdAt: Date;
+}
+
+export type InsertPasswordReset = {
+  token: string;
+  userId: string;
+  expiresAt: Date;
+  usedAt?: Date | null;
+};
+
+// ─── Announcement ────────────────────────────────────────────────────────────
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  type: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: Date;
+  expiresAt?: Date | null;
+}
+
+export const insertAnnouncementSchema = z.object({
+  title: z.string().min(1, "Title is required").max(255, "Title too long"),
+  content: z.string().min(1, "Content is required"),
+  type: z.enum(["info", "warning", "success", "error"]),
+  isActive: z.boolean().optional(),
+  expiresAt: z.string().optional().nullable(),
+});
+
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+
+// ─── Staking Tier Config ──────────────────────────────────────────────────────
+
 export const STAKING_TIERS = {
   royal_sapphire: {
     name: "Royal Sapphire",
@@ -468,34 +431,3 @@ export const STAKING_TIERS = {
 } as const;
 
 export type StakingTier = keyof typeof STAKING_TIERS;
-
-// Announcements (admin-created platform announcements)
-export const announcements = pgTable("Announcement", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  title: varchar("title", { length: 255 }).notNull(),
-  content: text("content").notNull(),
-  type: varchar("type").default("info").notNull(), // info, warning, success, error
-  isActive: boolean("isActive").default(true).notNull(),
-  createdBy: varchar("createdBy").notNull().references(() => users.id),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  expiresAt: timestamp("expiresAt"),
-}, (table) => [
-  index("announcements_isActive_idx").on(table.isActive),
-  index("announcements_createdAt_idx").on(table.createdAt),
-]);
-
-// Announcement schemas for validation
-export const insertAnnouncementSchema = createInsertSchema(announcements, {
-  title: z.string().min(1, "Title is required").max(255, "Title too long"),
-  content: z.string().min(1, "Content is required"),
-  type: z.enum(["info", "warning", "success", "error"]),
-  isActive: z.boolean().optional(),
-  expiresAt: z.string().optional().nullable(),
-}).omit({
-  id: true,
-  createdBy: true,
-  createdAt: true,
-});
-
-export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
-export type Announcement = typeof announcements.$inferSelect;
