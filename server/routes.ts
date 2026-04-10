@@ -2799,19 +2799,30 @@ Issued: ${issuedAt}`;
           return res.status(404).json({ message: "Withdrawal not found" });
         }
 
-        // Idempotency: if a previous attempt already submitted the on-chain tx,
-        // return the existing result rather than minting again.
-        if (withdrawal.status === "approved" && withdrawal.transactionHash) {
+        // Idempotency: already fully approved — return cached result.
+        if (withdrawal.status === "approved") {
           return res.json({
             message: "Withdrawal already approved",
-            onChainTxHash: withdrawal.transactionHash,
-            explorerUrl: getTxExplorerUrl(withdrawal.transactionHash),
+            onChainTxHash: withdrawal.transactionHash ?? null,
+            explorerUrl: withdrawal.transactionHash
+              ? getTxExplorerUrl(withdrawal.transactionHash)
+              : null,
           });
         }
 
-        // Only allow approval from pending (or the processing sentinel state).
-        // "processing" means a previous attempt started the mint but the DB write
-        // failed — we detect this via a stored transactionHash below.
+        // "processing" + no txHash: mint is currently in-flight from a concurrent
+        // request. Reject to avoid a second mint submission.
+        if (withdrawal.status === "processing" && !withdrawal.transactionHash) {
+          return res.status(409).json({
+            message: "Withdrawal mint is currently in progress. Retry after a moment.",
+          });
+        }
+
+        // "processing" + txHash: previous mint confirmed on-chain but the
+        // balance deduction / status update did not persist. Allow retry to
+        // complete the approval (the $transaction block below is idempotent).
+
+        // Reject any other terminal status (rejected, cancelled, etc.)
         if (withdrawal.status !== "pending" && withdrawal.status !== "processing") {
           return res
             .status(400)
@@ -2908,24 +2919,44 @@ Issued: ${issuedAt}`;
           }
         }
 
-        // Deduct balance only when the mint (if required) is confirmed and the
-        // tx hash is persisted. If balance deduction fails the record already
-        // has transactionHash set, so retry will skip the mint.
-        if (withdrawal.status !== "processing" || !withdrawal.transactionHash) {
-          if (withdrawAmount > currentBalance) {
-            return res.status(400).json({
-              message: "Insufficient balance to approve withdrawal",
-            });
+        // Atomically: deduct balance + mark approved in a single DB transaction.
+        // Guards inside ensure this is idempotent:
+        //   - Re-read live withdrawal status inside the tx to detect if a
+        //     concurrent request already completed the debit+approval.
+        //   - Only deduct and flip status when the record is still pending/processing.
+        //   - Checking inside the transaction prevents race conditions between
+        //     concurrent approve attempts.
+        await prisma.$transaction(async (ptx) => {
+          // Re-read current state inside the transaction (prevents TOCTOU).
+          const live = await ptx.transaction.findUnique({ where: { id } });
+          if (!live || live.status === "approved") {
+            // Already approved (concurrent request beat us here) — safe no-op.
+            return;
           }
-          await storage.updateBalance(withdrawal.userId, {
-            [sourceBalanceKey]: (currentBalance - withdrawAmount).toString(),
-          });
-        }
 
-        // Mark approved atomically with the final status write.
-        await prisma.transaction.update({
-          where: { id },
-          data: { status: "approved" },
+          const liveBalance = await ptx.balance.findUnique({
+            where: { userId: withdrawal.userId },
+          });
+          const liveAmount = parseFloat(
+            liveBalance?.[sourceBalanceKey]?.toString() ?? "0"
+          );
+
+          if (withdrawAmount > liveAmount) {
+            throw new Error(
+              `Insufficient balance: need ${withdrawAmount}, have ${liveAmount}`
+            );
+          }
+
+          const newAmount = new Prisma.Decimal(liveAmount - withdrawAmount);
+          await ptx.balance.update({
+            where: { userId: withdrawal.userId },
+            data: { [sourceBalanceKey]: newAmount },
+          });
+
+          await ptx.transaction.update({
+            where: { id },
+            data: { status: "approved" },
+          });
         });
 
         await storage.createActivity({
