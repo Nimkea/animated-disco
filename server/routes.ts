@@ -1173,6 +1173,7 @@ Issued: ${issuedAt}`;
           const report = await prisma.depositReport.create({
             data: {
               userId,
+              fromAddress: "",
               txHash: transactionHash,
               amount: new Prisma.Decimal(amountNum),
               notes: description || `Verification: ${verification.reason}`,
@@ -1608,13 +1609,13 @@ Issued: ${issuedAt}`;
             .json({ message: "Achievement not unlocked yet" });
         }
 
-        if (userAchievement.claimed) {
+        if ((userAchievement as any).claimed) {
           return res
             .status(400)
             .json({ message: "Achievement already claimed" });
         }
 
-        const updated = await prisma.userAchievement.update({
+        const updated = await (prisma.userAchievement as any).update({
           where: { id: userAchievement.id },
           data: {
             claimed: true,
