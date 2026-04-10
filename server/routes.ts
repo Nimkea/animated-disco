@@ -2892,22 +2892,31 @@ Issued: ${issuedAt}`;
               `[Withdrawal] Reusing prior on-chain mint: ${onChainTxHash}`
             );
           } else {
-            // Transition to "processing" BEFORE minting so a concurrent retry
-            // (or DB read after a partial failure) can detect the in-flight state.
-            // This prevents a second mint if the process restarts between mint
-            // submission and the status=approved write below.
-            await prisma.transaction.update({
-              where: { id, status: { in: ["pending", "processing"] } },
-              data: { status: "processing" },
+            // Transition to "processing" before minting so a concurrent retry
+            // can detect the in-flight state and return 409 rather than
+            // submitting a second on-chain transaction.
+            // updateMany is used because `update` requires a unique-only where clause.
+            await prisma.transaction.updateMany({
+              where: { id, status: "pending" },
+              data:  { status: "processing" },
             });
 
-            // Mint on-chain — throws on any error (wrong chain, key missing, RPC fail).
-            // The throw propagates to the outer catch, keeping the record as "processing"
-            // so a retry skips balance deduction while the tx may still confirm.
-            onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
+            try {
+              onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
+            } catch (mintErr: unknown) {
+              // Mint failed — reset to pending so the admin can retry via the UI.
+              await prisma.transaction.updateMany({
+                where: { id, status: "processing" },
+                data:  { status: "pending" },
+              });
+              const msg = mintErr instanceof Error ? mintErr.message : String(mintErr);
+              console.error(`[Withdrawal] On-chain mint FAILED: ${msg}`);
+              throw mintErr; // propagate → outer catch returns 500
+            }
 
-            // Persist tx hash immediately after confirmation — if the writes below
-            // fail, the stored hash prevents a second mint on retry.
+            // Persist tx hash immediately after confirmation.
+            // If subsequent writes fail, the stored hash prevents a second
+            // mint on retry (checked at the top of this block).
             await prisma.transaction.update({
               where: { id },
               data: { transactionHash: onChainTxHash },
