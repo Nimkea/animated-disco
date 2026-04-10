@@ -517,14 +517,6 @@ export class DatabaseStorage implements IStorage {
         totalProfit: new Prisma.Decimal(stake.totalProfit || "0"),
         lastProfitDate: stake.lastProfitDate,
         status: stake.status || "active",
-        // Trust Loan fields (no isLoan column in DB)
-        loanProgram: stake.loanProgram,
-        unlockMet: stake.unlockMet || false,
-        requiredReferrals: stake.requiredReferrals,
-        requiredInvestingReferrals: stake.requiredInvestingReferrals,
-        minInvestUsdtPerReferral: stake.minInvestUsdtPerReferral
-          ? new Prisma.Decimal(stake.minInvestUsdtPerReferral)
-          : undefined,
       },
     });
     return convertPrismaStake(newStake);
