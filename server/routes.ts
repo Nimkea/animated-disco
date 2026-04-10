@@ -2810,17 +2810,8 @@ Issued: ${issuedAt}`;
           });
         }
 
-        // "processing" + no txHash: mint is currently in-flight from a concurrent
-        // request. Reject to avoid a second mint submission.
-        if (withdrawal.status === "processing" && !withdrawal.transactionHash) {
-          return res.status(409).json({
-            message: "Withdrawal mint is currently in progress. Retry after a moment.",
-          });
-        }
-
         // "processing" + txHash: previous mint confirmed on-chain but the
-        // balance deduction / status update did not persist. Allow retry to
-        // complete the approval (the $transaction block below is idempotent).
+        // approval write did not complete. Allow retry to finalize.
 
         // Reject any other terminal status (rejected, cancelled, etc.)
         if (withdrawal.status !== "pending" && withdrawal.status !== "processing") {
@@ -2885,15 +2876,33 @@ Issued: ${issuedAt}`;
           }
 
           if (withdrawal.transactionHash) {
-            // Previous mint confirmed; balance was already reserved. Just mark approved.
+            // Status=processing + txHash: mint confirmed, just finalize approval.
             onChainTxHash = withdrawal.transactionHash;
+          } else if (withdrawal.status === "processing") {
+            // Status=processing + no txHash: previous request reserved the balance
+            // but crashed before/during minting. Balance is already deducted.
+            // Attempt the mint now; on failure restore and reset to pending.
+            try {
+              onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
+            } catch (mintErr: unknown) {
+              await prisma.$transaction([
+                prisma.balance.update({
+                  where: { userId: withdrawal.userId },
+                  data: { [sourceBalanceKey]: { increment: new Prisma.Decimal(withdrawAmount) } },
+                }),
+                prisma.transaction.update({ where: { id }, data: { status: "pending" } }),
+              ]);
+              const msg = mintErr instanceof Error ? mintErr.message : String(mintErr);
+              console.error(`[Withdrawal] Recovery mint FAILED, balance restored: ${msg}`);
+              throw mintErr;
+            }
+            await prisma.transaction.update({
+              where: { id },
+              data: { transactionHash: onChainTxHash },
+            });
           } else {
-            // Reserve-then-mint pattern:
-            // 1. Atomically deduct balance + set status=processing in DB (no on-chain action yet).
-            //    updateMany acts as compare-and-set: if count=0, another request won the race.
-            // 2. Mint on-chain.
-            // 3a. Success: mark approved + persist tx hash.
-            // 3b. Failure: restore balance + reset status=pending for retry.
+            // Status=pending: reserve balance + set processing, then mint.
+            // Reserve transaction acts as compare-and-set (count=0 means race lost).
             const reserveResult = await prisma.$transaction(async (ptx) => {
               const liveBalance = await ptx.balance.findUnique({
                 where: { userId: withdrawal.userId },
@@ -2937,6 +2946,14 @@ Issued: ${issuedAt}`;
               console.error(`[Withdrawal] On-chain mint FAILED, balance restored: ${msg}`);
               throw mintErr;
             }
+
+            // Persist txHash while still in "processing" state.
+            // If the process crashes here, the next retry will see processing + txHash
+            // and finalize the approval without re-minting.
+            await prisma.transaction.update({
+              where: { id },
+              data: { transactionHash: onChainTxHash },
+            });
           }
         }
 
