@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 import { startDepositScanner } from "./services/depositScanner";
+import { logTokenServiceStatus } from "./services/tokenService";
 
 const app = express();
 
@@ -179,6 +180,8 @@ app.get("/readyz", (_req, res) => res.status(200).json({ ready: true }));
       } catch (e) {
         console.error("[retryWorker] failed to start:", e);
       }
+
+      logTokenServiceStatus();
 
       if (enableScanner) {
         try {

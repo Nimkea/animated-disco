@@ -95,6 +95,34 @@ export function isTokenServiceReady(): boolean {
 }
 
 /**
+ * Log token service configuration status at startup.
+ * Call once from server entry point to surface misconfiguration early.
+ */
+export function logTokenServiceStatus(): void {
+  const hasAddress = !!TOKEN_ADDRESS;
+  const hasKey = !!DEPLOYER_PRIVATE_KEY;
+  if (hasAddress && hasKey) {
+    console.log(
+      `[TokenService] Ready — contract: ${TOKEN_ADDRESS}, network: BSC Testnet (chainId ${EXPECTED_CHAIN_ID})`
+    );
+  } else if (!hasAddress && !hasKey) {
+    console.log(
+      "[TokenService] Non-custodial mode — XNRT_TOKEN_ADDRESS and DEPLOYER_PRIVATE_KEY not set; withdrawals will be approved without on-chain minting"
+    );
+  } else {
+    const missing = [
+      !hasAddress && "XNRT_TOKEN_ADDRESS",
+      !hasKey && "DEPLOYER_PRIVATE_KEY",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    console.warn(
+      `[TokenService] Partially configured — missing: ${missing}. On-chain minting will fail at approval time.`
+    );
+  }
+}
+
+/**
  * Returns the BSC Testnet explorer URL for the XNRT token contract.
  */
 export function getTokenExplorerUrl(): string {
