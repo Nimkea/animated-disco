@@ -2850,9 +2850,12 @@ Issued: ${issuedAt}`;
         }
 
         // Determine mint amount (net after fee if available, else gross)
-        const netAmt = withdrawal.netAmount
-          ? parseFloat(withdrawal.netAmount).toString()
-          : withdrawAmount.toString();
+        // Use the canonical Prisma Decimal string directly to avoid float
+        // precision loss. withdrawAmount (a JS number) is only used for
+        // balance arithmetic, not for the on-chain wei conversion.
+        const netAmt: string = withdrawal.netAmount
+          ? withdrawal.netAmount.toString()
+          : withdrawal.amount.toString();
 
         // If the token service is configured, mint on-chain FIRST (fail-closed).
         // Balance is only deducted and the withdrawal marked approved when the

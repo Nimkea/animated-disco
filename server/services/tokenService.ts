@@ -68,11 +68,13 @@ export async function mintXNRT(toAddress: string, amount: string): Promise<strin
 }
 
 /**
- * Returns true if the token service is configured and ready to mint.
- * Used by the withdrawal route to decide whether to trigger on-chain minting.
+ * Returns true if XNRT_TOKEN_ADDRESS is set, meaning on-chain minting is
+ * expected for withdrawals. When true the full mint configuration must also
+ * be present (DEPLOYER_PRIVATE_KEY); otherwise `mintXNRT` will throw and the
+ * approval will be rejected — this is the intended fail-closed behaviour.
  */
 export function isTokenServiceReady(): boolean {
-  return isConfigured();
+  return !!TOKEN_ADDRESS;
 }
 
 /**
