@@ -77,18 +77,23 @@ model Balance {
 }
 
 model Stake {
-  id             String    @id @default(uuid())
-  userId         String
-  tier           String
-  amount         Decimal   @db.Decimal(38, 18)
-  dailyRate      Decimal   @db.Decimal(8, 6)
-  duration       Int
-  startDate      DateTime  @default(now())
-  endDate        DateTime
-  totalProfit    Decimal   @default(0) @db.Decimal(38, 18)
-  lastProfitDate DateTime?
-  status         String    @default("active")
-  createdAt      DateTime  @default(now())
+  id                         String    @id @default(uuid())
+  userId                     String
+  tier                       String
+  amount                     Decimal   @db.Decimal(38, 18)
+  dailyRate                  Decimal   @db.Decimal(8, 6)
+  duration                   Int
+  startDate                  DateTime  @default(now())
+  endDate                    DateTime
+  totalProfit                Decimal   @default(0) @db.Decimal(38, 18)
+  lastProfitDate             DateTime?
+  status                     String    @default("active")
+  createdAt                  DateTime  @default(now())
+  loanProgram                String?
+  unlockMet                  Boolean   @default(false)
+  requiredReferrals          Int?
+  requiredInvestingReferrals Int?
+  minInvestUsdtPerReferral   Decimal?  @db.Decimal(38, 18)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -207,10 +212,12 @@ model Achievement {
 }
 
 model UserAchievement {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   userId        String
   achievementId String
-  unlockedAt    DateTime @default(now())
+  unlockedAt    DateTime  @default(now())
+  claimed       Boolean   @default(false)
+  claimedAt     DateTime?
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
@@ -340,7 +347,7 @@ model UnmatchedDeposit {
 model DepositReport {
   id          String    @id @default(uuid())
   userId      String
-  fromAddress String    @db.VarChar(42)
+  fromAddress String?   @db.VarChar(42)
   amount      Decimal?  @db.Decimal(38, 18)
   txHash      String?   @db.Text
   notes       String?

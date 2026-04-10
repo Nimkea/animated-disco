@@ -85,6 +85,12 @@ export const insertStakeSchema = z.object({
   totalProfit: z.string().optional().default("0"),
   lastProfitDate: z.date().nullable().optional(),
   status: z.string().optional().default("active"),
+  isLoan: z.boolean().optional(),
+  loanProgram: z.string().nullable().optional(),
+  unlockMet: z.boolean().optional(),
+  requiredReferrals: z.number().int().optional(),
+  requiredInvestingReferrals: z.number().int().optional(),
+  minInvestUsdtPerReferral: z.string().nullable().optional(),
 });
 
 export type InsertStake = z.infer<typeof insertStakeSchema>;
@@ -177,8 +183,8 @@ export const insertTransactionSchema = z.object({
   netAmount: z.string().nullable().optional(),
   approvedBy: z.string().nullable().optional(),
   approvedAt: z.date().nullable().optional(),
-  verified: z.boolean().optional().default(false),
-  confirmations: z.number().int().optional().default(0),
+  verified: z.boolean().optional(),
+  confirmations: z.number().int().optional(),
   verificationData: z.any().optional(),
 });
 
@@ -259,6 +265,8 @@ export interface UserAchievement {
   userId: string;
   achievementId: string;
   unlockedAt: Date;
+  claimed: boolean;
+  claimedAt?: Date | null;
 }
 
 export type InsertUserAchievement = {
