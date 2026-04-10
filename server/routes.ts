@@ -2892,14 +2892,22 @@ Issued: ${issuedAt}`;
               `[Withdrawal] Reusing prior on-chain mint: ${onChainTxHash}`
             );
           } else {
-            // Transition to "processing" before minting so a concurrent retry
-            // can detect the in-flight state and return 409 rather than
-            // submitting a second on-chain transaction.
-            // updateMany is used because `update` requires a unique-only where clause.
-            await prisma.transaction.updateMany({
+            // Atomic compare-and-set: only the request that successfully flips
+            // pending→processing (count === 1) is allowed to mint.
+            // Any concurrent request that reads count === 0 (another request
+            // already transitioned the state) returns 409 without calling mint.
+            // updateMany is required because Prisma `update` only accepts unique-only filters.
+            const { count: acquiredLock } = await prisma.transaction.updateMany({
               where: { id, status: "pending" },
               data:  { status: "processing" },
             });
+
+            if (acquiredLock === 0) {
+              // Another request holds the lock — refuse to mint.
+              return res.status(409).json({
+                message: "Withdrawal mint is currently in progress. Retry after a moment.",
+              });
+            }
 
             try {
               onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
