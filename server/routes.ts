@@ -18,6 +18,7 @@ import rateLimit from "express-rate-limit";
 import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 import { ethers } from "ethers";
 import { deriveDepositAddress } from "./services/hdWallet";
+import { mintXNRT, isTokenServiceReady, getTxExplorerUrl } from "./services/tokenService";
 
 export const prisma = new PrismaClient();
 
@@ -276,6 +277,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth routes
   app.use("/auth", authRoutes);
+
+  // Token info (XNRT contract address for UI)
+  app.get("/api/token/info", (_req, res) => {
+    const tokenAddress = process.env.XNRT_TOKEN_ADDRESS || "";
+    res.json({
+      address: tokenAddress,
+      symbol: "XNRT",
+      decimals: 18,
+      network: "BSC Testnet",
+      chainId: 97,
+      explorerUrl: tokenAddress
+        ? `https://testnet.bscscan.com/token/${tokenAddress}`
+        : null,
+    });
+  });
 
   // Balance routes
   app.get("/api/balance", requireAuth, async (req, res) => {
@@ -2839,13 +2855,42 @@ Issued: ${issuedAt}`;
 
         await storage.updateTransaction(id, { status: "approved" });
 
+        // Attempt on-chain mint if token service is configured
+        let onChainTxHash: string | undefined;
+        if (isTokenServiceReady() && withdrawal.walletAddress) {
+          try {
+            const netAmt = withdrawal.netAmount
+              ? parseFloat(withdrawal.netAmount).toString()
+              : withdrawAmount.toString();
+            onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
+            // Store on-chain tx hash back on the transaction record
+            await prisma.transaction.update({
+              where: { id },
+              data: { transactionHash: onChainTxHash },
+            });
+            console.log(
+              `[Withdrawal] On-chain mint OK: ${onChainTxHash} → ${withdrawal.walletAddress}`
+            );
+          } catch (mintErr: any) {
+            console.error(
+              `[Withdrawal] On-chain mint FAILED (approval still stands): ${mintErr?.message}`
+            );
+          }
+        }
+
         await storage.createActivity({
           userId: withdrawal.userId,
           type: "withdrawal_approved",
-          description: `Withdrawal of ${withdrawAmount.toLocaleString()} XNRT approved`,
+          description: `Withdrawal of ${withdrawAmount.toLocaleString()} XNRT approved${
+            onChainTxHash ? ` – tx: ${onChainTxHash}` : ""
+          }`,
         });
 
-        res.json({ message: "Withdrawal approved successfully" });
+        res.json({
+          message: "Withdrawal approved successfully",
+          onChainTxHash: onChainTxHash ?? null,
+          explorerUrl: onChainTxHash ? getTxExplorerUrl(onChainTxHash) : null,
+        });
       } catch (error) {
         console.error("Error approving withdrawal:", error);
         res.status(500).json({ message: "Failed to approve withdrawal" });

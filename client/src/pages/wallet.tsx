@@ -2,9 +2,19 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wallet as WalletIcon, TrendingUp, ArrowDownToLine, ArrowUpFromLine, Gem, Users, Pickaxe } from "lucide-react";
+import { Wallet as WalletIcon, TrendingUp, ArrowDownToLine, ArrowUpFromLine, Gem, Users, Pickaxe, ExternalLink, Copy, CheckCheck } from "lucide-react";
 import { SkeletonWallet } from "@/components/skeletons";
 import type { Balance, Transaction } from "@shared/schema";
+import { useState } from "react";
+
+interface TokenInfo {
+  address: string;
+  symbol: string;
+  decimals: number;
+  network: string;
+  chainId: number;
+  explorerUrl: string | null;
+}
 
 export default function Wallet() {
   const { data: balance, isLoading: balanceLoading } = useQuery<Balance>({
@@ -13,6 +23,10 @@ export default function Wallet() {
 
   const { data: transactions, isLoading: transactionsLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/transactions"],
+  });
+
+  const { data: tokenInfo } = useQuery<TokenInfo>({
+    queryKey: ["/api/token/info"],
   });
 
   if (balanceLoading || transactionsLoading) {
@@ -92,6 +106,9 @@ export default function Wallet() {
         ))}
       </div>
 
+      {/* XNRT Token Contract Card */}
+      <TokenContractCard tokenInfo={tokenInfo} />
+
       <Card>
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
@@ -150,9 +167,80 @@ export default function Wallet() {
   );
 }
 
+function TokenContractCard({ tokenInfo }: { tokenInfo?: TokenInfo }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (!tokenInfo?.address) return;
+    navigator.clipboard.writeText(tokenInfo.address).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <Card className="border-secondary/20 bg-gradient-to-br from-card to-secondary/5">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Gem className="h-5 w-5 text-secondary" />
+          XNRT Token Contract
+        </CardTitle>
+        <CardDescription>
+          BEP-20 token on {tokenInfo?.network ?? "BSC Testnet"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {tokenInfo?.address ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-2">
+              <code
+                className="text-xs font-mono flex-1 break-all text-foreground/80"
+                data-testid="text-xnrt-contract-address"
+              >
+                {tokenInfo.address}
+              </code>
+              <button
+                onClick={handleCopy}
+                className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                title="Copy address"
+                data-testid="button-copy-contract-address"
+              >
+                {copied ? (
+                  <CheckCheck className="h-4 w-4 text-chart-2" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+            {tokenInfo.explorerUrl && (
+              <a
+                href={tokenInfo.explorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-secondary hover:underline"
+                data-testid="link-xnrt-explorer"
+              >
+                View on BSCScan <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Contract not yet deployed. Check back after the administrator completes the BSC Testnet deployment.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function TransactionItem({ transaction }: { transaction: Transaction }) {
   const isDeposit = transaction.type === "deposit";
   const Icon = isDeposit ? ArrowDownToLine : ArrowUpFromLine;
+
+  const txHash: string | null = (transaction as any).transactionHash ?? null;
+  const isApproved = transaction.status === "approved" || transaction.status === "paid";
+  const showOnChainLink = isApproved && txHash;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -188,6 +276,17 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
           <p className="text-xs text-muted-foreground">
             {transaction.createdAt ? new Date(transaction.createdAt).toLocaleString() : 'N/A'}
           </p>
+          {showOnChainLink && (
+            <a
+              href={`https://testnet.bscscan.com/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-secondary hover:underline mt-0.5"
+              data-testid={`link-tx-explorer-${transaction.id}`}
+            >
+              View on BSCScan <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
         </div>
       </div>
       <div className="text-right">

@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 
 const RPC_URL = process.env.RPC_BSC_URL || "";
 const USDT_ADDRESS = (process.env.USDT_BSC_ADDRESS || "").toLowerCase();
+const XNRT_TOKEN_ADDRESS = (process.env.XNRT_TOKEN_ADDRESS || "").toLowerCase();
 const TREASURY_ADDRESS = (process.env.XNRT_WALLET || "").toLowerCase();
 const REQUIRED_CONFIRMATIONS = Number(process.env.BSC_CONFIRMATIONS || 12);
 const XNRT_RATE = Number(process.env.XNRT_RATE_USDT || 100);
@@ -12,11 +13,17 @@ const PLATFORM_FEE_BPS = Number(process.env.PLATFORM_FEE_BPS || 0);
 const SCAN_BATCH = Number(process.env.BSC_SCAN_BATCH || 300);
 const AUTO_DEPOSIT_ENABLED = process.env.AUTO_DEPOSIT === 'true';
 
-const provider = new ethers.JsonRpcProvider(RPC_URL);
-const USDT_ABI = [
+const TRANSFER_ABI = [
   "event Transfer(address indexed from, address indexed to, uint256 value)"
 ];
-const usdtContract = new ethers.Contract(USDT_ADDRESS, USDT_ABI, provider);
+
+const provider = new ethers.JsonRpcProvider(RPC_URL);
+const usdtContract = new ethers.Contract(USDT_ADDRESS, TRANSFER_ABI, provider);
+
+// XNRT token contract (only initialised when XNRT_TOKEN_ADDRESS is set)
+const xnrtContract = XNRT_TOKEN_ADDRESS
+  ? new ethers.Contract(XNRT_TOKEN_ADDRESS, TRANSFER_ABI, provider)
+  : null;
 
 let isScanning = false;
 
@@ -31,6 +38,9 @@ export async function startDepositScanner() {
   console.log("[DepositScanner] Starting scanner service...");
   console.log(`[DepositScanner] Treasury (legacy): ${TREASURY_ADDRESS}`);
   console.log(`[DepositScanner] USDT: ${USDT_ADDRESS}`);
+  if (XNRT_TOKEN_ADDRESS) {
+    console.log(`[DepositScanner] XNRT token: ${XNRT_TOKEN_ADDRESS}`);
+  }
   console.log(`[DepositScanner] Required confirmations: ${REQUIRED_CONFIRMATIONS}`);
   console.log(`[DepositScanner] Scan batch size: ${SCAN_BATCH}`);
   console.log(`[DepositScanner] Watching user deposit addresses...`);
@@ -110,15 +120,27 @@ async function scanForDeposits() {
 
     console.log(`[DepositScanner] Watching ${users.length} deposit addresses`);
 
-    // Query USDT Transfer events to any address (we'll filter by user addresses)
-    const filter = usdtContract.filters.Transfer();
-    const events = await usdtContract.queryFilter(filter, fromBlock, toBlock);
+    // Query USDT Transfer events to any address (filter by user deposit addresses)
+    const usdtFilter = usdtContract.filters.Transfer();
+    const usdtEvents = await usdtContract.queryFilter(usdtFilter, fromBlock, toBlock);
+    console.log(`[DepositScanner] Found ${usdtEvents.length} USDT transfer events`);
 
-    console.log(`[DepositScanner] Found ${events.length} transfer events`);
-
-    for (const event of events) {
+    for (const event of usdtEvents) {
       if (event instanceof ethers.EventLog) {
-        await processDepositEvent(event, currentBlock, addressToUserId);
+        await processDepositEvent(event, currentBlock, addressToUserId, "USDT");
+      }
+    }
+
+    // Query XNRT Transfer events (inbound deposits from users sending XNRT back)
+    if (xnrtContract) {
+      const xnrtFilter = xnrtContract.filters.Transfer();
+      const xnrtEvents = await xnrtContract.queryFilter(xnrtFilter, fromBlock, toBlock);
+      console.log(`[DepositScanner] Found ${xnrtEvents.length} XNRT transfer events`);
+
+      for (const event of xnrtEvents) {
+        if (event instanceof ethers.EventLog) {
+          await processXnrtDepositEvent(event, currentBlock, addressToUserId);
+        }
       }
     }
 
@@ -159,9 +181,10 @@ async function scanForDeposits() {
 }
 
 async function processDepositEvent(
-  event: ethers.EventLog, 
+  event: ethers.EventLog,
   currentBlock: number,
-  addressToUserId: Map<string, string>
+  addressToUserId: Map<string, string>,
+  _tokenType: string = "USDT"
 ) {
   try {
     const txHash = event.transactionHash.toLowerCase();
@@ -316,6 +339,116 @@ async function processUserDeposit(
     }
   } catch (error) {
     console.error("[DepositScanner] Linked deposit processing error:", error);
+  }
+}
+
+/**
+ * Process an inbound XNRT token Transfer event.
+ * Users may send XNRT tokens back to their platform deposit address.
+ * We credit their platform balance 1:1 (no rate conversion needed).
+ */
+async function processXnrtDepositEvent(
+  event: ethers.EventLog,
+  currentBlock: number,
+  addressToUserId: Map<string, string>
+) {
+  try {
+    const txHash = event.transactionHash.toLowerCase();
+    const from = ((event.args as any).from as string).toLowerCase();
+    const to   = ((event.args as any).to   as string).toLowerCase();
+    const value = (event.args as any).value as bigint;
+    const blockNumber   = event.blockNumber;
+    const confirmations = currentBlock - blockNumber;
+
+    // Skip mint events (from = 0x000...000)
+    if (from === "0x0000000000000000000000000000000000000000") return;
+
+    // Amount in human-readable XNRT (18 decimals)
+    const xnrtAmount = Number(ethers.formatUnits(value, 18));
+
+    const userId = addressToUserId.get(to);
+    if (!userId) return; // Not a user deposit address
+
+    // Skip if already processed
+    const existing = await prisma.transaction.findFirst({
+      where: { transactionHash: txHash },
+    });
+    if (existing) return;
+
+    console.log(
+      `[DepositScanner] XNRT inbound: ${xnrtAmount} XNRT from ${from} → user deposit address ${to}`
+    );
+
+    if (confirmations >= REQUIRED_CONFIRMATIONS) {
+      await prisma.$transaction(async (tx) => {
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: "deposit",
+            amount: new Prisma.Decimal(xnrtAmount),
+            transactionHash: txHash,
+            walletAddress: to,
+            source: "xnrt_token",
+            status: "approved",
+            verified: true,
+            confirmations,
+            verificationData: {
+              autoDeposit: true,
+              tokenType: "XNRT",
+              fromAddress: from,
+              blockNumber,
+              scannedAt: new Date().toISOString(),
+            } as any,
+          },
+        });
+
+        await tx.balance.upsert({
+          where: { userId },
+          create: {
+            userId,
+            xnrtBalance: new Prisma.Decimal(xnrtAmount),
+            totalEarned: new Prisma.Decimal(xnrtAmount),
+          },
+          update: {
+            xnrtBalance: { increment: new Prisma.Decimal(xnrtAmount) },
+            totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
+          },
+        });
+      });
+
+      console.log(`[DepositScanner] XNRT auto-credited ${xnrtAmount} XNRT to user ${userId}`);
+
+      void sendDepositNotification(userId, xnrtAmount, txHash).catch((err) => {
+        console.error("[DepositScanner] XNRT notification error:", err);
+      });
+    } else {
+      await prisma.transaction.create({
+        data: {
+          userId,
+          type: "deposit",
+          amount: new Prisma.Decimal(xnrtAmount),
+          transactionHash: txHash,
+          walletAddress: to,
+          source: "xnrt_token",
+          status: "pending",
+          verified: true,
+          confirmations,
+          verificationData: {
+            autoDeposit: true,
+            tokenType: "XNRT",
+            fromAddress: from,
+            blockNumber,
+            scannedAt: new Date().toISOString(),
+          } as any,
+        },
+      });
+
+      console.log(
+        `[DepositScanner] XNRT pending deposit (${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations)`
+      );
+    }
+  } catch (error) {
+    console.error("[DepositScanner] XNRT event processing error:", error);
   }
 }
 
