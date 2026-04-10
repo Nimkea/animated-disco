@@ -5,7 +5,7 @@
  * BSC Testnet (ChainID 97) using a deployer wallet funded with test BNB.
  *
  * Usage:
- *   npx ts-node contracts/deploy.ts
+ *   npx tsx contracts/deploy.ts
  *
  * Required env vars (set in .env or shell):
  *   DEPLOYER_PRIVATE_KEY  – 0x-prefixed private key of the deployer wallet
@@ -16,8 +16,13 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import { ethers } from "ethers";
 import solc from "solc";
+
+// ESM-compatible __dirname replacement
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
