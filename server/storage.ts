@@ -525,7 +525,7 @@ export class DatabaseStorage implements IStorage {
         minInvestUsdtPerReferral: stake.minInvestUsdtPerReferral
           ? new Prisma.Decimal(stake.minInvestUsdtPerReferral)
           : undefined,
-      } as any,
+      },
     });
     return convertPrismaStake(newStake);
   }

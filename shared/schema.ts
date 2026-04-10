@@ -265,7 +265,7 @@ export interface UserAchievement {
   userId: string;
   achievementId: string;
   unlockedAt: Date;
-  claimed?: boolean;
+  claimed: boolean;
   claimedAt?: Date | null;
 }
 
