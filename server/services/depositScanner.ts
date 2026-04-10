@@ -127,7 +127,7 @@ async function scanForDeposits() {
 
     for (const event of usdtEvents) {
       if (event instanceof ethers.EventLog) {
-        await processDepositEvent(event, currentBlock, addressToUserId, "USDT");
+        await processDepositEvent(event, currentBlock, addressToUserId);
       }
     }
 
@@ -180,17 +180,30 @@ async function scanForDeposits() {
   }
 }
 
+interface TransferArgs {
+  from: string;
+  to: string;
+  value: bigint;
+}
+
+function decodeTransferArgs(event: ethers.EventLog): TransferArgs {
+  return {
+    from: event.args.getValue("from") as string,
+    to:   event.args.getValue("to")   as string,
+    value: event.args.getValue("value") as bigint,
+  };
+}
+
 async function processDepositEvent(
   event: ethers.EventLog,
   currentBlock: number,
-  addressToUserId: Map<string, string>,
-  _tokenType: string = "USDT"
+  addressToUserId: Map<string, string>
 ) {
   try {
     const txHash = event.transactionHash.toLowerCase();
-    const from = ((event.args as any).from as string).toLowerCase();
-    const to = ((event.args as any).to as string).toLowerCase();
-    const value = (event.args as any).value as bigint;
+    const { from: rawFrom, to: rawTo, value } = decodeTransferArgs(event);
+    const from = rawFrom.toLowerCase();
+    const to   = rawTo.toLowerCase();
     const blockNumber = event.blockNumber;
     const confirmations = currentBlock - blockNumber;
 
@@ -288,7 +301,7 @@ async function processUserDeposit(
               autoDeposit: true,
               blockNumber,
               scannedAt: new Date().toISOString(),
-            } as any,
+            } satisfies Prisma.JsonObject,
           }
         });
 
@@ -331,7 +344,7 @@ async function processUserDeposit(
             autoDeposit: true,
             blockNumber,
             scannedAt: new Date().toISOString(),
-          } as any,
+          } satisfies Prisma.JsonObject,
         }
       });
 
@@ -354,9 +367,9 @@ async function processXnrtDepositEvent(
 ) {
   try {
     const txHash = event.transactionHash.toLowerCase();
-    const from = ((event.args as any).from as string).toLowerCase();
-    const to   = ((event.args as any).to   as string).toLowerCase();
-    const value = (event.args as any).value as bigint;
+    const { from: rawFrom, to: rawTo, value } = decodeTransferArgs(event);
+    const from = rawFrom.toLowerCase();
+    const to   = rawTo.toLowerCase();
     const blockNumber   = event.blockNumber;
     const confirmations = currentBlock - blockNumber;
 
@@ -398,7 +411,7 @@ async function processXnrtDepositEvent(
               fromAddress: from,
               blockNumber,
               scannedAt: new Date().toISOString(),
-            } as any,
+            } satisfies Prisma.JsonObject,
           },
         });
 
@@ -439,7 +452,7 @@ async function processXnrtDepositEvent(
             fromAddress: from,
             blockNumber,
             scannedAt: new Date().toISOString(),
-          } as any,
+          } satisfies Prisma.JsonObject,
         },
       });
 

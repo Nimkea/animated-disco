@@ -20,6 +20,8 @@ const BSC_TESTNET_RPC =
 const TOKEN_ADDRESS = process.env.XNRT_TOKEN_ADDRESS || "";
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || "";
 
+const EXPECTED_CHAIN_ID = 97; // BSC Testnet
+
 const XNRT_ABI = [
   "function mint(address to, uint256 amount) external",
   "function balanceOf(address account) view returns (uint256)",
@@ -29,42 +31,57 @@ const XNRT_ABI = [
   "event Minted(address indexed to, uint256 amount)",
 ];
 
-function isConfigured(): boolean {
-  return !!(TOKEN_ADDRESS && DEPLOYER_PRIVATE_KEY);
-}
-
-function getContract(): ethers.Contract {
+function getProviderAndWallet(): { provider: ethers.JsonRpcProvider; wallet: ethers.Wallet } {
+  if (!DEPLOYER_PRIVATE_KEY) {
+    throw new Error(
+      "XNRT token service not configured: DEPLOYER_PRIVATE_KEY must be set"
+    );
+  }
   const provider = new ethers.JsonRpcProvider(BSC_TESTNET_RPC);
   const wallet = new ethers.Wallet(DEPLOYER_PRIVATE_KEY, provider);
-  return new ethers.Contract(TOKEN_ADDRESS, XNRT_ABI, wallet);
+  return { provider, wallet };
 }
 
 /**
  * Mint XNRT tokens to a recipient's BSC wallet address.
  *
+ * Validates the connected chain is BSC Testnet (chainId 97) before sending
+ * any transaction, preventing accidental wrong-network minting.
+ *
  * @param toAddress  Recipient's BSC address (0x...)
- * @param amount     Amount in XNRT (human-readable, e.g. "1000" = 1 000 XNRT)
+ * @param amount     Canonical decimal string (e.g. "1000.5") — no float conversion
  * @returns          On-chain transaction hash
  */
 export async function mintXNRT(toAddress: string, amount: string): Promise<string> {
-  if (!isConfigured()) {
+  if (!TOKEN_ADDRESS) {
     throw new Error(
-      "XNRT token service not configured: XNRT_TOKEN_ADDRESS and DEPLOYER_PRIVATE_KEY must be set"
+      "XNRT token service not configured: XNRT_TOKEN_ADDRESS must be set"
+    );
+  }
+
+  const { provider, wallet } = getProviderAndWallet();
+
+  // Enforce correct network before any transaction
+  const network = await provider.getNetwork();
+  const chainId = Number(network.chainId);
+  if (chainId !== EXPECTED_CHAIN_ID) {
+    throw new Error(
+      `Wrong network: expected BSC Testnet (chainId ${EXPECTED_CHAIN_ID}), got chainId ${chainId}. ` +
+      `Check RPC_BSC_URL.`
     );
   }
 
   const amountWei = ethers.parseUnits(amount, 18);
-
   console.log(
-    `[TokenService] Minting ${amount} XNRT (${amountWei} wei) → ${toAddress}`
+    `[TokenService] Minting ${amount} XNRT (${amountWei} wei) → ${toAddress} on chainId ${chainId}`
   );
 
-  const contract = getContract();
+  const contract = new ethers.Contract(TOKEN_ADDRESS, XNRT_ABI, wallet);
   const tx = await contract.mint(toAddress, amountWei);
-  const receipt = await tx.wait(1);
+  const receipt: ethers.TransactionReceipt = await tx.wait(1);
 
-  console.log(`[TokenService] Minted OK – tx: ${receipt?.hash}`);
-  return receipt?.hash as string;
+  console.log(`[TokenService] Minted OK – tx: ${receipt.hash}`);
+  return receipt.hash;
 }
 
 /**

@@ -31,10 +31,34 @@ if (!PRIVATE_KEY) {
   process.exit(1);
 }
 
-// ─── Compile ─────────────────────────────────────────────────────────────────
+// ─── solc output types ───────────────────────────────────────────────────────
+
+interface SolcError {
+  severity: "error" | "warning" | "info";
+  formattedMessage: string;
+}
+
+interface SolcContractOutput {
+  abi: ethers.InterfaceAbi;
+  evm: {
+    bytecode: {
+      object: string;
+    };
+  };
+}
+
+interface SolcOutput {
+  errors?: SolcError[];
+  contracts: {
+    [file: string]: {
+      [contract: string]: SolcContractOutput;
+    };
+  };
+}
+
+// ─── Import resolver ─────────────────────────────────────────────────────────
 
 function resolveImport(importPath: string): { contents: string } | { error: string } {
-  // Resolve @openzeppelin/... from node_modules
   if (importPath.startsWith("@openzeppelin/")) {
     const resolved = path.join(__dirname, "..", "node_modules", importPath);
     if (fs.existsSync(resolved)) {
@@ -42,7 +66,6 @@ function resolveImport(importPath: string): { contents: string } | { error: stri
     }
     return { error: `@openzeppelin import not found: ${resolved}` };
   }
-  // Resolve relative imports
   const resolved = path.join(__dirname, importPath);
   if (fs.existsSync(resolved)) {
     return { contents: fs.readFileSync(resolved, "utf8") };
@@ -50,7 +73,9 @@ function resolveImport(importPath: string): { contents: string } | { error: stri
   return { error: `Import not found: ${importPath}` };
 }
 
-function compileContract(): { abi: any[]; bytecode: string } {
+// ─── Compile ─────────────────────────────────────────────────────────────────
+
+function compileContract(): { abi: ethers.InterfaceAbi; bytecode: string } {
   const contractPath = path.join(__dirname, "XNRTToken.sol");
   const source = fs.readFileSync(contractPath, "utf8");
 
@@ -70,19 +95,18 @@ function compileContract(): { abi: any[]; bytecode: string } {
   };
 
   console.log("Compiling XNRTToken.sol ...");
-  const output = JSON.parse(
+  const output: SolcOutput = JSON.parse(
     solc.compile(JSON.stringify(input), { import: resolveImport })
   );
 
   if (output.errors) {
-    const errors = output.errors.filter((e: any) => e.severity === "error");
+    const errors = output.errors.filter((e) => e.severity === "error");
     if (errors.length > 0) {
       console.error("Compilation errors:");
-      errors.forEach((e: any) => console.error(e.formattedMessage));
+      errors.forEach((e) => console.error(e.formattedMessage));
       process.exit(1);
     }
-    // Print warnings
-    output.errors.forEach((e: any) => console.warn("Warning:", e.formattedMessage));
+    output.errors.forEach((e) => console.warn("Warning:", e.formattedMessage));
   }
 
   const contract = output.contracts["XNRTToken.sol"]["XNRTToken"];
@@ -94,10 +118,9 @@ function compileContract(): { abi: any[]; bytecode: string } {
 
 // ─── Deploy ──────────────────────────────────────────────────────────────────
 
-async function deploy() {
+async function deploy(): Promise<void> {
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-  // Verify we're on BSC Testnet
   const network = await provider.getNetwork();
   const chainId = Number(network.chainId);
   if (chainId !== 97) {
@@ -133,13 +156,11 @@ async function deploy() {
   console.log(`   Block      : ${receipt?.blockNumber}`);
   console.log(`   Explorer   : https://testnet.bscscan.com/token/${address}`);
 
-  // Write address to .env.testnet for reference
   const envLine = `XNRT_TOKEN_ADDRESS=${address}\n`;
   fs.writeFileSync(path.join(__dirname, ".env.testnet"), envLine, "utf8");
   console.log(`\n   Wrote ${address} to contracts/.env.testnet`);
   console.log(`   Add this to your server's environment as XNRT_TOKEN_ADDRESS.`);
 
-  // Write ABI for reference
   const abiPath = path.join(__dirname, "XNRTToken.abi.json");
   fs.writeFileSync(abiPath, JSON.stringify(abi, null, 2), "utf8");
   console.log(`   ABI written to contracts/XNRTToken.abi.json`);
@@ -150,7 +171,8 @@ async function deploy() {
   console.log(`  3. Restart the server — on-chain withdrawals are now live.`);
 }
 
-deploy().catch((err) => {
-  console.error("Deployment failed:", err);
+deploy().catch((err: unknown) => {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("Deployment failed:", message);
   process.exit(1);
 });
