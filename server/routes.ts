@@ -2858,7 +2858,9 @@ Issued: ${issuedAt}`;
         }
 
         const currentBalance = parseFloat(balance[sourceBalanceKey] || "0");
-        if (withdrawAmount > currentBalance) {
+        // For pending withdrawals, verify balance upfront (pre-reservation).
+        // Skip this check for processing withdrawals — balance is already reserved/deducted.
+        if (withdrawal.status === "pending" && withdrawAmount > currentBalance) {
           return res.status(400).json({ message: "Insufficient balance to approve withdrawal" });
         }
 
