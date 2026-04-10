@@ -50,7 +50,7 @@ export BSC_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545
 From the project root:
 
 ```bash
-npx ts-node contracts/deploy.ts
+npx tsx contracts/deploy.ts
 ```
 
 Expected output:

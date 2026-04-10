@@ -2868,6 +2868,17 @@ Issued: ${issuedAt}`;
 
         const currentBalance = parseFloat(balance[sourceBalanceKey] || "0");
 
+        // Pre-mint balance check: reject before touching any state if the
+        // user doesn't have enough balance. This must happen before the on-chain
+        // mint so we never issue tokens for an infeasible deduction.
+        // The atomic DB transaction below re-checks the live balance again for
+        // concurrent-race safety, but this early check prevents avoidable mints.
+        if (withdrawAmount > currentBalance) {
+          return res.status(400).json({
+            message: "Insufficient balance to approve withdrawal",
+          });
+        }
+
         // Use the canonical Prisma Decimal string directly to avoid float
         // precision loss. withdrawAmount (a JS number) is only used for
         // balance arithmetic, not for the on-chain wei conversion.
