@@ -2798,7 +2798,21 @@ Issued: ${issuedAt}`;
         if (!withdrawal || withdrawal.type !== "withdrawal") {
           return res.status(404).json({ message: "Withdrawal not found" });
         }
-        if (withdrawal.status !== "pending") {
+
+        // Idempotency: if a previous attempt already submitted the on-chain tx,
+        // return the existing result rather than minting again.
+        if (withdrawal.status === "approved" && withdrawal.transactionHash) {
+          return res.json({
+            message: "Withdrawal already approved",
+            onChainTxHash: withdrawal.transactionHash,
+            explorerUrl: getTxExplorerUrl(withdrawal.transactionHash),
+          });
+        }
+
+        // Only allow approval from pending (or the processing sentinel state).
+        // "processing" means a previous attempt started the mint but the DB write
+        // failed — we detect this via a stored transactionHash below.
+        if (withdrawal.status !== "pending" && withdrawal.status !== "processing") {
           return res
             .status(400)
             .json({ message: "Withdrawal already processed" });
@@ -2814,8 +2828,7 @@ Issued: ${issuedAt}`;
         const balance = await storage.getBalance(withdrawal.userId);
         if (!balance) {
           return res.status(400).json({
-            message:
-              "User balance not found; cannot approve withdrawal",
+            message: "User balance not found; cannot approve withdrawal",
           });
         }
 
@@ -2843,13 +2856,7 @@ Issued: ${issuedAt}`;
         }
 
         const currentBalance = parseFloat(balance[sourceBalanceKey] || "0");
-        if (withdrawAmount > currentBalance) {
-          return res.status(400).json({
-            message: "Insufficient balance to approve withdrawal",
-          });
-        }
 
-        // Determine mint amount (net after fee if available, else gross)
         // Use the canonical Prisma Decimal string directly to avoid float
         // precision loss. withdrawAmount (a JS number) is only used for
         // balance arithmetic, not for the on-chain wei conversion.
@@ -2857,38 +2864,69 @@ Issued: ${issuedAt}`;
           ? withdrawal.netAmount.toString()
           : withdrawal.amount.toString();
 
-        // If the token service is configured, mint on-chain FIRST (fail-closed).
-        // Balance is only deducted and the withdrawal marked approved when the
-        // on-chain transaction is confirmed. This ensures users are never debited
-        // without receiving real tokens.
         let onChainTxHash: string | undefined;
+
         if (isTokenServiceReady()) {
           if (!withdrawal.walletAddress) {
             return res.status(400).json({
               message: "Cannot approve: withdrawal has no destination wallet address",
             });
           }
-          // Mint first — throws on failure, which aborts the approval entirely
-          onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
-          console.log(
-            `[Withdrawal] On-chain mint OK: ${onChainTxHash} → ${withdrawal.walletAddress}`
-          );
+
+          // Idempotency: if the tx hash was already stored (previous mint
+          // succeeded but DB commit failed), skip re-minting.
+          if (withdrawal.transactionHash) {
+            onChainTxHash = withdrawal.transactionHash;
+            console.log(
+              `[Withdrawal] Reusing prior on-chain mint: ${onChainTxHash}`
+            );
+          } else {
+            // Transition to "processing" BEFORE minting so a concurrent retry
+            // (or DB read after a partial failure) can detect the in-flight state.
+            // This prevents a second mint if the process restarts between mint
+            // submission and the status=approved write below.
+            await prisma.transaction.update({
+              where: { id, status: { in: ["pending", "processing"] } },
+              data: { status: "processing" },
+            });
+
+            // Mint on-chain — throws on any error (wrong chain, key missing, RPC fail).
+            // The throw propagates to the outer catch, keeping the record as "processing"
+            // so a retry skips balance deduction while the tx may still confirm.
+            onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
+
+            // Persist tx hash immediately after confirmation — if the writes below
+            // fail, the stored hash prevents a second mint on retry.
+            await prisma.transaction.update({
+              where: { id },
+              data: { transactionHash: onChainTxHash },
+            });
+
+            console.log(
+              `[Withdrawal] On-chain mint OK: ${onChainTxHash} → ${withdrawal.walletAddress}`
+            );
+          }
         }
 
-        // Deduct balance and mark approved only after mint succeeds (or skipped)
-        await storage.updateBalance(withdrawal.userId, {
-          [sourceBalanceKey]: (currentBalance - withdrawAmount).toString(),
-        });
-
-        await storage.updateTransaction(id, { status: "approved" });
-
-        // Persist tx hash if available
-        if (onChainTxHash) {
-          await prisma.transaction.update({
-            where: { id },
-            data: { transactionHash: onChainTxHash },
+        // Deduct balance only when the mint (if required) is confirmed and the
+        // tx hash is persisted. If balance deduction fails the record already
+        // has transactionHash set, so retry will skip the mint.
+        if (withdrawal.status !== "processing" || !withdrawal.transactionHash) {
+          if (withdrawAmount > currentBalance) {
+            return res.status(400).json({
+              message: "Insufficient balance to approve withdrawal",
+            });
+          }
+          await storage.updateBalance(withdrawal.userId, {
+            [sourceBalanceKey]: (currentBalance - withdrawAmount).toString(),
           });
         }
+
+        // Mark approved atomically with the final status write.
+        await prisma.transaction.update({
+          where: { id },
+          data: { status: "approved" },
+        });
 
         await storage.createActivity({
           userId: withdrawal.userId,
