@@ -42,3 +42,8 @@ waitForPort = 5000
 [agent]
 integrations = ["javascript_log_in_with_replit:1.0.0", "javascript_database:1.0.0"]
 expertMode = true
+
+[userenv]
+
+[userenv.shared]
+XNRT_TOKEN_ADDRESS = "0x280bA591e9Cf5B2d9C4fF094045Af22e00929d54"
