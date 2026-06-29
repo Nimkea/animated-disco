@@ -47,6 +47,8 @@ model User {
   linkedWallets   LinkedWallet[]
   depositReports  DepositReport[]
   announcements   Announcement[]
+
+  @@index([xp])
 }
 
 model Session {
@@ -134,6 +136,7 @@ model Referral {
 
   @@index([referrerId])
   @@index([referredUserId])
+  @@index([referrerId, createdAt])
 }
 
 model Transaction {
@@ -238,6 +241,8 @@ model Activity {
 
   @@index([userId])
   @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@index([userId, type, createdAt])
 }
 
 model PasswordReset {

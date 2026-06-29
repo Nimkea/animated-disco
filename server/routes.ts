@@ -87,6 +87,51 @@ const pushSubscriptionLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === "development",
 });
 
+function normalizeLeaderboardPeriodParam(period: unknown) {
+  const value = typeof period === "string" ? period : "all-time";
+  return ["daily", "weekly", "monthly", "all-time"].includes(value)
+    ? value
+    : "all-time";
+}
+
+function getLeaderboardDateFilter(period: string): Date | null {
+  const now = new Date();
+
+  if (period === "daily") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  if (period === "weekly") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 7);
+    return start;
+  }
+
+  if (period === "monthly") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 30);
+    return start;
+  }
+
+  return null;
+}
+
+function clampLeaderboardLimit(value: unknown, fallback = 50) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(Math.floor(parsed), 1), 100);
+}
+
+function toLeaderboardNumber(value: any): number {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return value;
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 /* ------------------------ Default Achievements Seed ------------------------ */
 
 const DEFAULT_ACHIEVEMENTS = [
@@ -922,88 +967,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Leaderboard routes
   app.get("/api/leaderboard/referrals", requireAuth, async (req, res) => {
     try {
-      const period = (req.query.period as string) || "all-time";
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const period = normalizeLeaderboardPeriodParam(req.query.period);
+      const limit = clampLeaderboardLimit(req.query.limit, 50);
       const currentUserId = req.authUser!.id;
+      const dateFilter = getLeaderboardDateFilter(period);
 
       const currentUser = await storage.getUser(currentUserId);
       const isAdmin = currentUser?.isAdmin || false;
 
-      let dateFilter: string | null = null;
-      const now = new Date();
-
-      if (period === "daily") {
-        dateFilter = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
-        ).toISOString();
-      } else if (period === "weekly") {
-        const weekAgo = new Date(now);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        dateFilter = weekAgo.toISOString();
-      } else if (period === "monthly") {
-        const monthAgo = new Date(now);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        dateFilter = monthAgo.toISOString();
-      }
-
-      const query = `
-        SELECT 
-          u.id as "userId",
-          u.username,
-          u.email,
-          COUNT(r.id) as "totalReferrals",
-          COALESCE(SUM(r."totalCommission"), 0) as "totalCommission",
-          COUNT(CASE WHEN r.level = 1 THEN 1 END) as "level1Count",
-          COUNT(CASE WHEN r.level = 2 THEN 1 END) as "level2Count",
-          COUNT(CASE WHEN r.level = 3 THEN 1 END) as "level3Count"
-        FROM "User" u
-        LEFT JOIN "Referral" r ON r."referrerId" = u.id
-          ${dateFilter ? `AND r."createdAt" >= $1` : ""}
-        GROUP BY u.id, u.username, u.email
-        HAVING COUNT(r.id) > 0
-        ORDER BY COUNT(r.id) DESC, COALESCE(SUM(r."totalCommission"), 0) DESC
-        LIMIT $${dateFilter ? "2" : "1"}
+      const rankedReferralSql = `
+        WITH stats AS (
+          SELECT
+            u.id AS "userId",
+            u.username,
+            u.email,
+            COUNT(r.id)::int AS "totalReferrals",
+            COALESCE(SUM(r."totalCommission"), 0) AS "totalCommission",
+            COUNT(CASE WHEN r.level = 1 THEN 1 END)::int AS "level1Count",
+            COUNT(CASE WHEN r.level = 2 THEN 1 END)::int AS "level2Count",
+            COUNT(CASE WHEN r.level = 3 THEN 1 END)::int AS "level3Count"
+          FROM "User" u
+          JOIN "Referral" r ON r."referrerId" = u.id
+            ${dateFilter ? `AND r."createdAt" >= $1` : ""}
+          GROUP BY u.id, u.username, u.email
+          HAVING COUNT(r.id) > 0
+        ), ranked AS (
+          SELECT
+            *,
+            ROW_NUMBER() OVER (
+              ORDER BY "totalReferrals" DESC, "totalCommission" DESC, "userId" ASC
+            )::int AS rank
+          FROM stats
+        )
+        SELECT * FROM ranked
       `;
 
+      const leaderboardQuery = `${rankedReferralSql} ORDER BY rank ASC LIMIT $${dateFilter ? "2" : "1"}`;
       const leaderboard: any[] = dateFilter
-        ? await storage.raw(query, [dateFilter, limit])
-        : await storage.raw(query, [limit]);
+        ? await storage.raw(leaderboardQuery, [dateFilter, limit])
+        : await storage.raw(leaderboardQuery, [limit]);
 
-      const userQuery = `
-        SELECT 
-          u.id as "userId",
-          u.username,
-          u.email,
-          COUNT(r.id) as "totalReferrals",
-          COALESCE(SUM(r."totalCommission"), 0) as "totalCommission",
-          COUNT(CASE WHEN r.level = 1 THEN 1 END) as "level1Count",
-          COUNT(CASE WHEN r.level = 2 THEN 1 END) as "level2Count",
-          COUNT(CASE WHEN r.level = 3 THEN 1 END) as "level3Count"
-        FROM "User" u
-        LEFT JOIN "Referral" r ON r."referrerId" = u.id
-          ${dateFilter ? `AND r."createdAt" >= $1` : ""}
-        WHERE u.id = $${dateFilter ? "2" : "1"}
-        GROUP BY u.id, u.username, u.email
-      `;
+      const userPositionQuery = `${rankedReferralSql} WHERE "userId" = $${dateFilter ? "2" : "1"} LIMIT 1`;
+      const userRows: any[] = dateFilter
+        ? await storage.raw(userPositionQuery, [dateFilter, currentUserId])
+        : await storage.raw(userPositionQuery, [currentUserId]);
 
-      const userStats: any[] = dateFilter
-        ? await storage.raw(userQuery, [dateFilter, currentUserId])
-        : await storage.raw(userQuery, [currentUserId]);
-
-      const userIndexInLeaderboard = leaderboard.findIndex(
-        (item) => item.userId === currentUserId
-      );
-
-      const formattedLeaderboard = leaderboard.map((item, index) => {
+      const formatLeaderboardEntry = (item: any, forceYou = false) => {
         const baseData = {
-          totalReferrals: parseInt(item.totalReferrals),
-          totalCommission: item.totalCommission.toString(),
-          level1Count: parseInt(item.level1Count),
-          level2Count: parseInt(item.level2Count),
-          level3Count: parseInt(item.level3Count),
-          rank: index + 1,
+          totalReferrals: toLeaderboardNumber(item.totalReferrals),
+          totalCommission: item.totalCommission?.toString?.() ?? "0",
+          level1Count: toLeaderboardNumber(item.level1Count),
+          level2Count: toLeaderboardNumber(item.level2Count),
+          level3Count: toLeaderboardNumber(item.level3Count),
+          rank: toLeaderboardNumber(item.rank),
+          currentUser: item.userId === currentUserId || forceYou,
         };
 
         if (isAdmin) {
@@ -1012,47 +1029,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
             userId: item.userId,
             username: item.username,
             email: item.email,
-            displayName: item.username || item.email,
-          };
-        } else {
-          return {
-            ...baseData,
-            displayName: generateAnonymizedHandle(item.userId),
+            displayName: item.username || item.email || "Unknown user",
           };
         }
-      });
 
-      let userPosition: any = null;
-      if (userStats.length > 0) {
-        const raw = userStats[0];
-        const baseData = {
-          totalReferrals: parseInt(raw.totalReferrals),
-          totalCommission: raw.totalCommission.toString(),
-          level1Count: parseInt(raw.level1Count),
-          level2Count: parseInt(raw.level2Count),
-          level3Count: parseInt(raw.level3Count),
-          rank: userIndexInLeaderboard === -1 ? null : userIndexInLeaderboard + 1,
+        return {
+          ...baseData,
+          displayName: forceYou ? "You" : generateAnonymizedHandle(item.userId),
         };
+      };
 
-        if (isAdmin) {
-          userPosition = {
-            ...baseData,
-            userId: raw.userId,
-            username: raw.username,
-            email: raw.email,
-            displayName: raw.username || raw.email,
-          };
-        } else {
-          userPosition = {
-            ...baseData,
-            displayName: userIndexInLeaderboard === -1 ? "You" : "You",
-          };
-        }
-      }
+      const formattedLeaderboard = leaderboard.map((item) =>
+        formatLeaderboardEntry(item)
+      );
+
+      const userPosition = userRows.length
+        ? formatLeaderboardEntry(userRows[0], true)
+        : null;
 
       res.json({
         leaderboard: formattedLeaderboard,
         userPosition,
+        meta: {
+          period,
+          unit: "referrals",
+          window:
+            period === "daily"
+              ? "today"
+              : period === "weekly"
+              ? "last 7 days"
+              : period === "monthly"
+              ? "last 30 days"
+              : "all time",
+        },
       });
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
@@ -1062,8 +1071,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/leaderboard/xp", requireAuth, async (req, res) => {
     try {
-      const period = (req.query.period as string) || "all-time";
-      const category = (req.query.category as string) || "overall";
+      const period = normalizeLeaderboardPeriodParam(req.query.period);
+      const category = typeof req.query.category === "string" ? req.query.category : "overall";
+      const limit = clampLeaderboardLimit(req.query.limit, 50);
       const currentUserId = req.authUser!.id;
 
       const currentUser = await storage.getUser(currentUserId);
@@ -1073,7 +1083,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         currentUserId,
         period,
         category,
-        isAdmin
+        isAdmin,
+        limit
       );
       res.json(result);
     } catch (error) {
