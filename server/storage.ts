@@ -479,6 +479,9 @@ export class DatabaseStorage implements IStorage {
       if (userData.username !== undefined && userData.username !== null)
         updateData.username = userData.username;
       if (userData.isAdmin !== undefined) updateData.isAdmin = userData.isAdmin;
+      if (userData.firstName !== undefined) updateData.firstName = userData.firstName || null;
+      if (userData.lastName !== undefined) updateData.lastName = userData.lastName || null;
+      if (userData.profileImageUrl !== undefined) updateData.profileImageUrl = userData.profileImageUrl || null;
       if (userData.xp !== undefined) updateData.xp = userData.xp;
       if (userData.level !== undefined) updateData.level = userData.level;
       if (userData.streak !== undefined) updateData.streak = userData.streak;
@@ -506,6 +509,9 @@ export class DatabaseStorage implements IStorage {
         passwordHash: (userData as any).passwordHash || "",
         referralCode,
         referredBy: refCode || null,
+        firstName: userData.firstName || null,
+        lastName: userData.lastName || null,
+        profileImageUrl: userData.profileImageUrl || null,
         isAdmin: userData.isAdmin || false,
         xp: userData.xp || 0,
         level: userData.level || 1,
@@ -566,6 +572,9 @@ export class DatabaseStorage implements IStorage {
     if (updates.email !== undefined) updateData.email = updates.email;
     if (updates.username !== undefined) updateData.username = updates.username;
     if (updates.isAdmin !== undefined) updateData.isAdmin = updates.isAdmin;
+    if (updates.firstName !== undefined) updateData.firstName = updates.firstName || null;
+    if (updates.lastName !== undefined) updateData.lastName = updates.lastName || null;
+    if (updates.profileImageUrl !== undefined) updateData.profileImageUrl = updates.profileImageUrl || null;
     if (updates.xp !== undefined) updateData.xp = updates.xp;
     if (updates.level !== undefined) updateData.level = updates.level;
     if (updates.streak !== undefined) updateData.streak = updates.streak;

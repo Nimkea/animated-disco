@@ -388,6 +388,10 @@ router.get('/me', requireAuth, async (req, res) => {
         email: true,
         username: true,
         referralCode: true,
+        referredBy: true,
+        firstName: true,
+        lastName: true,
+        profileImageUrl: true,
         emailVerified: true,
         isAdmin: true,
         xp: true,
@@ -395,6 +399,7 @@ router.get('/me', requireAuth, async (req, res) => {
         streak: true,
         lastCheckIn: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 

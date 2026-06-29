@@ -15,6 +15,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
+import { z } from "zod";
 import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 import { ethers } from "ethers";
 import { deriveDepositAddress } from "./services/hdWallet";
@@ -130,6 +131,48 @@ function toLeaderboardNumber(value: any): number {
   if (value === null || value === undefined) return 0;
   const parsed = Number(value.toString());
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const profileUpdateSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .min(3, "Username must be at least 3 characters")
+    .max(20, "Username must be 20 characters or less")
+    .regex(/^[a-zA-Z0-9_]+$/, "Username can only use letters, numbers, and underscores")
+    .optional(),
+  firstName: z.string().trim().max(50, "First name is too long").optional().nullable(),
+  lastName: z.string().trim().max(50, "Last name is too long").optional().nullable(),
+  profileImageUrl: z
+    .string()
+    .trim()
+    .max(500, "Profile image URL is too long")
+    .optional()
+    .nullable()
+    .refine(
+      (value) =>
+        !value ||
+        value.startsWith("http://") ||
+        value.startsWith("https://") ||
+        value.startsWith("/"),
+      "Profile image must be a valid URL or app-relative path"
+    ),
+});
+
+function decimalValueToNumber(value: any): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isSameLocalDay(a: Date | string | null | undefined, b: Date = new Date()) {
+  if (!a) return false;
+  const date = new Date(a);
+  return (
+    date.getFullYear() === b.getFullYear() &&
+    date.getMonth() === b.getMonth() &&
+    date.getDate() === b.getDate()
+  );
 }
 
 /* ------------------------ Default Achievements Seed ------------------------ */
@@ -2160,36 +2203,302 @@ Issued: ${issuedAt}`;
     }
   );
 
-  // Profile stats route
+  // Profile v2 routes
+  app.get("/api/profile/summary", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const [
+        balance,
+        activeStakeStats,
+        completedMiningStats,
+        referralGroups,
+        referralCommission,
+        activeTaskCount,
+        assignedTaskCount,
+        completedTaskCount,
+        totalAchievementCount,
+        unlockedAchievementCount,
+        leaderboardRows,
+        referralRankRows,
+        recentActivities,
+      ] = await Promise.all([
+        storage.getBalance(userId),
+        prisma.stake.aggregate({
+          where: { userId, status: "active" },
+          _count: { _all: true },
+          _sum: { amount: true },
+        }),
+        prisma.miningSession.aggregate({
+          where: { userId, status: "completed" },
+          _count: { _all: true },
+          _sum: { finalReward: true },
+        }),
+        prisma.referral.groupBy({
+          by: ["level"],
+          where: { referrerId: userId },
+          _count: { _all: true },
+        }),
+        prisma.referral.aggregate({
+          where: { referrerId: userId },
+          _sum: { totalCommission: true },
+        }),
+        prisma.task.count({ where: { isActive: true } }),
+        prisma.userTask.count({ where: { userId } }),
+        prisma.userTask.count({ where: { userId, completed: true } }),
+        prisma.achievement.count(),
+        prisma.userAchievement.count({ where: { userId } }),
+        storage.raw(
+          `
+            WITH ranked AS (
+              SELECT
+                id,
+                ROW_NUMBER() OVER (ORDER BY xp DESC, "createdAt" ASC, id ASC)::int AS rank
+              FROM "User"
+              WHERE xp > 0
+            )
+            SELECT rank FROM ranked WHERE id = $1 LIMIT 1
+          `,
+          [userId]
+        ),
+        storage.raw(
+          `
+            WITH stats AS (
+              SELECT
+                u.id AS "userId",
+                COUNT(r.id)::int AS "totalReferrals",
+                COALESCE(SUM(r."totalCommission"), 0) AS "totalCommission"
+              FROM "User" u
+              JOIN "Referral" r ON r."referrerId" = u.id
+              GROUP BY u.id
+              HAVING COUNT(r.id) > 0
+            ), ranked AS (
+              SELECT
+                *,
+                ROW_NUMBER() OVER (
+                  ORDER BY "totalReferrals" DESC, "totalCommission" DESC, "userId" ASC
+                )::int AS rank
+              FROM stats
+            )
+            SELECT rank FROM ranked WHERE "userId" = $1 LIMIT 1
+          `,
+          [userId]
+        ),
+        storage.getActivities(userId, 5),
+      ]);
+
+      const referralCounts = referralGroups.reduce(
+        (acc, row) => {
+          const count = row._count?._all || 0;
+          if (row.level === 1) acc.level1 = count;
+          if (row.level === 2) acc.level2 = count;
+          if (row.level === 3) acc.level3 = count;
+          return acc;
+        },
+        { level1: 0, level2: 0, level3: 0 }
+      );
+
+      let referredByUser: { username: string | null; referralCode: string | null } | null = null;
+      if (user.referredBy) {
+        referredByUser = await prisma.user.findFirst({
+          where: {
+            OR: [{ id: user.referredBy }, { referralCode: user.referredBy }],
+          },
+          select: { username: true, referralCode: true },
+        });
+      }
+
+      const xp = user.xp || 0;
+      const level = Math.floor(xp / 1000) + 1;
+      const currentLevelXp = (level - 1) * 1000;
+      const nextLevelXp = level * 1000;
+      const xpIntoLevel = Math.max(0, xp - currentLevelXp);
+      const xpRequiredForLevel = 1000;
+      const progressPercent = Math.min(100, Math.round((xpIntoLevel / xpRequiredForLevel) * 100));
+
+      res.json({
+        profile: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          firstName: user.firstName || null,
+          lastName: user.lastName || null,
+          profileImageUrl: user.profileImageUrl || null,
+          referralCode: user.referralCode,
+          referredBy: user.referredBy || null,
+          referredByUsername: referredByUser?.username || null,
+          referredByCode: referredByUser?.referralCode || null,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+        xp: {
+          total: xp,
+          level,
+          currentLevelXp,
+          nextLevelXp,
+          xpIntoLevel,
+          xpRequiredForLevel,
+          progressPercent,
+        },
+        balance: {
+          xnrtBalance: decimalValueToNumber(balance?.xnrtBalance),
+          stakingBalance: decimalValueToNumber(balance?.stakingBalance),
+          miningBalance: decimalValueToNumber(balance?.miningBalance),
+          referralBalance: decimalValueToNumber(balance?.referralBalance),
+          totalEarned: decimalValueToNumber(balance?.totalEarned),
+        },
+        referrals: {
+          direct: referralCounts.level1,
+          level2: referralCounts.level2,
+          level3: referralCounts.level3,
+          totalNetwork: referralCounts.level1 + referralCounts.level2 + referralCounts.level3,
+          totalCommission: decimalValueToNumber(referralCommission._sum.totalCommission),
+          rank: referralRankRows[0]?.rank ? toLeaderboardNumber(referralRankRows[0].rank) : null,
+        },
+        mining: {
+          completedSessions: completedMiningStats._count._all,
+          totalXpMined: completedMiningStats._sum.finalReward || 0,
+          totalXnrtMined: decimalValueToNumber(balance?.miningBalance),
+        },
+        staking: {
+          activeStakes: activeStakeStats._count._all,
+          totalActiveStaked: decimalValueToNumber(activeStakeStats._sum.amount),
+        },
+        tasks: {
+          assigned: assignedTaskCount,
+          completed: completedTaskCount,
+          totalActive: activeTaskCount,
+          progressPercent: activeTaskCount > 0 ? Math.round((completedTaskCount / activeTaskCount) * 100) : 0,
+        },
+        achievements: {
+          unlocked: unlockedAchievementCount,
+          total: totalAchievementCount,
+          progressPercent: totalAchievementCount > 0 ? Math.round((unlockedAchievementCount / totalAchievementCount) * 100) : 0,
+        },
+        leaderboard: {
+          xpRank: leaderboardRows[0]?.rank ? toLeaderboardNumber(leaderboardRows[0].rank) : null,
+          referralRank: referralRankRows[0]?.rank ? toLeaderboardNumber(referralRankRows[0].rank) : null,
+        },
+        checkin: {
+          currentStreak: user.streak || 0,
+          lastCheckIn: user.lastCheckIn || null,
+          checkedInToday: isSameLocalDay(user.lastCheckIn),
+        },
+        recentActivities,
+      });
+    } catch (error) {
+      console.error("Error fetching profile summary:", error);
+      res.status(500).json({ message: "Failed to fetch profile summary" });
+    }
+  });
+
+  app.patch("/api/profile", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const data = profileUpdateSchema.parse(req.body);
+      const updateData: any = {};
+
+      if (data.username !== undefined) {
+        const existing = await prisma.user.findFirst({
+          where: { username: data.username, NOT: { id: userId } },
+          select: { id: true },
+        });
+        if (existing) {
+          return res.status(409).json({ message: "Username is already taken" });
+        }
+        updateData.username = data.username;
+      }
+
+      if (data.firstName !== undefined) updateData.firstName = data.firstName || null;
+      if (data.lastName !== undefined) updateData.lastName = data.lastName || null;
+      if (data.profileImageUrl !== undefined) updateData.profileImageUrl = data.profileImageUrl || null;
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No profile fields provided" });
+      }
+
+      const updatedUser = await storage.updateUser(userId, updateData);
+      await storage.createActivity({
+        userId,
+        type: "profile_updated",
+        description: "Updated profile information",
+      });
+
+      res.json({
+        id: updatedUser.id,
+        email: updatedUser.email,
+        username: updatedUser.username,
+        firstName: updatedUser.firstName || null,
+        lastName: updatedUser.lastName || null,
+        profileImageUrl: updatedUser.profileImageUrl || null,
+        referralCode: updatedUser.referralCode,
+        referredBy: updatedUser.referredBy || null,
+        emailVerified: updatedUser.emailVerified,
+        isAdmin: updatedUser.isAdmin,
+        xp: updatedUser.xp,
+        level: updatedUser.level,
+        streak: updatedUser.streak,
+        lastCheckIn: updatedUser.lastCheckIn || null,
+        createdAt: updatedUser.createdAt,
+        updatedAt: updatedUser.updatedAt,
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid profile data", errors: error.errors });
+      }
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
+  // Profile stats route kept for backward compatibility with existing widgets
   app.get("/api/profile/stats", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const stakes = await storage.getStakes(userId);
-      const miningSessions = await storage.getMiningHistory(userId);
-      const referrals = await storage.getReferralsByReferrer(userId);
-      const userTasks = await storage.getUserTasks(userId);
-      const userAchievements = await storage.getUserAchievements(userId);
+      const [
+        activeStakeStats,
+        completedMiningStats,
+        referralGroups,
+        referralCommission,
+        completedTaskCount,
+        unlockedAchievementCount,
+      ] = await Promise.all([
+        prisma.stake.aggregate({
+          where: { userId, status: "active" },
+          _count: { _all: true },
+          _sum: { amount: true },
+        }),
+        prisma.miningSession.aggregate({
+          where: { userId, status: "completed" },
+          _count: { _all: true },
+          _sum: { finalReward: true },
+        }),
+        prisma.referral.groupBy({
+          by: ["level"],
+          where: { referrerId: userId },
+          _count: { _all: true },
+        }),
+        prisma.referral.aggregate({
+          where: { referrerId: userId },
+          _sum: { totalCommission: true },
+        }),
+        prisma.userTask.count({ where: { userId, completed: true } }),
+        prisma.userAchievement.count({ where: { userId } }),
+      ]);
+
+      const totalReferrals = referralGroups.reduce((sum, row) => sum + (row._count?._all || 0), 0);
 
       res.json({
-        totalReferrals: referrals.length,
-        activeStakes: stakes.filter((s) => s.status === "active").length,
-        totalStaked: stakes.reduce(
-          (sum, s) => sum + parseFloat(s.amount),
-          0
-        ),
-        miningSessions: miningSessions.filter(
-          (s) => s.status === "completed"
-        ).length,
-        totalMined: miningSessions.reduce(
-          (sum, s) => sum + s.finalReward,
-          0
-        ),
-        referralEarnings: referrals.reduce(
-          (sum, r) => sum + parseFloat(r.totalCommission),
-          0
-        ),
-        tasksCompleted: userTasks.filter((t) => t.completed).length,
-        achievementsUnlocked: userAchievements.length,
+        totalReferrals,
+        activeStakes: activeStakeStats._count._all,
+        totalStaked: decimalValueToNumber(activeStakeStats._sum.amount),
+        miningSessions: completedMiningStats._count._all,
+        totalMined: completedMiningStats._sum.finalReward || 0,
+        referralEarnings: decimalValueToNumber(referralCommission._sum.totalCommission),
+        tasksCompleted: completedTaskCount,
+        achievementsUnlocked: unlockedAchievementCount,
       });
     } catch (error) {
       console.error("Error fetching profile stats:", error);
