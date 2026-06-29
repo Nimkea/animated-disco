@@ -42,6 +42,21 @@ interface Transaction {
   };
 }
 
+
+function getSourceLabel(source?: string) {
+  switch (source) {
+    case "staking":
+      return "Staking Balance";
+    case "mining":
+      return "Mining Balance";
+    case "referral":
+      return "Referral Balance";
+    case "main":
+    default:
+      return "Main Balance";
+  }
+}
+
 export default function WithdrawalsTab() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -117,7 +132,7 @@ export default function WithdrawalsTab() {
         <CardHeader>
           <CardTitle>Pending Withdrawals</CardTitle>
           <CardDescription>
-            Review and approve withdrawal requests • 2% fee applied • BEP20 addresses only
+            Review and approve reserved XNRT token withdrawal requests • BEP20 addresses only
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -139,8 +154,8 @@ export default function WithdrawalsTab() {
                         <p className="font-semibold text-lg">
                           {parseFloat(withdrawal.amount).toLocaleString()} XNRT
                         </p>
-                        <Badge variant={withdrawal.source === "referral" ? "secondary" : "default"}>
-                          {withdrawal.source === "referral" ? "Referral Balance" : "Main Balance"}
+                        <Badge variant="outline" className="capitalize">
+                          {getSourceLabel(withdrawal.source)}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
@@ -156,8 +171,8 @@ export default function WithdrawalsTab() {
                           <span className="font-medium">{parseFloat(withdrawal.netAmount || "0").toLocaleString()} XNRT</span>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">USDT:</span>{" "}
-                          <span className="font-medium">{withdrawal.usdtAmount}</span>
+                          <span className="text-muted-foreground">Token paid:</span>{" "}
+                          <span className="font-medium">XNRT</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 pt-1">
@@ -166,7 +181,7 @@ export default function WithdrawalsTab() {
                           {withdrawal.walletAddress?.slice(0, 20)}...{withdrawal.walletAddress?.slice(-10)}
                         </p>
                         <a
-                          href={`https://bscscan.com/address/${withdrawal.walletAddress}`}
+                          href={`https://testnet.bscscan.com/address/${withdrawal.walletAddress}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-primary hover:underline flex items-center gap-1"
@@ -228,7 +243,7 @@ export default function WithdrawalsTab() {
             <DialogHeader>
               <DialogTitle>Approve Withdrawal</DialogTitle>
               <DialogDescription>
-                Confirm you will send {selectedWithdrawal.usdtAmount} USDT to the user's wallet
+                Confirm you will send/mint the net XNRT amount to the user's BEP-20 wallet
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-4">
@@ -242,15 +257,15 @@ export default function WithdrawalsTab() {
                   <span className="font-mono text-xs">{selectedWithdrawal.walletAddress?.slice(0, 10)}...{selectedWithdrawal.walletAddress?.slice(-8)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Amount to Send:</span>
-                  <span className="font-bold">{selectedWithdrawal.usdtAmount} USDT</span>
+                  <span className="text-muted-foreground">Net XNRT to Send:</span>
+                  <span className="font-bold">{parseFloat(selectedWithdrawal.netAmount || selectedWithdrawal.amount).toLocaleString()} XNRT</span>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Admin Notes (Optional)</label>
                 <Textarea
-                  placeholder="Add transaction hash or notes about this approval..."
+                  placeholder="Add approval notes or on-chain transaction details..."
                   value={adminNotes}
                   onChange={(e) => setAdminNotes(e.target.value)}
                   data-testid="textarea-admin-notes"
@@ -274,7 +289,7 @@ export default function WithdrawalsTab() {
                   data-testid="button-confirm-approve"
                 >
                   <CheckCircle className="h-4 w-4 mr-1" />
-                  Confirm Payment
+                  Approve Withdrawal
                 </Button>
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { PrismaClient, Prisma } from "@prisma/client";
+import { storage } from "../storage";
 
 const prisma = new PrismaClient();
 
@@ -284,9 +285,9 @@ async function processUserDeposit(
 
     if (confirmations >= REQUIRED_CONFIRMATIONS) {
       // Enough confirmations - auto-credit
-      await prisma.$transaction(async (tx) => {
+      const createdDeposit = await prisma.$transaction(async (tx) => {
         // Create approved transaction
-        await tx.transaction.create({
+        const txRecord = await tx.transaction.create({
           data: {
             userId,
             type: "deposit",
@@ -318,9 +319,21 @@ async function processUserDeposit(
             totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
           },
         });
+        return txRecord;
       });
 
       console.log(`[DepositScanner] Auto-credited ${xnrtAmount} XNRT to user ${userId}`);
+
+      await storage.distributeReferralCommissions(
+        userId,
+        xnrtAmount,
+        `tx:${createdDeposit.id}`
+      );
+      await storage.createActivity({
+        userId,
+        type: "deposit_approved",
+        description: `Deposit of ${xnrtAmount.toLocaleString()} XNRT approved via scanner`,
+      });
 
       // Send notification (non-blocking)
       void sendDepositNotification(userId, xnrtAmount, txHash).catch(err => {
@@ -393,8 +406,8 @@ async function processXnrtDepositEvent(
     );
 
     if (confirmations >= REQUIRED_CONFIRMATIONS) {
-      await prisma.$transaction(async (tx) => {
-        await tx.transaction.create({
+      const createdDeposit = await prisma.$transaction(async (tx) => {
+        const txRecord = await tx.transaction.create({
           data: {
             userId,
             type: "deposit",
@@ -427,9 +440,21 @@ async function processXnrtDepositEvent(
             totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
           },
         });
+        return txRecord;
       });
 
       console.log(`[DepositScanner] XNRT auto-credited ${xnrtAmount} XNRT to user ${userId}`);
+
+      await storage.distributeReferralCommissions(
+        userId,
+        xnrtAmount,
+        `tx:${createdDeposit.id}`
+      );
+      await storage.createActivity({
+        userId,
+        type: "deposit_approved",
+        description: `XNRT deposit of ${xnrtAmount.toLocaleString()} XNRT approved via scanner`,
+      });
 
       void sendDepositNotification(userId, xnrtAmount, txHash).catch((err) => {
         console.error("[DepositScanner] XNRT notification error:", err);

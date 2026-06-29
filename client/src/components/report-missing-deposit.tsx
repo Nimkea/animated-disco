@@ -46,11 +46,12 @@ export function ReportMissingDeposit() {
     setLoading(true);
 
     try {
-      const response: any = await apiRequest("POST", "/api/wallet/report-deposit", {
+      const res = await apiRequest("POST", "/api/wallet/report-deposit", {
         transactionHash: txHash.trim(),
         amount: parseFloat(amount),
         description: description.trim(),
       });
+      const response: any = await res.json();
 
       // Handle different response types
       if (response.credited) {
@@ -81,7 +82,8 @@ export function ReportMissingDeposit() {
       // Refresh deposits list
       const { queryClient } = await import("@/lib/queryClient");
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/deposits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/user/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -105,7 +107,7 @@ export function ReportMissingDeposit() {
         <DialogHeader>
           <DialogTitle>Report Missing Deposit</DialogTitle>
           <DialogDescription>
-            Paste your TX hash for instant verification. Works for deposits from exchanges (Binance, OKX, etc.) or linked wallets.
+            Paste your TX hash for instant verification against your personal deposit address first, with treasury fallback for legacy deposits.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

@@ -178,6 +178,92 @@ function isSameLocalDay(a: Date | string | null | undefined, b: Date = new Date(
   );
 }
 
+const BSC_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
+function normalizeBscAddress(address: unknown): string | null {
+  const value = String(address || "").trim();
+  return BSC_ADDRESS_RE.test(value) ? value.toLowerCase() : null;
+}
+
+function getWalletRates() {
+  const xnrtPerUsdt = Number(process.env.XNRT_RATE_USDT || "100");
+  const withdrawalFeePercent = Number(process.env.WITHDRAWAL_FEE_PERCENT || "2");
+  const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || "0");
+  const confirmations = Number(process.env.BSC_CONFIRMATIONS || "12");
+
+  return {
+    xnrtPerUsdt: Number.isFinite(xnrtPerUsdt) && xnrtPerUsdt > 0 ? xnrtPerUsdt : 100,
+    usdtPerXnrt: Number.isFinite(xnrtPerUsdt) && xnrtPerUsdt > 0 ? 1 / xnrtPerUsdt : 0.01,
+    withdrawalFeePercent:
+      Number.isFinite(withdrawalFeePercent) && withdrawalFeePercent >= 0
+        ? withdrawalFeePercent
+        : 2,
+    platformFeeBps: Number.isFinite(platformFeeBps) && platformFeeBps >= 0 ? platformFeeBps : 0,
+    confirmations: Number.isFinite(confirmations) && confirmations > 0 ? confirmations : 12,
+    network: "BSC (BEP-20)",
+    depositToken: "USDT",
+    withdrawalToken: "XNRT",
+    withdrawalMode: "xnrt_token",
+    minReferralWithdrawal: 5000,
+    minMiningWithdrawal: 5000,
+  };
+}
+
+function getBalanceSourceKey(source: string | null | undefined) {
+  switch (source) {
+    case "staking":
+      return "stakingBalance" as const;
+    case "mining":
+      return "miningBalance" as const;
+    case "referral":
+      return "referralBalance" as const;
+    case "main":
+    default:
+      return "xnrtBalance" as const;
+  }
+}
+
+async function getOrCreateUserDepositAddress(userId: string) {
+  let user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { depositAddress: true, derivationIndex: true },
+  });
+
+  if (user?.depositAddress && user.derivationIndex !== null) {
+    return user.depositAddress;
+  }
+
+  // Best-effort allocator within the current schema. The unique derivationIndex
+  // constraint protects against duplicates if two requests race.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const maxIndexUser = await prisma.user.findFirst({
+      where: { derivationIndex: { not: null } },
+      orderBy: { derivationIndex: "desc" },
+      select: { derivationIndex: true },
+    });
+
+    const nextIndex = (maxIndexUser?.derivationIndex ?? -1) + 1 + attempt;
+    const address = deriveDepositAddress(nextIndex);
+
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { depositAddress: address, derivationIndex: nextIndex },
+      });
+      return address;
+    } catch (error: any) {
+      if (error?.code !== "P2002") throw error;
+    }
+  }
+
+  user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { depositAddress: true, derivationIndex: true },
+  });
+  if (user?.depositAddress) return user.depositAddress;
+  throw new Error("Failed to allocate deposit address");
+}
+
 /* ------------------------ Default Achievements Seed ------------------------ */
 
 const DEFAULT_ACHIEVEMENTS = [
@@ -580,6 +666,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching balance:", error);
       res.status(500).json({ message: "Failed to fetch balance" });
+    }
+  });
+
+  app.get("/api/wallet/rates", requireAuth, async (_req, res) => {
+    res.json(getWalletRates());
+  });
+
+  app.get("/api/wallet/summary", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const [balance, allRecentTransactions, pendingWithdrawalRows, depositAddress] = await Promise.all([
+        storage.getBalance(userId),
+        storage.getTransactionsByUser(userId),
+        prisma.transaction.groupBy({
+          by: ["source"],
+          where: { userId, type: "withdrawal", status: { in: ["pending", "processing"] } },
+          _sum: { amount: true, fee: true, netAmount: true },
+          _count: { _all: true },
+        }),
+        getOrCreateUserDepositAddress(userId),
+      ]);
+
+      const available = decimalValueToNumber(balance?.xnrtBalance);
+      const staking = decimalValueToNumber(balance?.stakingBalance);
+      const mining = decimalValueToNumber(balance?.miningBalance);
+      const referral = decimalValueToNumber(balance?.referralBalance);
+      const totalWalletValue = available + staking + mining + referral;
+
+      const reservedBySource = pendingWithdrawalRows.reduce(
+        (acc, row) => {
+          const source = row.source || "main";
+          const amount = decimalValueToNumber(row._sum.amount);
+          acc[source] = {
+            amount,
+            fee: decimalValueToNumber(row._sum.fee),
+            netAmount: decimalValueToNumber(row._sum.netAmount),
+            count: row._count._all,
+          };
+          acc.total.amount += amount;
+          acc.total.fee += decimalValueToNumber(row._sum.fee);
+          acc.total.netAmount += decimalValueToNumber(row._sum.netAmount);
+          acc.total.count += row._count._all;
+          return acc;
+        },
+        {
+          total: { amount: 0, fee: 0, netAmount: 0, count: 0 },
+        } as Record<string, { amount: number; fee: number; netAmount: number; count: number }>
+      );
+
+      const approvedDeposits = await prisma.transaction.aggregate({
+        where: { userId, type: "deposit", status: "approved" },
+        _sum: { amount: true, usdtAmount: true },
+        _count: { _all: true },
+      });
+
+      const approvedWithdrawals = await prisma.transaction.aggregate({
+        where: { userId, type: "withdrawal", status: "approved" },
+        _sum: { amount: true, fee: true, netAmount: true },
+        _count: { _all: true },
+      });
+
+      res.json({
+        balance: {
+          available,
+          staking,
+          mining,
+          referral,
+          totalWalletValue,
+          totalEarned: decimalValueToNumber(balance?.totalEarned),
+        },
+        deposit: {
+          address: depositAddress,
+          network: "BSC (BEP-20)",
+          token: "USDT",
+          approvedCount: approvedDeposits._count._all,
+          totalUsdtDeposited: decimalValueToNumber(approvedDeposits._sum.usdtAmount),
+          totalXnrtCredited: decimalValueToNumber(approvedDeposits._sum.amount),
+        },
+        withdrawals: {
+          reservedBySource,
+          approvedCount: approvedWithdrawals._count._all,
+          totalRequested: decimalValueToNumber(approvedWithdrawals._sum.amount),
+          totalFees: decimalValueToNumber(approvedWithdrawals._sum.fee),
+          totalPaid: decimalValueToNumber(approvedWithdrawals._sum.netAmount),
+        },
+        rates: getWalletRates(),
+        recentTransactions: allRecentTransactions.slice(0, 12),
+      });
+    } catch (error) {
+      console.error("Error fetching wallet summary:", error);
+      res.status(500).json({ message: "Failed to fetch wallet summary" });
     }
   });
 
@@ -1689,50 +1866,18 @@ Issued: ${issuedAt}`;
   app.get("/api/wallet/deposit-address", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-
-      let user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { depositAddress: true, derivationIndex: true },
-      });
-
-      if (!user?.depositAddress || user?.derivationIndex === null) {
-        // NOTE: production should use a counter/lock; this is best-effort within current model.
-        const maxIndexUser = await prisma.user.findFirst({
-          where: { derivationIndex: { not: null } },
-          orderBy: { derivationIndex: "desc" },
-          select: { derivationIndex: true },
-        });
-
-        const nextIndex = (maxIndexUser?.derivationIndex ?? -1) + 1;
-        const address = deriveDepositAddress(nextIndex);
-
-        await prisma.user.update({
-          where: { id: userId },
-          data: { depositAddress: address, derivationIndex: nextIndex },
-        });
-
-        return res.json({
-          address,
-          network: "BSC (BEP-20)",
-          token: "USDT",
-          instructions: [
-            "Send USDT (BEP-20) from your exchange to this address",
-            "Deposits will be automatically detected and credited",
-            "No gas fees or wallet connection needed",
-            "Minimum 12 block confirmations required",
-          ],
-        });
-      }
+      const address = await getOrCreateUserDepositAddress(userId);
+      const rates = getWalletRates();
 
       res.json({
-        address: user.depositAddress,
-        network: "BSC (BEP-20)",
-        token: "USDT",
+        address,
+        network: rates.network,
+        token: rates.depositToken,
         instructions: [
-          "Send USDT (BEP-20) from your exchange to this address",
-          "Deposits will be automatically detected and credited",
-          "No gas fees or wallet connection needed",
-          "Minimum 12 block confirmations required",
+          "Send USDT (BEP-20) from your exchange to this personal deposit address",
+          "Auto-detection credits deposits after the required confirmations",
+          "Report the transaction hash only if auto-credit does not appear",
+          `Required confirmations: ${rates.confirmations}`,
         ],
       });
     } catch (error) {
@@ -1787,13 +1932,32 @@ Issued: ${issuedAt}`;
             .json({ message: "This deposit has already been reported" });
         }
 
-        const treasuryAddress = process.env.XNRT_WALLET || "";
-        const verification = await verifyBscUsdtDeposit({
+        const userDepositAddress = (await getOrCreateUserDepositAddress(userId)).toLowerCase();
+        const treasuryAddress = (process.env.XNRT_WALLET || "").toLowerCase();
+        const rates = getWalletRates();
+
+        let verification = await verifyBscUsdtDeposit({
           txHash: transactionHash,
-          expectedTo: treasuryAddress,
+          expectedTo: userDepositAddress,
           minAmount: amountNum,
-          requiredConf: parseInt(process.env.BSC_CONFIRMATIONS ?? "12", 10),
+          requiredConf: rates.confirmations,
         });
+        let expectedTo = userDepositAddress;
+        let verifiedToPersonalAddress = !!verification.verified;
+
+        if (!verification.verified && treasuryAddress) {
+          const treasuryVerification = await verifyBscUsdtDeposit({
+            txHash: transactionHash,
+            expectedTo: treasuryAddress,
+            minAmount: amountNum,
+            requiredConf: rates.confirmations,
+          });
+          if (treasuryVerification.verified) {
+            verification = treasuryVerification;
+            expectedTo = treasuryAddress;
+            verifiedToPersonalAddress = false;
+          }
+        }
 
         if (!verification.verified) {
           const report = await prisma.depositReport.create({
@@ -1801,7 +1965,9 @@ Issued: ${issuedAt}`;
               userId,
               txHash: transactionHash,
               amount: new Prisma.Decimal(amountNum),
-              notes: description || `Verification: ${verification.reason}`,
+              notes:
+                description ||
+                `Verification failed. Checked personal address ${userDepositAddress}${treasuryAddress ? ` and treasury ${treasuryAddress}` : ""}. Reason: ${verification.reason}`,
               status: "pending",
             },
           });
@@ -1818,34 +1984,38 @@ Issued: ${issuedAt}`;
         const transaction = await provider.getTransaction(transactionHash);
         const fromAddress = transaction?.from?.toLowerCase() || "";
 
-        const linkedWallet = await prisma.linkedWallet.findFirst({
-          where: { userId, address: fromAddress, active: true },
-        });
-
-        const xnrtRate = parseFloat(process.env.XNRT_RATE_USDT || "100");
-        const platformFeeBps = parseFloat(process.env.PLATFORM_FEE_BPS || "0");
         const usdtAmount = verification.amountOnChain ?? amountNum;
-        const netUsdt = usdtAmount * (1 - platformFeeBps / 10_000);
-        const xnrtAmount = netUsdt * xnrtRate;
+        const netUsdt = usdtAmount * (1 - rates.platformFeeBps / 10_000);
+        const xnrtAmount = netUsdt * rates.xnrtPerUsdt;
 
-        if (linkedWallet) {
-          await prisma.$transaction(async (tx) => {
-            await tx.transaction.create({
+        // Personal deposit addresses are unique per user, so linked-wallet proof is not required.
+        const shouldAutoCredit = verifiedToPersonalAddress;
+        const linkedWallet = !shouldAutoCredit
+          ? await prisma.linkedWallet.findFirst({
+              where: { userId, address: fromAddress, active: true },
+            })
+          : null;
+
+        if (shouldAutoCredit || linkedWallet) {
+          const createdDeposit = await prisma.$transaction(async (tx) => {
+            const txRecord = await tx.transaction.create({
               data: {
                 userId,
                 type: "deposit",
                 amount: new Prisma.Decimal(xnrtAmount),
                 usdtAmount: new Prisma.Decimal(usdtAmount),
                 transactionHash,
-                walletAddress: fromAddress,
+                walletAddress: expectedTo,
                 status: "approved",
                 verified: true,
                 confirmations: verification.confirmations,
                 verificationData: {
                   autoVerified: true,
                   reportSubmitted: true,
+                  verifiedTo: expectedTo,
                   verifiedAt: new Date().toISOString(),
                   blockNumber: receipt?.blockNumber,
+                  fromAddress,
                 } as any,
               },
             });
@@ -1862,33 +2032,25 @@ Issued: ${issuedAt}`;
                 totalEarned: { increment: new Prisma.Decimal(xnrtAmount) },
               },
             });
+            return txRecord;
           });
-
-          console.log(
-            `[ReportDeposit] Auto-credited ${xnrtAmount} XNRT to user ${userId}`
-          );
 
           const { sendDepositNotification } = await import(
             "./services/depositScanner"
           );
-          void sendDepositNotification(
-            userId,
-            xnrtAmount,
-            transactionHash
-          ).catch((err) => {
+          void sendDepositNotification(userId, xnrtAmount, transactionHash).catch((err) => {
             console.error("[ReportDeposit] Notification error:", err);
           });
 
-          // Distribute referral commissions + activity for auto-approved deposit
           await storage.distributeReferralCommissions(
             userId,
             xnrtAmount,
-            `txhash:${transactionHash}`
+            `tx:${createdDeposit.id}`
           );
           await storage.createActivity({
             userId,
             type: "deposit_approved",
-            description: `Deposit of ${xnrtAmount.toLocaleString()} XNRT approved via auto-detection`,
+            description: `Deposit of ${xnrtAmount.toLocaleString()} XNRT approved via verified deposit report`,
           });
 
           return res.json({
@@ -1896,34 +2058,30 @@ Issued: ${issuedAt}`;
             credited: true,
             amount: xnrtAmount,
           });
-        } else {
-          await prisma.unmatchedDeposit.create({
-            data: {
-              fromAddress,
-              toAddress: treasuryAddress,
-              amount: new Prisma.Decimal(usdtAmount),
-              transactionHash,
-              blockNumber: receipt?.blockNumber ?? 0,
-              confirmations: verification.confirmations ?? 0,
-              matched: false,
-            },
-          });
-
-          return res.json({
-            message:
-              "Deposit verified on blockchain. Admin will credit your account shortly.",
-            verified: true,
-            pendingAdminReview: true,
-          });
         }
+
+        await prisma.unmatchedDeposit.create({
+          data: {
+            fromAddress,
+            toAddress: expectedTo,
+            amount: new Prisma.Decimal(usdtAmount),
+            transactionHash,
+            blockNumber: receipt?.blockNumber ?? 0,
+            confirmations: verification.confirmations ?? 0,
+            matched: false,
+          },
+        });
+
+        return res.json({
+          message:
+            "Deposit verified on blockchain. Admin will credit your account shortly.",
+          verified: true,
+          pendingAdminReview: true,
+        });
       } catch (error: any) {
         console.error("Error reporting deposit:", error);
-
-        if (error.code === "P2002" && error.meta?.target?.includes("transactionHash")) {
-          return res.status(409).json({
-            message: "This transaction has already been processed",
-            alreadyProcessed: true,
-          });
+        if (String(error?.message || "").includes("unique")) {
+          return res.status(409).json({ message: "This deposit has already been processed" });
         }
         res.status(500).json({ message: "Failed to process deposit report" });
       }
@@ -1974,10 +2132,10 @@ Issued: ${issuedAt}`;
           }
         }
 
-        const rate = parseFloat(process.env.XNRT_RATE_USDT ?? "100");
-        const feeBps = parseFloat(process.env.PLATFORM_FEE_BPS ?? "0");
-        const netUsdt = usdt * (1 - feeBps / 10_000);
-        const xnrtAmount = netUsdt * rate;
+        const rates = getWalletRates();
+        const netUsdt = usdt * (1 - rates.platformFeeBps / 10_000);
+        const xnrtAmount = netUsdt * rates.xnrtPerUsdt;
+        const depositAddress = await getOrCreateUserDepositAddress(userId);
 
         const transaction = await storage.createTransaction({
           userId,
@@ -1985,7 +2143,7 @@ Issued: ${issuedAt}`;
           amount: xnrtAmount.toString(),
           usdtAmount: usdt.toString(),
           transactionHash,
-          walletAddress: process.env.XNRT_WALLET!,
+          walletAddress: depositAddress,
           ...(proofImageUrl && { proofImageUrl }),
           status: "pending",
           verified: false,
@@ -2018,6 +2176,17 @@ Issued: ${issuedAt}`;
           return res.status(400).json({ message: "Missing required fields" });
         }
 
+        const normalizedWallet = normalizeBscAddress(walletAddress);
+        if (!normalizedWallet) {
+          return res.status(400).json({
+            message: "Enter a valid BEP-20 wallet address starting with 0x",
+          });
+        }
+
+        if (!["main", "staking", "mining", "referral"].includes(String(source))) {
+          return res.status(400).json({ message: "Invalid withdrawal source" });
+        }
+
         const withdrawAmount = Number(amount);
         if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
           return res
@@ -2025,66 +2194,76 @@ Issued: ${issuedAt}`;
             .json({ message: "Withdrawal amount must be a positive number" });
         }
 
-        const fee = (withdrawAmount * 2) / 100;
+        const rates = getWalletRates();
+        const fee = (withdrawAmount * rates.withdrawalFeePercent) / 100;
         const netAmount = withdrawAmount - fee;
-        const usdtAmount = netAmount / 100;
+        const usdtAmount = netAmount * rates.usdtPerXnrt;
 
-        const balance = await storage.getBalance(userId);
-        if (!balance) {
-          return res.status(404).json({ message: "Balance not found" });
-        }
-
-        let availableBalance = 0;
-
-        switch (source) {
-          case "main":
-            availableBalance = parseFloat(balance.xnrtBalance || "0");
-            break;
-          case "staking":
-            availableBalance = parseFloat(balance.stakingBalance || "0");
-            break;
-          case "mining":
-            availableBalance = parseFloat(balance.miningBalance || "0");
-            break;
-          case "referral":
-            availableBalance = parseFloat(balance.referralBalance || "0");
-            break;
-          default:
-            return res.status(400).json({ message: "Invalid source" });
-        }
-
-        if (withdrawAmount > availableBalance) {
-          return res.status(400).json({ message: "Insufficient balance" });
-        }
-
-        if (source === "referral" && withdrawAmount < 5000) {
+        if (source === "referral" && withdrawAmount < rates.minReferralWithdrawal) {
           return res.status(400).json({
-            message: "Minimum withdrawal from referral balance is 5,000 XNRT",
+            message: `Minimum withdrawal from referral balance is ${rates.minReferralWithdrawal.toLocaleString()} XNRT`,
           });
         }
 
-        if (source === "mining" && withdrawAmount < 5000) {
-          return res
-            .status(400)
-            .json({ message: "Minimum withdrawal from mining balance is 5,000 XNRT" });
+        if (source === "mining" && withdrawAmount < rates.minMiningWithdrawal) {
+          return res.status(400).json({
+            message: `Minimum withdrawal from mining balance is ${rates.minMiningWithdrawal.toLocaleString()} XNRT`,
+          });
         }
 
-        const transaction = await storage.createTransaction({
+        const sourceBalanceKey = getBalanceSourceKey(source);
+
+        const transaction = await prisma.$transaction(async (tx) => {
+          const balance = await tx.balance.findUnique({ where: { userId } });
+          if (!balance) throw new Error("Balance not found");
+
+          const availableBalance = decimalValueToNumber((balance as any)[sourceBalanceKey]);
+          if (withdrawAmount > availableBalance) {
+            throw new Error("Insufficient balance for this withdrawal");
+          }
+
+          await tx.balance.update({
+            where: { userId },
+            data: {
+              [sourceBalanceKey]: new Prisma.Decimal(availableBalance - withdrawAmount),
+            },
+          });
+
+          return await tx.transaction.create({
+            data: {
+              userId,
+              type: "withdrawal",
+              amount: new Prisma.Decimal(withdrawAmount),
+              usdtAmount: new Prisma.Decimal(usdtAmount),
+              source,
+              walletAddress: normalizedWallet,
+              status: "pending",
+              fee: new Prisma.Decimal(fee),
+              netAmount: new Prisma.Decimal(netAmount),
+              verificationData: {
+                withdrawalMode: rates.withdrawalMode,
+                withdrawalToken: rates.withdrawalToken,
+                reservedBalance: true,
+                reservedAt: new Date().toISOString(),
+                sourceBalanceKey,
+                feePercent: rates.withdrawalFeePercent,
+              } as any,
+            },
+          });
+        });
+
+        await storage.createActivity({
           userId,
-          type: "withdrawal",
-          amount: withdrawAmount.toString(),
-          usdtAmount: usdtAmount.toString(),
-          source,
-          walletAddress,
-          status: "pending",
-          fee: fee.toString(),
-          netAmount: netAmount.toString(),
+          type: "withdrawal_requested",
+          description: `Withdrawal request reserved ${withdrawAmount.toLocaleString()} XNRT from ${source} balance`,
         });
 
         res.json(transaction);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error creating withdrawal:", error);
-        res.status(500).json({ message: "Failed to create withdrawal" });
+        const message = error?.message || "Failed to create withdrawal";
+        const status = /insufficient|balance not found|invalid/i.test(message) ? 400 : 500;
+        res.status(status).json({ message });
       }
     }
   );
@@ -3853,13 +4032,13 @@ Issued: ${issuedAt}`;
     async (req, res) => {
       try {
         const { id } = req.params;
+        const { notes } = req.body || {};
         const withdrawal = await storage.getTransactionById(id);
 
         if (!withdrawal || withdrawal.type !== "withdrawal") {
           return res.status(404).json({ message: "Withdrawal not found" });
         }
 
-        // Idempotency: already fully approved — return cached result.
         if (withdrawal.status === "approved") {
           return res.json({
             message: "Withdrawal already approved",
@@ -3870,170 +4049,100 @@ Issued: ${issuedAt}`;
           });
         }
 
-        // "processing" + txHash: previous mint confirmed on-chain but the
-        // approval write did not complete. Allow retry to finalize.
-
-        // Reject any other terminal status (rejected, cancelled, etc.)
         if (withdrawal.status !== "pending" && withdrawal.status !== "processing") {
-          return res
-            .status(400)
-            .json({ message: "Withdrawal already processed" });
+          return res.status(400).json({ message: "Withdrawal already processed" });
         }
 
         const withdrawAmount = Number(withdrawal.amount);
         if (!Number.isFinite(withdrawAmount) || withdrawAmount <= 0) {
-          return res
-            .status(400)
-            .json({ message: "Invalid withdrawal amount" });
+          return res.status(400).json({ message: "Invalid withdrawal amount" });
         }
 
-        const balance = await storage.getBalance(withdrawal.userId);
-        if (!balance) {
-          return res.status(400).json({
-            message: "User balance not found; cannot approve withdrawal",
+        const normalizedWallet = normalizeBscAddress(withdrawal.walletAddress);
+        if (!normalizedWallet) {
+          return res.status(400).json({ message: "Withdrawal has an invalid destination wallet" });
+        }
+
+        const sourceBalanceKey = getBalanceSourceKey(withdrawal.source);
+        const meta = (withdrawal.verificationData || {}) as Record<string, any>;
+        const alreadyReserved = meta.reservedBalance === true;
+        let onChainTxHash: string | undefined = withdrawal.transactionHash || undefined;
+
+        // Older pending withdrawals may not have been reserved at request time.
+        // Reserve them once before approval so admin approval cannot overdraw balances.
+        if (withdrawal.status === "pending" && !alreadyReserved) {
+          await prisma.$transaction(async (tx) => {
+            const liveBalance = await tx.balance.findUnique({
+              where: { userId: withdrawal.userId },
+            });
+            const liveAmount = decimalValueToNumber((liveBalance as any)?.[sourceBalanceKey]);
+            if (withdrawAmount > liveAmount) {
+              throw new Error(`Insufficient balance: need ${withdrawAmount}, have ${liveAmount}`);
+            }
+            const locked = await tx.transaction.updateMany({
+              where: { id, status: "pending" },
+              data: {
+                status: "processing",
+                verificationData: {
+                  ...(meta as any),
+                  reservedBalance: true,
+                  reservedAt: new Date().toISOString(),
+                  reservedBy: req.authUser!.id,
+                  sourceBalanceKey,
+                } as any,
+              },
+            });
+            if (locked.count === 0) throw new Error("Withdrawal is already being processed");
+            await tx.balance.update({
+              where: { userId: withdrawal.userId },
+              data: { [sourceBalanceKey]: new Prisma.Decimal(liveAmount - withdrawAmount) },
+            });
           });
-        }
-
-        let sourceBalanceKey:
-          | "xnrtBalance"
-          | "stakingBalance"
-          | "miningBalance"
-          | "referralBalance";
-
-        switch (withdrawal.source) {
-          case "main":
-            sourceBalanceKey = "xnrtBalance";
-            break;
-          case "staking":
-            sourceBalanceKey = "stakingBalance";
-            break;
-          case "mining":
-            sourceBalanceKey = "miningBalance";
-            break;
-          case "referral":
-            sourceBalanceKey = "referralBalance";
-            break;
-          default:
-            sourceBalanceKey = "xnrtBalance";
-        }
-
-        const currentBalance = parseFloat(balance[sourceBalanceKey] || "0");
-        // For pending withdrawals, verify balance upfront (pre-reservation).
-        // Skip this check for processing withdrawals — balance is already reserved/deducted.
-        if (withdrawal.status === "pending" && withdrawAmount > currentBalance) {
-          return res.status(400).json({ message: "Insufficient balance to approve withdrawal" });
-        }
-
-        const netAmt: string = withdrawal.netAmount
-          ? withdrawal.netAmount.toString()
-          : withdrawal.amount.toString();
-
-        let onChainTxHash: string | undefined;
-
-        if (isTokenServiceReady()) {
-          if (!withdrawal.walletAddress) {
-            return res.status(400).json({
-              message: "Cannot approve: withdrawal has no destination wallet address",
-            });
-          }
-
-          if (withdrawal.transactionHash) {
-            // Status=processing + txHash: mint confirmed, just finalize approval.
-            onChainTxHash = withdrawal.transactionHash;
-          } else if (withdrawal.status === "processing") {
-            // Status=processing + no txHash: previous request reserved the balance
-            // but crashed before/during minting. Balance is already deducted.
-            // Attempt the mint now; on failure restore and reset to pending.
-            try {
-              onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
-            } catch (mintErr: unknown) {
-              await prisma.$transaction([
-                prisma.balance.update({
-                  where: { userId: withdrawal.userId },
-                  data: { [sourceBalanceKey]: { increment: new Prisma.Decimal(withdrawAmount) } },
-                }),
-                prisma.transaction.update({ where: { id }, data: { status: "pending" } }),
-              ]);
-              const msg = mintErr instanceof Error ? mintErr.message : String(mintErr);
-              console.error(`[Withdrawal] Recovery mint FAILED, balance restored: ${msg}`);
-              throw mintErr;
-            }
-            await prisma.transaction.update({
-              where: { id },
-              data: { transactionHash: onChainTxHash },
-            });
-          } else {
-            // Status=pending: reserve balance + set processing, then mint.
-            // Reserve transaction acts as compare-and-set (count=0 means race lost).
-            const reserveResult = await prisma.$transaction(async (ptx) => {
-              const liveBalance = await ptx.balance.findUnique({
-                where: { userId: withdrawal.userId },
-              });
-              const liveAmount = parseFloat(
-                liveBalance?.[sourceBalanceKey]?.toString() ?? "0"
-              );
-              if (withdrawAmount > liveAmount) {
-                throw new Error(`Insufficient balance: need ${withdrawAmount}, have ${liveAmount}`);
-              }
-              const updated = await ptx.transaction.updateMany({
-                where: { id, status: "pending" },
-                data:  { status: "processing" },
-              });
-              if (updated.count === 0) return null; // Another request won the lock
-              await ptx.balance.update({
-                where: { userId: withdrawal.userId },
-                data: { [sourceBalanceKey]: new Prisma.Decimal(liveAmount - withdrawAmount) },
-              });
-              return liveAmount;
-            });
-
-            if (reserveResult === null) {
-              return res.status(409).json({
-                message: "Withdrawal is currently being processed. Retry after a moment.",
-              });
-            }
-
-            try {
-              onChainTxHash = await mintXNRT(withdrawal.walletAddress, netAmt);
-            } catch (mintErr: unknown) {
-              // Mint failed — restore reserved balance and reset to pending.
-              await prisma.$transaction([
-                prisma.balance.update({
-                  where: { userId: withdrawal.userId },
-                  data: { [sourceBalanceKey]: { increment: new Prisma.Decimal(withdrawAmount) } },
-                }),
-                prisma.transaction.update({ where: { id }, data: { status: "pending" } }),
-              ]);
-              const msg = mintErr instanceof Error ? mintErr.message : String(mintErr);
-              console.error(`[Withdrawal] On-chain mint FAILED, balance restored: ${msg}`);
-              throw mintErr;
-            }
-
-            // Persist txHash while still in "processing" state.
-            // If the process crashes here, the next retry will see processing + txHash
-            // and finalize the approval without re-minting.
-            await prisma.transaction.update({
-              where: { id },
-              data: { transactionHash: onChainTxHash },
+        } else if (withdrawal.status === "pending") {
+          const locked = await prisma.transaction.updateMany({
+            where: { id, status: "pending" },
+            data: { status: "processing" },
+          });
+          if (locked.count === 0) {
+            return res.status(409).json({
+              message: "Withdrawal is currently being processed. Retry after a moment.",
             });
           }
         }
 
-        // Mark approved and persist tx hash.
+        if (isTokenServiceReady() && !onChainTxHash) {
+          try {
+            onChainTxHash = await mintXNRT(normalizedWallet, withdrawal.netAmount?.toString() || withdrawal.amount.toString());
+            await prisma.transaction.update({
+              where: { id },
+              data: { transactionHash: onChainTxHash },
+            });
+          } catch (mintErr: unknown) {
+            await prisma.transaction.update({ where: { id }, data: { status: "pending" } });
+            const msg = mintErr instanceof Error ? mintErr.message : String(mintErr);
+            console.error(`[Withdrawal] On-chain mint failed; reserved balance kept pending: ${msg}`);
+            throw mintErr;
+          }
+        }
+
         await prisma.transaction.update({
           where: { id },
           data: {
             status: "approved",
             ...(onChainTxHash ? { transactionHash: onChainTxHash } : {}),
+            approvedBy: req.authUser!.id,
+            approvedAt: new Date(),
+            adminNotes: notes ?? withdrawal.adminNotes,
+            verificationData: {
+              ...((withdrawal.verificationData || {}) as any),
+              reservedBalance: true,
+              approvedAt: new Date().toISOString(),
+              approvedBy: req.authUser!.id,
+              withdrawalMode: getWalletRates().withdrawalMode,
+              withdrawalToken: getWalletRates().withdrawalToken,
+            } as any,
           },
         });
-
-        if (!isTokenServiceReady()) {
-          // No on-chain minting: deduct balance now (non-custodial path).
-          await storage.updateBalance(withdrawal.userId, {
-            [sourceBalanceKey]: (currentBalance - withdrawAmount).toString(),
-          });
-        }
 
         await storage.createActivity({
           userId: withdrawal.userId,
@@ -4048,9 +4157,9 @@ Issued: ${issuedAt}`;
           onChainTxHash: onChainTxHash ?? null,
           explorerUrl: onChainTxHash ? getTxExplorerUrl(onChainTxHash) : null,
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error approving withdrawal:", error);
-        res.status(500).json({ message: "Failed to approve withdrawal" });
+        res.status(500).json({ message: error?.message || "Failed to approve withdrawal" });
       }
     }
   );
@@ -4063,31 +4172,69 @@ Issued: ${issuedAt}`;
     async (req, res) => {
       try {
         const { id } = req.params;
+        const { notes } = req.body || {};
         const withdrawal = await storage.getTransactionById(id);
 
         if (!withdrawal || withdrawal.type !== "withdrawal") {
           return res.status(404).json({ message: "Withdrawal not found" });
         }
-        if (withdrawal.status !== "pending") {
-          return res
-            .status(400)
-            .json({ message: "Withdrawal already processed" });
+        if (!["pending", "processing"].includes(withdrawal.status)) {
+          return res.status(400).json({ message: "Withdrawal already processed" });
+        }
+        if (withdrawal.status === "processing" && withdrawal.transactionHash) {
+          return res.status(400).json({
+            message: "Withdrawal already has an on-chain transaction. Approve/finalize it instead of rejecting.",
+          });
         }
 
-        await storage.updateTransaction(id, { status: "rejected" });
+        const withdrawAmount = Number(withdrawal.amount);
+        const sourceBalanceKey = getBalanceSourceKey(withdrawal.source);
+        const meta = (withdrawal.verificationData || {}) as Record<string, any>;
+        const shouldRefund = meta.reservedBalance === true;
+
+        await prisma.$transaction(async (tx) => {
+          if (shouldRefund) {
+            await tx.balance.upsert({
+              where: { userId: withdrawal.userId },
+              create: {
+                userId: withdrawal.userId,
+                [sourceBalanceKey]: new Prisma.Decimal(withdrawAmount),
+              } as any,
+              update: {
+                [sourceBalanceKey]: { increment: new Prisma.Decimal(withdrawAmount) },
+              } as any,
+            });
+          }
+
+          await tx.transaction.update({
+            where: { id },
+            data: {
+              status: "rejected",
+              adminNotes: notes ?? withdrawal.adminNotes,
+              approvedBy: req.authUser!.id,
+              approvedAt: new Date(),
+              verificationData: {
+                ...(meta as any),
+                refundedReservedBalance: shouldRefund,
+                rejectedAt: new Date().toISOString(),
+                rejectedBy: req.authUser!.id,
+              } as any,
+            },
+          });
+        });
 
         await storage.createActivity({
           userId: withdrawal.userId,
           type: "withdrawal_rejected",
-          description: `Withdrawal of ${parseFloat(
-            withdrawal.amount
-          ).toLocaleString()} XNRT rejected`,
+          description: `Withdrawal of ${withdrawAmount.toLocaleString()} XNRT rejected${
+            shouldRefund ? " and reserved balance refunded" : ""
+          }${notes ? ` - ${notes}` : ""}`,
         });
 
-        res.json({ message: "Withdrawal rejected" });
-      } catch (error) {
+        res.json({ message: "Withdrawal rejected", refunded: shouldRefund });
+      } catch (error: any) {
         console.error("Error rejecting withdrawal:", error);
-        res.status(500).json({ message: "Failed to reject withdrawal" });
+        res.status(500).json({ message: error?.message || "Failed to reject withdrawal" });
       }
     }
   );
