@@ -1,5 +1,12 @@
 import type { Express } from "express";
 import type { RouteContext } from "../routes";
+import {
+  claimUserAchievement,
+  completeUserTask,
+  getCheckinHistory,
+  getUserAchievementsWithStatus,
+  performDailyCheckIn,
+} from "../services/reward.service";
 
 export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -64,94 +71,16 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
       try {
         const userId = req.authUser!.id;
         const { taskId } = req.params;
+        const result = await completeUserTask(userId, taskId);
 
-        const task = await prisma.task.findUnique({ where: { id: taskId } });
-        if (!task || !task.isActive) {
-          return res.status(404).json({ message: "Task not found" });
+        if (!result.ok) {
+          return res.status(result.status).json({ message: result.message });
         }
-
-        const userTask = await prisma.userTask.upsert({
-          where: { userId_taskId: { userId, taskId } },
-          create: {
-            userId,
-            taskId,
-            progress: 0,
-            maxProgress: 1,
-            completed: false,
-          },
-          update: {},
-        });
-
-        if (userTask.completed) {
-          return res.status(400).json({ message: "Task already completed" });
-        }
-
-        const maxProgress = Math.max(userTask.maxProgress || 1, 1);
-        if (maxProgress > 1 && userTask.progress < maxProgress) {
-          return res.status(400).json({
-            message: `Task progress is incomplete (${userTask.progress}/${maxProgress})`,
-          });
-        }
-
-        const completedUserTask = await prisma.userTask.update({
-          where: { id: userTask.id },
-          data: {
-            completed: true,
-            completedAt: new Date(),
-            progress: maxProgress,
-          },
-        });
-
-        await awardUserXp(userId, task.xpReward);
-
-        const xnrtAmount = Number(task.xnrtReward);
-        if (Number.isFinite(xnrtAmount) && xnrtAmount > 0) {
-          const balance = await storage.getBalance(userId);
-          if (balance) {
-            await storage.updateBalance(userId, {
-              xnrtBalance: (parseFloat(balance.xnrtBalance) + xnrtAmount).toString(),
-              totalEarned: (parseFloat(balance.totalEarned) + xnrtAmount).toString(),
-            });
-          }
-
-          await storage.createTransaction({
-            userId,
-            type: "reward",
-            amount: xnrtAmount.toString(),
-            source: "task",
-            status: "approved",
-            approvedAt: new Date(),
-            verified: true,
-          });
-        }
-
-        await storage.createActivity({
-          userId,
-          type: "task_completed",
-          description: `Completed task: ${task.title} (+${task.xpReward} XP, +${task.xnrtReward.toString()} XNRT)`,
-        });
-
-        void notifyUser(userId, {
-          type: "task_completed",
-          title: "✅ Task Completed",
-          message: `You earned ${task.xpReward} XP and ${task.xnrtReward.toString()} XNRT from ${task.title}.`,
-          url: "/tasks",
-          metadata: {
-            taskId: task.id,
-            taskTitle: task.title,
-            xpReward: task.xpReward,
-            xnrtReward: task.xnrtReward.toString(),
-          },
-        }).catch((err) => {
-          console.error("Error sending task completion notification:", err);
-        });
-
-        await storage.checkAndUnlockAchievements(userId);
 
         res.json({
-          userTask: completedUserTask,
-          xpReward: task.xpReward,
-          xnrtReward: task.xnrtReward.toString(),
+          userTask: result.userTask,
+          xpReward: result.xpReward,
+          xnrtReward: result.xnrtReward,
         });
       } catch (error) {
         console.error("Error completing task:", error);
@@ -164,30 +93,8 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
   app.get("/api/achievements", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const allAchievements = await storage.getAllAchievements();
-      const userAchievements = await storage.getUserAchievements(userId);
-
-      const populated = allAchievements.map((achievement: any) => {
-        const ua = (userAchievements as any[]).find(
-          (x) => x.achievementId === achievement.id
-        );
-
-        const unlocked = !!ua;
-        const claimed = !!ua?.claimed;
-        const claimedAt = ua?.claimedAt ?? null;
-
-        return {
-          ...achievement,
-          unlocked,
-          unlockedAt: ua?.unlockedAt ?? ua?.createdAt ?? null,
-          claimed,
-          claimedAt,
-          // handy flag for UI
-          claimable: unlocked && !claimed,
-        };
-      });
-
-      res.json(populated);
+      const achievements = await getUserAchievementsWithStatus(userId);
+      res.json(achievements);
     } catch (error) {
       console.error("Error fetching achievements:", error);
       res.status(500).json({ message: "Failed to fetch achievements" });
@@ -203,48 +110,16 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
       try {
         const userId = req.authUser!.id;
         const achievementId = req.params.id;
+        const result = await claimUserAchievement(userId, achievementId);
 
-        const achievement = await prisma.achievement.findUnique({
-          where: { id: achievementId },
-        });
-        if (!achievement) {
-          return res.status(404).json({ message: "Achievement not found" });
+        if (!result.ok) {
+          return res.status(result.status).json({ message: result.message });
         }
-
-        const userAchievement = await prisma.userAchievement.findFirst({
-          where: { userId, achievementId },
-        });
-
-        if (!userAchievement) {
-          return res
-            .status(400)
-            .json({ message: "Achievement not unlocked yet" });
-        }
-
-        if (userAchievement.claimed) {
-          return res
-            .status(400)
-            .json({ message: "Achievement already claimed" });
-        }
-
-        const updated = await prisma.userAchievement.update({
-          where: { id: userAchievement.id },
-          data: {
-            claimed: true,
-            claimedAt: new Date(),
-          },
-        });
-
-        await storage.createActivity({
-          userId,
-          type: "achievement_claimed",
-          description: `Claimed achievement: ${achievement.title}`,
-        });
 
         res.json({
-          achievementId,
-          claimed: updated.claimed,
-          claimedAt: updated.claimedAt,
+          achievementId: result.achievementId,
+          claimed: result.claimed,
+          claimedAt: result.claimedAt,
         });
       } catch (error) {
         console.error("Error claiming achievement:", error);
@@ -846,79 +721,17 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
   app.post("/api/checkin", requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
+      const result = await performDailyCheckIn(userId);
 
-      const now = new Date();
-      const today = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate()
-      );
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-
-      const lastCheckIn = user.lastCheckIn ? new Date(user.lastCheckIn) : null;
-      const lastCheckInDay = lastCheckIn
-        ? new Date(
-            lastCheckIn.getFullYear(),
-            lastCheckIn.getMonth(),
-            lastCheckIn.getDate()
-          )
-        : null;
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      let newStreak = 1;
-      if (
-        lastCheckInDay &&
-        lastCheckInDay.getTime() === yesterday.getTime()
-      ) {
-        newStreak = (user.streak || 0) + 1;
+      if (!result.ok) {
+        return res.status(result.status).json({ message: result.message });
       }
-
-      const streakReward = Math.min(newStreak * 10, 100);
-      const xpReward = Math.min(newStreak * 5, 50);
-
-      if (
-        lastCheckIn &&
-        lastCheckInDay &&
-        lastCheckInDay.getTime() === today.getTime()
-      ) {
-        return res.status(400).json({ message: "Already checked in today" });
-      }
-
-      const nextXp = (user.xp || 0) + xpReward;
-      await storage.updateUser(userId, {
-        lastCheckIn: now,
-        streak: newStreak,
-        xp: nextXp,
-        level: Math.floor(nextXp / 1000) + 1,
-      });
-
-      const balance = await storage.getBalance(userId);
-      if (balance) {
-        await storage.updateBalance(userId, {
-          xnrtBalance: (
-            parseFloat(balance.xnrtBalance) + streakReward
-          ).toString(),
-          totalEarned: (
-            parseFloat(balance.totalEarned) + streakReward
-          ).toString(),
-        });
-      }
-
-      await storage.createActivity({
-        userId,
-        type: "daily_checkin",
-        description: `Day ${newStreak} streak! Earned ${streakReward} XNRT and ${xpReward} XP`,
-      });
-
-      await storage.checkAndUnlockAchievements(userId);
 
       res.json({
-        streak: newStreak,
-        xnrtReward: streakReward,
-        xpReward,
-        message: `Day ${newStreak} check-in complete!`,
+        streak: result.streak,
+        xnrtReward: result.xnrtReward,
+        xpReward: result.xpReward,
+        message: result.message,
       });
     } catch (error) {
       console.error("Error during check-in:", error);
@@ -930,52 +743,13 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
   app.get("/api/checkin/history", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const { year, month } = req.query;
-
-      const now = new Date();
-      const targetYear = year
-        ? parseInt(year as string, 10)
-        : now.getFullYear();
-
-      let targetMonth: number;
-      if (typeof month !== "undefined") {
-        const monthNum = parseInt(month as string, 10); // expect 1-12 from client
-        const clamped = Math.min(Math.max(monthNum, 1), 12);
-        targetMonth = clamped - 1; // JS Date months are 0-based
-      } else {
-        targetMonth = now.getMonth();
-      }
-
-      const startDate = new Date(targetYear, targetMonth, 1);
-      const endDate = new Date(
-        targetYear,
-        targetMonth + 1,
-        0,
-        23,
-        59,
-        59,
-        999
-      );
-
-      const checkinActivities = await prisma.activity.findMany({
-        where: {
-          userId,
-          type: "daily_checkin",
-          createdAt: { gte: startDate, lte: endDate },
-        },
-        orderBy: { createdAt: "asc" },
-      });
-
-      const checkinDates = checkinActivities.map(
-        (activity: { createdAt: Date | null }) =>
-          new Date(activity.createdAt!).toISOString().split("T")[0]
-      );
-
-      res.json({ dates: checkinDates, year: targetYear, month: targetMonth });
+      const history = await getCheckinHistory(userId, req.query.year, req.query.month);
+      res.json(history);
     } catch (error) {
       console.error("Error fetching check-in history:", error);
       res.status(500).json({ message: "Failed to fetch check-in history" });
     }
   });
+
 
 }

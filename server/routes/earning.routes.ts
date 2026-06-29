@@ -1,6 +1,12 @@
 import type { Express } from "express";
 import type { RouteContext } from "../routes";
 import type { StakingTier } from "../../shared/schema";
+import {
+  getCurrentMiningSessionForUser,
+  getMiningHistoryForUser,
+  processMiningRewardsForUser,
+  startMiningSessionForUser,
+} from "../services/mining.service";
 
 export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -204,8 +210,7 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   app.get("/api/mining/current", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      await storage.processMiningRewards(userId);
-      const currentSession = await storage.getCurrentMiningSession(userId);
+      const currentSession = await getCurrentMiningSessionForUser(userId);
       res.json(currentSession ?? null);
     } catch (error) {
       console.error("Error loading current mining session:", error);
@@ -216,7 +221,7 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   app.get("/api/mining/history", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const sessions = await storage.getMiningHistory(userId);
+      const sessions = await getMiningHistoryForUser(userId);
       res.json(sessions);
     } catch (error) {
       console.error("Error loading mining history:", error);
@@ -227,7 +232,7 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   app.post("/api/mining/process-rewards", requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const result = await storage.processMiningRewards(userId);
+      const result = await processMiningRewardsForUser(userId);
       res.json({ success: true, ...result });
     } catch (error) {
       console.error("Error processing mining rewards:", error);
@@ -238,37 +243,13 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   app.post("/api/mining/start", requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
+      const result = await startMiningSessionForUser(userId);
 
-      await storage.processMiningRewards(userId);
-
-      const currentSession = await storage.getCurrentMiningSession(userId);
-      if (currentSession && currentSession.status === "active") {
-        return res.status(400).json({ message: "You already have an active mining session" });
+      if (!result.ok) {
+        return res.status(result.status).json({ message: result.message });
       }
 
-      const startTime = new Date();
-      const endTime = new Date(startTime.getTime() + MINING_SESSION_DURATION_MS);
-
-      const session = await storage.createMiningSession({
-        userId,
-        baseReward: MINING_SESSION_XP_REWARD,
-        adBoostCount: 0,
-        boostPercentage: 0,
-        finalReward: MINING_SESSION_XP_REWARD,
-        startTime,
-        endTime,
-        nextAvailable: endTime,
-        status: "active",
-      });
-
-      res.json({
-        ...session,
-        reward: {
-          xp: MINING_SESSION_XP_REWARD,
-          xnrt: MINING_SESSION_XNRT_REWARD,
-          durationHours: 24,
-        },
-      });
+      res.json(result.session);
     } catch (error) {
       console.error("Error starting mining:", error);
       res.status(500).json({ message: "Failed to start mining" });
