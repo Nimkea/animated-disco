@@ -32,49 +32,24 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { verifyBscUsdtDeposit } from "./services/verifyBscUsdt";
 import { ethers } from "ethers";
-import { deriveDepositAddress } from "./services/hdWallet";
 import { mintXNRT, isTokenServiceReady, getTxExplorerUrl } from "./services/tokenService";
+import { decimalValueToNumber } from "./lib/numbers";
+import { isSameLocalDay } from "./lib/dates";
+import {
+  clampLeaderboardLimit,
+  getLeaderboardDateFilter,
+  normalizeLeaderboardPeriodParam,
+  toLeaderboardNumber,
+} from "./services/leaderboard.service";
+import {
+  getBalanceSourceKey,
+  getOrCreateUserDepositAddress,
+  getWalletRates,
+  normalizeBscAddress,
+} from "./services/wallet.service";
+import { TRUST_LOAN_CONFIG, getDirectReferralStats } from "./services/trustLoan.service";
 
 
-/* ─────────────────────── Trust Loan configuration ──────────────────────── */
-const TRUST_LOAN_CONFIG = {
-  programKey: "trust_loan",
-  durationDays: 30,
-  amountXnrt: 10000,
-  requiredReferrals: 3,
-  requiredInvestingReferrals: 2,
-  minInvestUsdtPerReferral: 100,
-} as const;
-
-/* ----------------------------- Trust Loan helper ---------------------------- */
-async function getDirectReferralStats(userId: string) {
-  // Count L1 referrals
-  const directs = await prisma.referral.findMany({
-    where: { referrerId: userId, level: 1 },
-    select: { referredUserId: true },
-  });
-  const directCount = directs.length;
-  if (!directCount) return { directCount: 0, investingCount: 0 };
-
-  // Of those L1 referrals, count how many have >= min USDT approved deposits
-  const ids = directs.map((d) => d.referredUserId);
-  const investingRows = await prisma.transaction.groupBy({
-    by: ["userId"],
-    where: {
-      userId: { in: ids },
-      type: "deposit",
-      status: "approved",
-      usdtAmount: {
-        gte: new Prisma.Decimal(TRUST_LOAN_CONFIG.minInvestUsdtPerReferral),
-      },
-    },
-    _count: { _all: true },
-  });
-  const investingCount = investingRows.length;
-
-  return { directCount, investingCount };
-}
-/* --------------------------- end Trust Loan helper -------------------------- */
 
 const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "")
   .replace(/^"publicKey":"/, "")
@@ -97,51 +72,6 @@ const pushSubscriptionLimiter = rateLimit({
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === "development",
 });
-
-function normalizeLeaderboardPeriodParam(period: unknown) {
-  const value = typeof period === "string" ? period : "all-time";
-  return ["daily", "weekly", "monthly", "all-time"].includes(value)
-    ? value
-    : "all-time";
-}
-
-function getLeaderboardDateFilter(period: string): Date | null {
-  const now = new Date();
-
-  if (period === "daily") {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    return start;
-  }
-
-  if (period === "weekly") {
-    const start = new Date(now);
-    start.setDate(start.getDate() - 7);
-    return start;
-  }
-
-  if (period === "monthly") {
-    const start = new Date(now);
-    start.setDate(start.getDate() - 30);
-    return start;
-  }
-
-  return null;
-}
-
-function clampLeaderboardLimit(value: unknown, fallback = 50) {
-  const parsed = Number(value ?? fallback);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(Math.max(Math.floor(parsed), 1), 100);
-}
-
-function toLeaderboardNumber(value: any): number {
-  if (typeof value === "bigint") return Number(value);
-  if (typeof value === "number") return value;
-  if (value === null || value === undefined) return 0;
-  const parsed = Number(value.toString());
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 const profileUpdateSchema = z.object({
   username: z
@@ -169,107 +99,7 @@ const profileUpdateSchema = z.object({
     ),
 });
 
-function decimalValueToNumber(value: any): number {
-  if (value === null || value === undefined) return 0;
-  const parsed = Number(value.toString());
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
-function isSameLocalDay(a: Date | string | null | undefined, b: Date = new Date()) {
-  if (!a) return false;
-  const date = new Date(a);
-  return (
-    date.getFullYear() === b.getFullYear() &&
-    date.getMonth() === b.getMonth() &&
-    date.getDate() === b.getDate()
-  );
-}
-
-const BSC_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
-
-function normalizeBscAddress(address: unknown): string | null {
-  const value = String(address || "").trim();
-  return BSC_ADDRESS_RE.test(value) ? value.toLowerCase() : null;
-}
-
-function getWalletRates() {
-  const xnrtPerUsdt = Number(process.env.XNRT_RATE_USDT || "100");
-  const withdrawalFeePercent = Number(process.env.WITHDRAWAL_FEE_PERCENT || "2");
-  const platformFeeBps = Number(process.env.PLATFORM_FEE_BPS || "0");
-  const confirmations = Number(process.env.BSC_CONFIRMATIONS || "12");
-
-  return {
-    xnrtPerUsdt: Number.isFinite(xnrtPerUsdt) && xnrtPerUsdt > 0 ? xnrtPerUsdt : 100,
-    usdtPerXnrt: Number.isFinite(xnrtPerUsdt) && xnrtPerUsdt > 0 ? 1 / xnrtPerUsdt : 0.01,
-    withdrawalFeePercent:
-      Number.isFinite(withdrawalFeePercent) && withdrawalFeePercent >= 0
-        ? withdrawalFeePercent
-        : 2,
-    platformFeeBps: Number.isFinite(platformFeeBps) && platformFeeBps >= 0 ? platformFeeBps : 0,
-    confirmations: Number.isFinite(confirmations) && confirmations > 0 ? confirmations : 12,
-    network: "BSC (BEP-20)",
-    depositToken: "USDT",
-    withdrawalToken: "XNRT",
-    withdrawalMode: "xnrt_token",
-    minReferralWithdrawal: 5000,
-    minMiningWithdrawal: 5000,
-  };
-}
-
-function getBalanceSourceKey(source: string | null | undefined) {
-  switch (source) {
-    case "staking":
-      return "stakingBalance" as const;
-    case "mining":
-      return "miningBalance" as const;
-    case "referral":
-      return "referralBalance" as const;
-    case "main":
-    default:
-      return "xnrtBalance" as const;
-  }
-}
-
-async function getOrCreateUserDepositAddress(userId: string) {
-  let user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { depositAddress: true, derivationIndex: true },
-  });
-
-  if (user?.depositAddress && user.derivationIndex !== null) {
-    return user.depositAddress;
-  }
-
-  // Best-effort allocator within the current schema. The unique derivationIndex
-  // constraint protects against duplicates if two requests race.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const maxIndexUser = await prisma.user.findFirst({
-      where: { derivationIndex: { not: null } },
-      orderBy: { derivationIndex: "desc" },
-      select: { derivationIndex: true },
-    });
-
-    const nextIndex = (maxIndexUser?.derivationIndex ?? -1) + 1 + attempt;
-    const address = deriveDepositAddress(nextIndex);
-
-    try {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { depositAddress: address, derivationIndex: nextIndex },
-      });
-      return address;
-    } catch (error: any) {
-      if (error?.code !== "P2002") throw error;
-    }
-  }
-
-  user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { depositAddress: true, derivationIndex: true },
-  });
-  if (user?.depositAddress) return user.depositAddress;
-  throw new Error("Failed to allocate deposit address");
-}
 
 /* ------------------------ Default Achievements Seed ------------------------ */
 
@@ -642,7 +472,6 @@ export function createRouteContext() {
     sendPushNotification,
     verifyBscUsdtDeposit,
     ethers,
-    deriveDepositAddress,
     mintXNRT,
     isTokenServiceReady,
     getTxExplorerUrl,
