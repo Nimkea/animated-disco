@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, ArrowDown } from "lucide-react";
+import { Users, ArrowDown, CheckCircle2, Clock } from "lucide-react";
 import type { Referral } from "@shared/schema";
 
 interface ReferralTreeProps {
@@ -8,10 +8,56 @@ interface ReferralTreeProps {
   isLoading?: boolean;
 }
 
+function formatXnrt(value?: string | null) {
+  return Number.parseFloat(value || "0").toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  });
+}
+
+function levelMeta(level: number) {
+  if (level === 1) return { rate: "6%", className: "bg-chart-1/5 border-chart-1/20", text: "text-chart-1" };
+  if (level === 2) return { rate: "3%", className: "bg-chart-2/5 border-chart-2/20", text: "text-chart-2" };
+  return { rate: "1%", className: "bg-chart-3/5 border-chart-3/20", text: "text-chart-3" };
+}
+
+function ReferralNode({ referral, idx }: { referral: Referral; idx: number }) {
+  const meta = levelMeta(referral.level);
+  return (
+    <div
+      className={`p-3 border rounded-md text-center space-y-2 ${meta.className}`}
+      data-testid={`tree-node-l${referral.level}-${idx}`}
+    >
+      <Users className={`h-4 w-4 mx-auto ${meta.text}`} />
+      <p className="text-xs font-semibold truncate">
+        {referral.displayName || `Referral #${idx + 1}`}
+      </p>
+      <div className="flex items-center justify-center gap-1">
+        {referral.hasDeposited ? (
+          <Badge variant="secondary" className="gap-1 text-[10px]">
+            <CheckCircle2 className="h-3 w-3" /> Active
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="gap-1 text-[10px]">
+            <Clock className="h-3 w-3" /> Joined
+          </Badge>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {formatXnrt(referral.totalCommission)} XNRT earned
+      </p>
+      {referral.hasDeposited && (
+        <p className="text-[11px] text-muted-foreground">
+          {referral.depositCount || 0} deposit{(referral.depositCount || 0) === 1 ? "" : "s"}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ReferralTree({ referrals, isLoading }: ReferralTreeProps) {
-  const level1Referrals = referrals.filter(r => r.level === 1);
-  const level2Referrals = referrals.filter(r => r.level === 2);
-  const level3Referrals = referrals.filter(r => r.level === 3);
+  const level1Referrals = referrals.filter((r) => r.level === 1);
+  const level2Referrals = referrals.filter((r) => r.level === 2);
+  const level3Referrals = referrals.filter((r) => r.level === 3);
 
   if (isLoading) {
     return (
@@ -45,14 +91,39 @@ export function ReferralTree({ referrals, isLoading }: ReferralTreeProps) {
     );
   }
 
+  const renderLevel = (level: number, items: Referral[]) => {
+    if (items.length === 0) return null;
+    const meta = levelMeta(level);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-center gap-2">
+          <Badge variant="secondary" className={`${meta.text} border-current/30`}>
+            Level {level} - {meta.rate} Commission
+          </Badge>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {items.slice(0, 8).map((ref, idx) => (
+            <ReferralNode key={ref.id} referral={ref} idx={idx} />
+          ))}
+          {items.length > 8 && (
+            <div className="p-3 bg-muted/50 border border-border rounded-md text-center flex items-center justify-center">
+              <p className="text-xs font-medium text-muted-foreground">+{items.length - 8} more</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card data-testid="card-referral-tree">
       <CardHeader>
         <CardTitle>Referral Network Tree</CardTitle>
-        <p className="text-sm text-muted-foreground">Visualize your 3-level referral structure</p>
+        <p className="text-sm text-muted-foreground">
+          Privacy-safe 3-level network with deposit status and earned commission.
+        </p>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* You (Root) */}
         <div className="flex justify-center">
           <div className="relative">
             <div className="px-6 py-3 bg-gradient-to-br from-primary/20 to-primary/10 border-2 border-primary rounded-lg">
@@ -69,80 +140,9 @@ export function ReferralTree({ referrals, isLoading }: ReferralTreeProps) {
           </div>
         </div>
 
-        {/* Level 1 */}
-        {level1Referrals.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-center gap-2">
-              <Badge variant="secondary" className="bg-chart-1/20 text-chart-1 border-chart-1/30">
-                Level 1 - 6% Commission
-              </Badge>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {level1Referrals.slice(0, 8).map((ref, idx) => (
-                <div key={ref.id} className="p-3 bg-chart-1/5 border border-chart-1/20 rounded-md text-center" data-testid={`tree-node-l1-${idx}`}>
-                  <Users className="h-4 w-4 mx-auto mb-1 text-chart-1" />
-                  <p className="text-xs font-medium truncate">Referral #{idx + 1}</p>
-                  <p className="text-xs text-muted-foreground">{parseFloat(ref.totalCommission).toFixed(2)} XNRT</p>
-                </div>
-              ))}
-              {level1Referrals.length > 8 && (
-                <div className="p-3 bg-muted/50 border border-border rounded-md text-center flex items-center justify-center">
-                  <p className="text-xs font-medium text-muted-foreground">+{level1Referrals.length - 8} more</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Level 2 */}
-        {level2Referrals.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-center gap-2">
-              <Badge variant="secondary" className="bg-chart-2/20 text-chart-2 border-chart-2/30">
-                Level 2 - 3% Commission
-              </Badge>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {level2Referrals.slice(0, 8).map((ref, idx) => (
-                <div key={ref.id} className="p-3 bg-chart-2/5 border border-chart-2/20 rounded-md text-center" data-testid={`tree-node-l2-${idx}`}>
-                  <Users className="h-4 w-4 mx-auto mb-1 text-chart-2" />
-                  <p className="text-xs font-medium truncate">Referral #{idx + 1}</p>
-                  <p className="text-xs text-muted-foreground">{parseFloat(ref.totalCommission).toFixed(2)} XNRT</p>
-                </div>
-              ))}
-              {level2Referrals.length > 8 && (
-                <div className="p-3 bg-muted/50 border border-border rounded-md text-center flex items-center justify-center">
-                  <p className="text-xs font-medium text-muted-foreground">+{level2Referrals.length - 8} more</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Level 3 */}
-        {level3Referrals.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-center gap-2">
-              <Badge variant="secondary" className="bg-chart-3/20 text-chart-3 border-chart-3/30">
-                Level 3 - 1% Commission
-              </Badge>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {level3Referrals.slice(0, 8).map((ref, idx) => (
-                <div key={ref.id} className="p-3 bg-chart-3/5 border border-chart-3/20 rounded-md text-center" data-testid={`tree-node-l3-${idx}`}>
-                  <Users className="h-4 w-4 mx-auto mb-1 text-chart-3" />
-                  <p className="text-xs font-medium truncate">Referral #{idx + 1}</p>
-                  <p className="text-xs text-muted-foreground">{parseFloat(ref.totalCommission).toFixed(2)} XNRT</p>
-                </div>
-              ))}
-              {level3Referrals.length > 8 && (
-                <div className="p-3 bg-muted/50 border border-border rounded-md text-center flex items-center justify-center">
-                  <p className="text-xs font-medium text-muted-foreground">+{level3Referrals.length - 8} more</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {renderLevel(1, level1Referrals)}
+        {renderLevel(2, level2Referrals)}
+        {renderLevel(3, level3Referrals)}
       </CardContent>
     </Card>
   );

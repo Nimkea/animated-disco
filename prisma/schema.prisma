@@ -124,6 +124,8 @@ model MiningSession {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, status, createdAt])
+  @@index([status, endTime])
 }
 
 model Referral {
@@ -140,6 +142,25 @@ model Referral {
   @@index([referrerId])
   @@index([referredUserId])
   @@index([referrerId, createdAt])
+}
+
+
+model ReferralCommission {
+  id             String   @id @default(uuid())
+  transactionId  String
+  referrerId     String
+  referredUserId String
+  level          Int
+  baseAmount     Decimal  @db.Decimal(38, 18)
+  rate           Decimal  @db.Decimal(8, 6)
+  commission     Decimal  @db.Decimal(38, 18)
+  status         String   @default("paid")
+  createdAt      DateTime @default(now())
+
+  @@unique([transactionId, referrerId, level])
+  @@index([referrerId, createdAt])
+  @@index([referredUserId])
+  @@index([transactionId])
 }
 
 model Transaction {

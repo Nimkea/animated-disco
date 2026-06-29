@@ -33,11 +33,21 @@ import {
 
 const prisma = new PrismaClient();
 
-const DEFAULT_MINING_BASE_REWARD = 20; // default XP per session
-const XP_TO_XNRT_RATE = 0.5; // 1 XP → 0.5 XNRT
+export const MINING_SESSION_DURATION_HOURS = 24;
+export const MINING_SESSION_DURATION_MS = MINING_SESSION_DURATION_HOURS * 60 * 60 * 1000;
+export const MINING_SESSION_XP_REWARD = 10;
+export const MINING_SESSION_XNRT_REWARD = 5;
+
+const DEFAULT_MINING_BASE_REWARD = MINING_SESSION_XP_REWARD;
+const XP_TO_XNRT_RATE = 0.5; // Generic activity parser fallback; mining uses fixed 5 XNRT.
 
 function generateReferralCode(): string {
   return `XNRT${nanoid(8).toUpperCase()}`;
+}
+
+export function normalizeReferralCode(code?: string | null): string | null {
+  const normalized = (code || "").trim().toUpperCase();
+  return normalized.length > 0 ? normalized : null;
 }
 
 export function generateAnonymizedHandle(userId: string): string {
@@ -211,13 +221,18 @@ export interface IStorage {
     id: string,
     updates: Partial<MiningSession>
   ): Promise<MiningSession>;
-  processMiningRewards(): Promise<void>;
+  processMiningRewards(userId?: string): Promise<{ processedCount: number }>;
 
   // Referral operations
   getReferralsByReferrer(referrerId: string): Promise<Referral[]>;
   createReferral(referral: InsertReferral): Promise<Referral>;
   updateReferral(id: string, updates: Partial<Referral>): Promise<Referral>;
-  distributeReferralCommissions(userId: string, amount: number): Promise<void>;
+  distributeReferralCommissions(
+    userId: string,
+    amount: number,
+    sourceTransactionId?: string,
+    options?: { creditTotalEarned?: boolean }
+  ): Promise<void>;
   getReferrerChain(userId: string, maxLevels: number): Promise<User[]>;
 
   // Transaction operations
@@ -498,6 +513,15 @@ export class DatabaseStorage implements IStorage {
 
     // New user - generate referral code and create balance
     const referralCode = generateReferralCode();
+    const normalizedRefCode = normalizeReferralCode(refCode);
+    const referredByUserId = normalizedRefCode
+      ? await this.resolveReferralCodeToUserId(normalizedRefCode)
+      : null;
+
+    if (normalizedRefCode && !referredByUserId) {
+      throw new Error("Invalid referral code");
+    }
+
     const user = await prisma.user.create({
       data: {
         id: userData.id,
@@ -508,7 +532,7 @@ export class DatabaseStorage implements IStorage {
           `user${Date.now()}`,
         passwordHash: (userData as any).passwordHash || "",
         referralCode,
-        referredBy: refCode || null,
+        referredBy: referredByUserId,
         firstName: userData.firstName || null,
         lastName: userData.lastName || null,
         profileImageUrl: userData.profileImageUrl || null,
@@ -530,20 +554,19 @@ export class DatabaseStorage implements IStorage {
       totalEarned: "0",
     });
 
-    // If referred by someone, create referral record
-    if (refCode) {
+    // If referred by someone, create the permanent 3-level referral network records.
+    if (referredByUserId) {
       const referrer = await prisma.user.findUnique({
-        where: { referralCode: refCode },
+        where: { id: referredByUserId },
       });
-      if (referrer) {
-        await this.createReferral({
-          referrerId: referrer.id,
-          referredUserId: user.id,
-          level: 1,
-          totalCommission: "0",
-        });
 
-        // Create notification for referrer about new referral
+      if (referrer) {
+        const referrerChain = await this.getReferrerChain(user.id, 3);
+        for (let i = 0; i < referrerChain.length; i++) {
+          await this.ensureReferralRecord(referrerChain[i].id, user.id, i + 1);
+        }
+
+        // Create notification for direct referrer about new referral
         await this.createNotification({
           userId: referrer.id,
           type: "new_referral",
@@ -558,7 +581,7 @@ export class DatabaseStorage implements IStorage {
           } as any,
         });
 
-        // Check and unlock referral achievements for the referrer
+        // Check and unlock referral achievements for the direct referrer
         await this.checkAndUnlockAchievements(referrer.id);
       }
     }
@@ -850,84 +873,113 @@ export class DatabaseStorage implements IStorage {
   }
 
   // -------------------- Mining reward processor --------------------
-  async processMiningRewards(): Promise<void> {
-    const activeSessions = await prisma.miningSession.findMany({
-      where: { status: "active" },
-    });
+  private async completeMiningSessionOnce(session: MiningSession): Promise<boolean> {
+    if (!session.endTime) return false;
 
     const now = new Date();
+    const scheduledEndTime = new Date(session.endTime);
+    if (now < scheduledEndTime || session.status !== "active") return false;
 
-    for (const session of activeSessions) {
-      if (!session.endTime) continue;
+    const xpReward = MINING_SESSION_XP_REWARD;
+    const xnrtReward = MINING_SESSION_XNRT_REWARD;
 
-      const endTime = new Date(session.endTime);
-      if (now < endTime) continue; // still running
-
-      const baseReward = session.baseReward ?? DEFAULT_MINING_BASE_REWARD;
-      const boostPercentage = session.boostPercentage ?? 0;
-
-      const finalReward =
-        session.finalReward ??
-        (baseReward + Math.floor((baseReward * boostPercentage) / 100));
-
-      const xpReward = finalReward;
-      const xnrtReward = finalReward * XP_TO_XNRT_RATE;
-
-      await this.updateMiningSession(session.id, {
-        status: "completed",
-        finalReward,
-        endTime: now, // completion time = when processor runs
-      });
-
-      const user = await this.getUser(session.userId);
-      if (user) {
-        await this.updateUser(session.userId, {
-          xp: (user.xp || 0) + xpReward,
-        });
-      }
-
-      const balance = await this.getBalance(session.userId);
-      if (balance) {
-        await this.updateBalance(session.userId, {
-          miningBalance: (
-            parseFloat(balance.miningBalance) + xnrtReward
-          ).toString(),
-          totalEarned: (
-            parseFloat(balance.totalEarned) + xnrtReward
-          ).toString(),
-        });
-      }
-
-      await this.createActivity({
-        userId: session.userId,
-        type: "mining_completed",
-        description: `Auto-completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(
-          1
-        )} XNRT`,
-      });
-
-      const { notifyUser } = await import("./notifications");
-      void notifyUser(session.userId, {
-        type: "mining_completed",
-        title: "⛏️ Mining Complete!",
-        message: `You earned ${xpReward} XP and ${xnrtReward.toFixed(
-          1
-        )} XNRT from your 24-hour mining session`,
-        url: "/mining",
-        metadata: {
-          xpReward,
-          xnrtReward: xnrtReward.toString(),
-          sessionId: session.id,
+    const completed = await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.miningSession.updateMany({
+        where: {
+          id: session.id,
+          status: "active",
+          endTime: { lte: now },
         },
-      }).catch((err) => {
-        console.error(
-          "Error sending mining notification (non-blocking):",
-          err
-        );
+        data: {
+          status: "completed",
+          finalReward: xpReward,
+        },
       });
 
-      await this.checkAndUnlockAchievements(session.userId);
+      if (updateResult.count === 0) return false;
+
+      await tx.user.update({
+        where: { id: session.userId },
+        data: { xp: { increment: xpReward } },
+      });
+
+      await tx.balance.upsert({
+        where: { userId: session.userId },
+        create: {
+          userId: session.userId,
+          xnrtBalance: new Prisma.Decimal(0),
+          stakingBalance: new Prisma.Decimal(0),
+          miningBalance: new Prisma.Decimal(xnrtReward),
+          referralBalance: new Prisma.Decimal(0),
+          totalEarned: new Prisma.Decimal(xnrtReward),
+        },
+        update: {
+          miningBalance: { increment: new Prisma.Decimal(xnrtReward) },
+          totalEarned: { increment: new Prisma.Decimal(xnrtReward) },
+        },
+      });
+
+      await tx.activity.create({
+        data: {
+          userId: session.userId,
+          type: "mining_completed",
+          description: `Completed 24-hour mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(
+            1
+          )} XNRT`,
+          metadata: JSON.stringify({
+            source: "mining",
+            sessionId: session.id,
+            xpReward,
+            xnrtReward,
+            scheduledEndTime: scheduledEndTime.toISOString(),
+          }),
+        },
+      });
+
+      return true;
+    });
+
+    if (!completed) return false;
+
+    const { notifyUser } = await import("./notifications");
+    void notifyUser(session.userId, {
+      type: "mining_completed",
+      title: "⛏️ Mining Complete!",
+      message: `Your 24-hour mining session earned ${xpReward} XP and ${xnrtReward.toFixed(
+        1
+      )} XNRT.`,
+      url: "/mining",
+      metadata: {
+        xpReward,
+        xnrtReward: xnrtReward.toString(),
+        sessionId: session.id,
+      },
+    }).catch((err) => {
+      console.error("Error sending mining notification (non-blocking):", err);
+    });
+
+    await this.checkAndUnlockAchievements(session.userId);
+    return true;
+  }
+
+  async processMiningRewards(userId?: string): Promise<{ processedCount: number }> {
+    const now = new Date();
+    const dueSessions = await prisma.miningSession.findMany({
+      where: {
+        status: "active",
+        ...(userId ? { userId } : {}),
+        endTime: { lte: now },
+      },
+      orderBy: { endTime: "asc" },
+      take: 100,
+    });
+
+    let processedCount = 0;
+    for (const session of dueSessions) {
+      if (await this.completeMiningSessionOnce(session)) processedCount += 1;
     }
+
+    return { processedCount };
   }
 
   // ------------------------ Mining operations ------------------------
@@ -943,50 +995,7 @@ export class DatabaseStorage implements IStorage {
     });
 
     if (session && session.endTime && new Date() >= new Date(session.endTime)) {
-      const baseReward = session.baseReward ?? DEFAULT_MINING_BASE_REWARD;
-      const boostPercentage = session.boostPercentage ?? 0;
-
-      const finalReward =
-        session.finalReward ??
-        (baseReward + Math.floor((baseReward * boostPercentage) / 100));
-
-      const xpReward = finalReward;
-      const xnrtReward = finalReward * XP_TO_XNRT_RATE;
-
-      await this.updateMiningSession(session.id, {
-        status: "completed",
-        finalReward,
-        endTime: new Date(),
-      });
-
-      const user = await this.getUser(userId);
-      if (user) {
-        await this.updateUser(userId, {
-          xp: (user.xp || 0) + xpReward,
-        });
-      }
-
-      const balance = await this.getBalance(userId);
-      if (balance) {
-        await this.updateBalance(userId, {
-          miningBalance: (
-            parseFloat(balance.miningBalance) + xnrtReward
-          ).toString(),
-          totalEarned: (
-            parseFloat(balance.totalEarned) + xnrtReward
-          ).toString(),
-        });
-      }
-
-      await this.createActivity({
-        userId,
-        type: "mining_completed",
-        description: `Completed mining session and earned ${xpReward} XP and ${xnrtReward.toFixed(
-          1
-        )} XNRT`,
-      });
-
-      await this.checkAndUnlockAchievements(userId);
+      await this.completeMiningSessionOnce(session);
       return undefined;
     }
 
@@ -1011,13 +1020,11 @@ export class DatabaseStorage implements IStorage {
     const defaultEndTime = new Date(
       startTime.getTime() + 24 * 60 * 60 * 1000
     );
-    const defaultNextAvailable = new Date(
-      defaultEndTime.getTime() + 60 * 60 * 1000
-    );
+    const defaultNextAvailable = defaultEndTime;
 
     const base = session.baseReward ?? DEFAULT_MINING_BASE_REWARD;
     const boost = session.boostPercentage ?? 0;
-    const computedFinal = base + Math.floor((base * boost) / 100);
+    const computedFinal = MINING_SESSION_XP_REWARD;
 
     const newSession = await prisma.miningSession.create({
       data: {
@@ -1068,6 +1075,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createReferral(referral: InsertReferral): Promise<Referral> {
+    const existing = await prisma.referral.findFirst({
+      where: {
+        referrerId: referral.referrerId,
+        referredUserId: referral.referredUserId,
+        level: referral.level,
+      },
+    });
+
+    if (existing) return convertPrismaReferral(existing);
+
     const newReferral = await prisma.referral.create({
       data: {
         referrerId: referral.referrerId,
@@ -1098,15 +1115,63 @@ export class DatabaseStorage implements IStorage {
     return convertPrismaReferral(referral);
   }
 
+  private async resolveReferralCodeToUserId(refCode?: string | null): Promise<string | null> {
+    const normalized = normalizeReferralCode(refCode);
+    if (!normalized) return null;
+
+    const referrer = await prisma.user.findUnique({
+      where: { referralCode: normalized },
+      select: { id: true },
+    });
+
+    return referrer?.id || null;
+  }
+
+  private async ensureReferralRecord(
+    referrerId: string,
+    referredUserId: string,
+    level: number,
+    totalCommission = "0"
+  ): Promise<void> {
+    if (!referrerId || !referredUserId || referrerId === referredUserId) return;
+
+    const existing = await prisma.referral.findFirst({
+      where: { referrerId, referredUserId, level },
+      select: { id: true },
+    });
+
+    if (existing) return;
+
+    await prisma.referral.create({
+      data: {
+        referrerId,
+        referredUserId,
+        level,
+        totalCommission: new Prisma.Decimal(totalCommission),
+      },
+    });
+  }
+
   async distributeReferralCommissions(
     userId: string,
-    amount: number
+    amount: number,
+    sourceTransactionId?: string,
+    options: { creditTotalEarned?: boolean } = {}
   ): Promise<void> {
+    const creditTotalEarned = options.creditTotalEarned !== false;
+    const baseAmount = Number(amount || 0);
+    const sourceId = sourceTransactionId || `manual:${userId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+    if (!userId || !Number.isFinite(baseAmount) || baseAmount <= 0) {
+      console.warn(`[REFERRAL] Skipping invalid distribution: userId=${userId}, amount=${amount}`);
+      return;
+    }
+
     console.log(
-      `[REFERRAL] Starting distribution for userId: ${userId}, amount: ${amount}`
+      `[REFERRAL] Starting distribution for userId: ${userId}, amount: ${baseAmount}, source=${sourceId}`
     );
 
-    const COMMISSION_RATES = {
+    const COMMISSION_RATES: Record<1 | 2 | 3, number> = {
       1: 0.06,
       2: 0.03,
       3: 0.01,
@@ -1118,9 +1183,119 @@ export class DatabaseStorage implements IStorage {
       referrerChain.map((r) => ({ id: r?.id, email: r?.email }))
     );
 
-    for (let level = 1; level <= 3; level++) {
+    const creditCommission = async (params: {
+      referrerId: string;
+      referredUserId: string;
+      level: 1 | 2 | 3;
+      rate: number;
+      commission: number;
+      type: "referral_commission" | "company_commission";
+      description: string;
+      notify?: boolean;
+    }) => {
+      const { referrerId, referredUserId, level, rate, commission, type, description, notify } = params;
+
+      const existingLedger = await prisma.referralCommission.findUnique({
+        where: {
+          transactionId_referrerId_level: {
+            transactionId: sourceId,
+            referrerId,
+            level,
+          },
+        },
+      });
+
+      if (existingLedger) {
+        console.log(
+          `[REFERRAL] Commission already paid for source=${sourceId}, referrer=${referrerId}, level=${level}; skipping`
+        );
+        return;
+      }
+
+      await prisma.referralCommission.create({
+        data: {
+          transactionId: sourceId,
+          referrerId,
+          referredUserId,
+          level,
+          baseAmount: new Prisma.Decimal(baseAmount),
+          rate: new Prisma.Decimal(rate),
+          commission: new Prisma.Decimal(commission),
+          status: "paid",
+        },
+      });
+
+      if (type === "referral_commission") {
+        const existingReferral = await prisma.referral.findFirst({
+          where: { referrerId, referredUserId, level },
+        });
+
+        if (existingReferral) {
+          await prisma.referral.update({
+            where: { id: existingReferral.id },
+            data: { totalCommission: { increment: new Prisma.Decimal(commission) } },
+          });
+        } else {
+          await this.ensureReferralRecord(referrerId, referredUserId, level, commission.toString());
+        }
+      }
+
+      await prisma.balance.upsert({
+        where: { userId: referrerId },
+        create: {
+          userId: referrerId,
+          referralBalance: new Prisma.Decimal(commission),
+          totalEarned: creditTotalEarned ? new Prisma.Decimal(commission) : new Prisma.Decimal(0),
+        },
+        update: {
+          referralBalance: { increment: new Prisma.Decimal(commission) },
+          ...(creditTotalEarned
+            ? { totalEarned: { increment: new Prisma.Decimal(commission) } }
+            : {}),
+        },
+      });
+
+      await this.createActivity({
+        userId: referrerId,
+        type,
+        description,
+        metadata: JSON.stringify({
+          sourceTransactionId: sourceId,
+          referredUserId,
+          level,
+          commission: commission.toString(),
+          baseAmount: baseAmount.toString(),
+          rate: rate.toString(),
+        }),
+      });
+
+      if (notify) {
+        const { notifyUser } = await import("./notifications");
+        void notifyUser(referrerId, {
+          type: "referral_commission",
+          title: "💰 Referral Bonus!",
+          message: `You earned ${commission.toFixed(2)} XNRT commission from a level ${level} referral`,
+          url: "/referrals",
+          metadata: {
+            amount: commission.toString(),
+            level,
+            referredUserId,
+            sourceTransactionId: sourceId,
+          } as any,
+        }).catch((err) => {
+          console.error(
+            "Error sending referral commission notification (non-blocking):",
+            err
+          );
+        });
+      }
+    };
+
+    for (let level = 1 as 1 | 2 | 3; level <= 3; level = (level + 1) as 1 | 2 | 3) {
       const referrer = referrerChain[level - 1];
-      const commission = amount * COMMISSION_RATES[level as 1 | 2 | 3];
+      const rate = COMMISSION_RATES[level];
+      const commission = baseAmount * rate;
+
       console.log(
         `[REFERRAL] Level ${level}: referrer=${
           referrer?.email || "null"
@@ -1128,131 +1303,48 @@ export class DatabaseStorage implements IStorage {
       );
 
       if (!referrer) {
-        const COMPANY_ADMIN_EMAIL = "noahkeaneowen@hotmail.com";
-        console.log(
-          `[REFERRAL] No referrer at level ${level}, using company fallback: ${COMPANY_ADMIN_EMAIL}`
-        );
+        const fallbackEmail =
+          process.env.REFERRAL_COMPANY_EMAIL ||
+          process.env.COMPANY_ADMIN_EMAIL ||
+          "noahkeaneowen@hotmail.com";
 
         const companyAccount = await prisma.user.findFirst({
-          where: {
-            email: COMPANY_ADMIN_EMAIL,
-            isAdmin: true,
-          },
+          where: { email: fallbackEmail, isAdmin: true },
         });
 
         if (!companyAccount) {
-          console.error(
-            `[REFERRAL] Company admin account not found: ${COMPANY_ADMIN_EMAIL}`
+          console.warn(
+            `[REFERRAL] Company fallback admin not found (${fallbackEmail}); missing level ${level} commission was not credited, deposit remains approved.`
           );
-          throw new Error(
-            `Company admin account (${COMPANY_ADMIN_EMAIL}) not found - cannot process commission fallback`
-          );
+          continue;
         }
 
-        console.log(
-          `[REFERRAL] Company account found: ${companyAccount.id}, crediting ${commission} XNRT`
-        );
-
-        const companyBalance = await this.getBalance(companyAccount.id);
-        if (companyBalance) {
-          const newReferralBalance = (
-            parseFloat(companyBalance.referralBalance) + commission
-          ).toString();
-          const newTotalEarned = (
-            parseFloat(companyBalance.totalEarned) + commission
-          ).toString();
-          console.log(
-            `[REFERRAL] Updating company balance: referral ${companyBalance.referralBalance} → ${newReferralBalance}`
-          );
-
-          await this.updateBalance(companyAccount.id, {
-            referralBalance: newReferralBalance,
-            totalEarned: newTotalEarned,
-          });
-
-          await this.createActivity({
-            userId: companyAccount.id,
-            type: "company_commission",
-            description: `Received ${commission.toFixed(
-              2
-            )} XNRT company commission from missing level ${level} referrer`,
-          });
-        }
+        await creditCommission({
+          referrerId: companyAccount.id,
+          referredUserId: userId,
+          level,
+          rate,
+          commission,
+          type: "company_commission",
+          description: `Received ${commission.toFixed(
+            2
+          )} XNRT company commission from missing level ${level} referrer`,
+        });
         continue;
       }
 
-      const existingReferral = await prisma.referral.findFirst({
-        where: {
-          referrerId: referrer.id,
-          referredUserId: userId,
-        },
-      });
-
-      if (existingReferral) {
-        const newCommission =
-          parseFloat(decimalToString(existingReferral.totalCommission)) +
-          commission;
-        await this.updateReferral(existingReferral.id, {
-          totalCommission: newCommission.toString(),
-        });
-      } else {
-        await this.createReferral({
-          referrerId: referrer.id,
-          referredUserId: userId,
-          level,
-          totalCommission: commission.toString(),
-        });
-      }
-
-      const referrerBalance = await this.getBalance(referrer.id);
-      if (referrerBalance) {
-        const newReferralBalance = (
-          parseFloat(referrerBalance.referralBalance) + commission
-        ).toString();
-        const newTotalEarned = (
-          parseFloat(referrerBalance.totalEarned) + commission
-        ).toString();
-        console.log(
-          `[REFERRAL] Updating referrer ${referrer.email} balance: referral ${referrerBalance.referralBalance} → ${newReferralBalance}`
-        );
-
-        await this.updateBalance(referrer.id, {
-          referralBalance: newReferralBalance,
-          totalEarned: newTotalEarned,
-        });
-      } else {
-        console.warn(
-          `[REFERRAL] No balance found for referrer ${referrer.email} (${referrer.id})`
-        );
-      }
-
-      await this.createActivity({
-        userId: referrer.id,
+      await this.ensureReferralRecord(referrer.id, userId, level);
+      await creditCommission({
+        referrerId: referrer.id,
+        referredUserId: userId,
+        level,
+        rate,
+        commission,
         type: "referral_commission",
         description: `Earned ${commission.toFixed(
           2
         )} XNRT commission from level ${level} referral`,
-      });
-
-      const { notifyUser } = await import("./notifications");
-      void notifyUser(referrer.id, {
-        type: "referral_commission",
-        title: "💰 Referral Bonus!",
-        message: `You earned ${commission.toFixed(
-          2
-        )} XNRT commission from a level ${level} referral`,
-        url: "/referrals",
-        // pass plain object; notifications module / createNotification will stringify
-        metadata: {
-          amount: commission.toString(),
-          level,
-          referredUserId: userId,
-        } as any,
-      }).catch((err) => {
-        console.error(
-          "Error sending referral commission notification (non-blocking):",
-          err
-        );
+        notify: true,
       });
 
       console.log(
@@ -1265,6 +1357,7 @@ export class DatabaseStorage implements IStorage {
 
   async getReferrerChain(userId: string, maxLevels: number): Promise<User[]> {
     const chain: User[] = [];
+    const seen = new Set<string>([userId]);
     let currentUserId = userId;
 
     for (let i = 0; i < maxLevels; i++) {
@@ -1274,13 +1367,33 @@ export class DatabaseStorage implements IStorage {
 
       if (!currentUser || !currentUser.referredBy) break;
 
-      const referrer = await prisma.user.findUnique({
+      let referrer = await prisma.user.findUnique({
         where: { id: currentUser.referredBy },
       });
 
+      // Backfill old records where referredBy stored a referral code instead of a user id.
+      if (!referrer) {
+        const normalizedCode = normalizeReferralCode(currentUser.referredBy);
+        referrer = normalizedCode
+          ? await prisma.user.findUnique({ where: { referralCode: normalizedCode } })
+          : null;
+
+        if (referrer) {
+          await prisma.user.update({
+            where: { id: currentUser.id },
+            data: { referredBy: referrer.id },
+          });
+        }
+      }
+
       if (!referrer) break;
+      if (seen.has(referrer.id)) {
+        console.warn(`[REFERRAL] Referral cycle detected at user ${referrer.id}; stopping chain lookup.`);
+        break;
+      }
 
       chain.push(convertPrismaUser(referrer));
+      seen.add(referrer.id);
       currentUserId = referrer.id;
     }
 

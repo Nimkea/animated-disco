@@ -1,7 +1,13 @@
 // file: server/routes.ts
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage, generateAnonymizedHandle } from "./storage";
+import {
+  storage,
+  generateAnonymizedHandle,
+  MINING_SESSION_DURATION_MS,
+  MINING_SESSION_XNRT_REWARD,
+  MINING_SESSION_XP_REWARD,
+} from "./storage";
 import { requireAuth, requireAdmin, validateCSRF } from "./auth/middleware";
 import authRoutes from "./auth/routes";
 
@@ -71,9 +77,6 @@ const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "")
   .replace(/}$/, "")
   .replace(/"$/, "");
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:support@xnrt.org";
-
-const MINING_BASE_REWARD_XP = 5;
-const MINING_XP_TO_XNRT_RATE = 4; // not used here but kept for consistency
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
@@ -757,9 +760,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Mining routes
+  app.get("/api/mining/current", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      await storage.processMiningRewards(userId);
+      const currentSession = await storage.getCurrentMiningSession(userId);
+      res.json(currentSession ?? null);
+    } catch (error) {
+      console.error("Error loading current mining session:", error);
+      res.status(500).json({ message: "Failed to load current mining session" });
+    }
+  });
+
+  app.get("/api/mining/history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const sessions = await storage.getMiningHistory(userId);
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error loading mining history:", error);
+      res.status(500).json({ message: "Failed to load mining history" });
+    }
+  });
+
+  app.post("/api/mining/process-rewards", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const result = await storage.processMiningRewards(userId);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("Error processing mining rewards:", error);
+      res.status(500).json({ message: "Failed to process mining rewards" });
+    }
+  });
+
   app.post("/api/mining/start", requireAuth, validateCSRF, async (req, res) => {
     try {
       const userId = req.authUser!.id;
+
+      await storage.processMiningRewards(userId);
 
       const currentSession = await storage.getCurrentMiningSession(userId);
       if (currentSession && currentSession.status === "active") {
@@ -767,21 +806,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const startTime = new Date();
-      const endTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const endTime = new Date(startTime.getTime() + MINING_SESSION_DURATION_MS);
 
       const session = await storage.createMiningSession({
         userId,
-        baseReward: MINING_BASE_REWARD_XP,
+        baseReward: MINING_SESSION_XP_REWARD,
         adBoostCount: 0,
         boostPercentage: 0,
-        finalReward: MINING_BASE_REWARD_XP,
+        finalReward: MINING_SESSION_XP_REWARD,
         startTime,
         endTime,
-        nextAvailable: new Date(),
+        nextAvailable: endTime,
         status: "active",
       });
 
-      res.json(session);
+      res.json({
+        ...session,
+        reward: {
+          xp: MINING_SESSION_XP_REWARD,
+          xnrt: MINING_SESSION_XNRT_REWARD,
+          durationHours: 24,
+        },
+      });
     } catch (error) {
       console.error("Error starting mining:", error);
       res.status(500).json({ message: "Failed to start mining" });
@@ -792,34 +838,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/referrals/stats", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const referrals = await storage.getReferralsByReferrer(userId);
       const balance = await storage.getBalance(userId);
 
-      const level1Total = referrals
-        .filter((r) => r.level === 1)
-        .reduce((sum, r) => sum + parseFloat(r.totalCommission), 0);
-      const level2Total = referrals
-        .filter((r) => r.level === 2)
-        .reduce((sum, r) => sum + parseFloat(r.totalCommission), 0);
-      const level3Total = referrals
-        .filter((r) => r.level === 3)
-        .reduce((sum, r) => sum + parseFloat(r.totalCommission), 0);
-      const directCommissions = level1Total + level2Total + level3Total;
+      const referralGroups = await prisma.referral.groupBy({
+        by: ["level"],
+        where: { referrerId: userId },
+        _count: { _all: true },
+      });
+
+      const commissionGroups = await prisma.referralCommission.groupBy({
+        by: ["level"],
+        where: { referrerId: userId, status: "paid" },
+        _sum: { commission: true },
+      });
+
+      const getCount = (level: number) =>
+        referralGroups.find((row) => row.level === level)?._count?._all || 0;
+      const getCommission = (level: number) =>
+        commissionGroups.find((row) => row.level === level)?._sum?.commission?.toString() || "0";
+
+      const level1Total = parseFloat(getCommission(1));
+      const level2Total = parseFloat(getCommission(2));
+      const level3Total = parseFloat(getCommission(3));
+      const paidNetworkCommission = level1Total + level2Total + level3Total;
       const actualBalance = parseFloat(balance?.referralBalance || "0");
-      const companyCommissions = actualBalance - directCommissions;
 
       const stats = {
-        level1Count: referrals.filter((r) => r.level === 1).length,
-        level2Count: referrals.filter((r) => r.level === 2).length,
-        level3Count: referrals.filter((r) => r.level === 3).length,
+        level1Count: getCount(1),
+        level2Count: getCount(2),
+        level3Count: getCount(3),
         level1Commission: level1Total.toString(),
         level2Commission: level2Total.toString(),
         level3Commission: level3Total.toString(),
-        totalCommission: referrals
-          .reduce((sum, r) => sum + parseFloat(r.totalCommission), 0)
-          .toString(),
+        totalCommission: paidNetworkCommission.toString(),
+        paidNetworkCommission: paidNetworkCommission.toString(),
         actualBalance: actualBalance.toString(),
-        companyCommissions: companyCommissions.toString(),
+        companyCommissions: Math.max(0, actualBalance - paidNetworkCommission).toString(),
+        ledgerBacked: true,
       };
 
       res.json(stats);
@@ -832,11 +887,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/referrals/tree", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const referrals = await storage.getReferralsByReferrer(userId);
-      res.json(referrals);
+      const currentUser = await storage.getUser(userId);
+      const isAdmin = currentUser?.isAdmin || false;
+
+      const referrals = await prisma.referral.findMany({
+        where: { referrerId: userId },
+        include: {
+          referredUser: {
+            select: { id: true, username: true, email: true, createdAt: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const referredIds = referrals.map((referral) => referral.referredUserId);
+      const depositGroups = referredIds.length
+        ? await prisma.transaction.groupBy({
+            by: ["userId"],
+            where: {
+              userId: { in: referredIds },
+              type: "deposit",
+              status: "approved",
+            },
+            _sum: { amount: true },
+            _count: { _all: true },
+          })
+        : [];
+
+      const depositsByUser = new Map<string, { count: number; total: string }>(
+        depositGroups.map((row) => [
+          row.userId,
+          {
+            count: row._count?._all || 0,
+            total: row._sum?.amount?.toString() || "0",
+          },
+        ])
+      );
+
+      res.json(
+        referrals.map((referral) => {
+          const deposit = depositsByUser.get(referral.referredUserId);
+          return {
+            id: referral.id,
+            referrerId: referral.referrerId,
+            referredUserId: referral.referredUserId,
+            level: referral.level,
+            totalCommission: referral.totalCommission.toString(),
+            createdAt: referral.createdAt,
+            displayName: isAdmin
+              ? referral.referredUser.username || referral.referredUser.email || "Unknown user"
+              : generateAnonymizedHandle(referral.referredUserId),
+            joinedAt: referral.referredUser.createdAt,
+            hasDeposited: (deposit?.count || 0) > 0,
+            depositCount: deposit?.count || 0,
+            totalDeposited: deposit?.total || "0",
+          };
+        })
+      );
     } catch (error) {
       console.error("Error fetching referral tree:", error);
       res.status(500).json({ message: "Failed to fetch referral tree" });
+    }
+  });
+
+  app.get("/api/referrals/commissions", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit || "25"), 10) || 25, 1), 100);
+
+      const commissions = await prisma.referralCommission.findMany({
+        where: { referrerId: userId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+
+      const referredIds = Array.from(new Set(commissions.map((item) => item.referredUserId)));
+      const referredUsers = referredIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: referredIds } },
+            select: { id: true, username: true, email: true },
+          })
+        : [];
+      const usersById = new Map<string, { id: string; username: string | null; email: string | null }>(
+        referredUsers.map((user) => [user.id, user])
+      );
+
+      res.json(
+        commissions.map((item) => {
+          const referredUser = usersById.get(item.referredUserId);
+          return {
+            id: item.id,
+            transactionId: item.transactionId,
+            referrerId: item.referrerId,
+            referredUserId: item.referredUserId,
+            level: item.level,
+            baseAmount: item.baseAmount.toString(),
+            rate: item.rate.toString(),
+            commission: item.commission.toString(),
+            status: item.status,
+            createdAt: item.createdAt,
+            referredDisplayName: referredUser
+              ? generateAnonymizedHandle(referredUser.id)
+              : generateAnonymizedHandle(item.referredUserId),
+          };
+        })
+      );
+    } catch (error) {
+      console.error("Error fetching referral commissions:", error);
+      res.status(500).json({ message: "Failed to fetch referral commissions" });
     }
   });
 
@@ -1503,7 +1661,11 @@ Issued: ${issuedAt}`;
           });
 
           // Distribute referral commissions + activity for auto-approved deposit
-          await storage.distributeReferralCommissions(userId, xnrtAmount);
+          await storage.distributeReferralCommissions(
+            userId,
+            xnrtAmount,
+            `txhash:${transactionHash}`
+          );
           await storage.createActivity({
             userId,
             type: "deposit_approved",
@@ -2864,7 +3026,8 @@ Issued: ${issuedAt}`;
         // Referral commissions + activity + notification
         await storage.distributeReferralCommissions(
           deposit.userId,
-          parseFloat(deposit.amount)
+          parseFloat(deposit.amount),
+          `tx:${id}`
         );
 
         await storage.createActivity({
@@ -3019,7 +3182,8 @@ Issued: ${issuedAt}`;
 
             await storage.distributeReferralCommissions(
               deposit.userId,
-              parseFloat(deposit.amount)
+              parseFloat(deposit.amount),
+              `tx:${id}`
             );
 
             await storage.createActivity({
@@ -3246,7 +3410,11 @@ Issued: ${issuedAt}`;
         });
 
         // Referral commissions + activity for matched deposit
-        await storage.distributeReferralCommissions(userId, xnrtAmount);
+        await storage.distributeReferralCommissions(
+          userId,
+          xnrtAmount,
+          `unmatched:${id}`
+        );
         await storage.createActivity({
           userId,
           type: "deposit_approved",
@@ -3368,7 +3536,8 @@ Issued: ${issuedAt}`;
           // Referral commissions + activity for approved report
           await storage.distributeReferralCommissions(
             report.userId!,
-            xnrtAmount
+            xnrtAmount,
+            `deposit-report:${id}`
           );
           await storage.createActivity({
             userId: report.userId!,
@@ -3417,11 +3586,14 @@ Issued: ${issuedAt}`;
           `[RECONCILE] Found ${approvedDeposits.length} approved deposits to process`
         );
 
-        await storage.raw(`DELETE FROM "Referral"`);
-        console.log("[RECONCILE] Cleared existing referral records");
+        await storage.raw(`DELETE FROM "ReferralCommission"`);
+        console.log("[RECONCILE] Cleared referral commission ledger only");
+
+        await storage.raw(`UPDATE "Referral" SET "totalCommission" = 0`);
+        console.log("[RECONCILE] Preserved referral tree and reset referral totals");
 
         await storage.raw(`UPDATE "Balance" SET "referralBalance" = 0`);
-        console.log("[RECONCILE] Reset all referral balances");
+        console.log("[RECONCILE] Reset referral balances");
 
         let totalProcessed = 0;
         for (const deposit of approvedDeposits) {
@@ -3431,7 +3603,9 @@ Issued: ${issuedAt}`;
           );
           await storage.distributeReferralCommissions(
             deposit.userId,
-            amount
+            amount,
+            `tx:${deposit.id}`,
+            { creditTotalEarned: false }
           );
           totalProcessed++;
         }

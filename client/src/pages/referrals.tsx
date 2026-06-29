@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Copy, Share2, DollarSign, QrCode } from "lucide-react";
+import { Users, Copy, Share2, DollarSign, QrCode, History, CheckCircle2 } from "lucide-react";
 import { SiWhatsapp, SiTelegram, SiX } from "react-icons/si";
 import { ReferralTree } from "@/components/referral-tree";
 import { ReferralLeaderboard } from "@/components/referral-leaderboard";
@@ -23,8 +23,23 @@ interface ReferralStats {
   level2Commission: string;
   level3Commission: string;
   totalCommission: string;
+  paidNetworkCommission?: string;
   actualBalance: string;
   companyCommissions: string;
+  ledgerBacked?: boolean;
+}
+
+interface ReferralCommissionItem {
+  id: string;
+  transactionId: string;
+  referredUserId: string;
+  referredDisplayName?: string;
+  level: number;
+  baseAmount: string;
+  rate: string;
+  commission: string;
+  status: string;
+  createdAt: string | Date;
 }
 
 export default function Referrals() {
@@ -43,7 +58,11 @@ export default function Referrals() {
     queryKey: ["/api/referrals/tree"],
   });
 
-  const referralCode = user?.referralCode || "";
+  const { data: commissionHistory, isLoading: isLoadingCommissions } = useQuery<ReferralCommissionItem[]>({
+    queryKey: ["/api/referrals/commissions"],
+  });
+
+  const referralCode = (user?.referralCode || "").trim().toUpperCase();
   const referralLink = `${window.location.origin}/?ref=${referralCode}`;
 
   const copyToClipboard = (text: string) => {
@@ -69,6 +88,12 @@ export default function Referrals() {
   };
 
   const shareMessage = `Join XNRT and start earning! Use my referral code ${referralCode} to get started: ${referralLink}`;
+
+  const formatXnrt = (value?: string | null) =>
+    parseFloat(value || "0").toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  const formatRate = (value?: string | null) =>
+    `${(parseFloat(value || "0") * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
 
   const shareWhatsApp = () => {
     const url = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
@@ -297,7 +322,7 @@ export default function Referrals() {
             <div className="flex items-baseline gap-2 mb-6">
               <DollarSign className="h-8 w-8 text-chart-2" />
               <span className="text-5xl font-bold font-mono text-chart-2" data-testid="text-total-commission">
-                {parseFloat(referralStats?.actualBalance || "0").toLocaleString()}
+                {formatXnrt(referralStats?.actualBalance || "0")}
               </span>
               <span className="text-2xl text-muted-foreground">XNRT</span>
             </div>
@@ -310,16 +335,16 @@ export default function Referrals() {
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Direct Commissions:</span>
+                <span className="text-muted-foreground">Ledger-backed Commissions:</span>
                 <span className="font-bold">
-                  {parseFloat(referralStats?.totalCommission || "0").toLocaleString()} XNRT
+                  {formatXnrt(referralStats?.totalCommission || "0")} XNRT
                 </span>
               </div>
               {user?.isAdmin && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Company Commissions:</span>
                   <span className="font-bold">
-                    {parseFloat(referralStats?.companyCommissions || "0").toLocaleString()} XNRT
+                    {formatXnrt(referralStats?.companyCommissions || "0")} XNRT
                   </span>
                 </div>
               )}
@@ -352,7 +377,7 @@ export default function Referrals() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Earned:</span>
                 <span className={`text-xl font-bold ${stat.color}`} data-testid={`stat-level${stat.level}-commission`}>
-                  {parseFloat(stat.commission).toLocaleString()}
+                  {formatXnrt(stat.commission)}
                 </span>
               </div>
             </CardContent>
@@ -478,17 +503,63 @@ export default function Referrals() {
                       <Users className="h-6 w-6" />
                     </div>
                     <div>
-                      <p className="font-semibold">Level {referral.level} Referral</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold">{referral.displayName || `Level ${referral.level} Referral`}</p>
+                        <Badge variant="secondary">L{referral.level}</Badge>
+                        {referral.hasDeposited && (
+                          <Badge variant="outline" className="gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Active
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        {referral.createdAt ? new Date(referral.createdAt).toLocaleDateString() : 'N/A'}
+                        Joined {referral.joinedAt ? new Date(referral.joinedAt).toLocaleDateString() : referral.createdAt ? new Date(referral.createdAt).toLocaleDateString() : 'N/A'}
+                        {referral.hasDeposited ? ` • ${referral.depositCount || 0} approved deposit${(referral.depositCount || 0) === 1 ? "" : "s"}` : ""}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-chart-2">
-                      {parseFloat(referral.totalCommission).toLocaleString()} XNRT
+                      {formatXnrt(referral.totalCommission)} XNRT
                     </div>
                     <p className="text-xs text-muted-foreground">earned</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Commission Ledger
+          </CardTitle>
+          <CardDescription>Paid referral commissions, protected against duplicate payout per deposit.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingCommissions ? (
+            <div className="py-8 text-center text-muted-foreground">Loading commission history...</div>
+          ) : !commissionHistory || commissionHistory.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">No paid referral commissions yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {commissionHistory.slice(0, 10).map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-4 p-4 border border-border rounded-md">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">Level {item.level}</Badge>
+                      <span className="font-medium">{item.referredDisplayName || "Referral user"}</span>
+                      <Badge variant="outline">{item.status}</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Base {formatXnrt(item.baseAmount)} XNRT × {formatRate(item.rate)} • {new Date(item.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right font-bold text-chart-2">
+                    +{formatXnrt(item.commission)} XNRT
                   </div>
                 </div>
               ))}

@@ -9,6 +9,7 @@ import { generateCSRFToken } from './csrf';
 import { requireAuth, loginRateLimiter, type AuthRequest } from './middleware';
 import rateLimit from 'express-rate-limit';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email';
+import { normalizeReferralCode } from '../storage';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -18,7 +19,7 @@ const registerSchema = z.object({
   email: z.string().email(),
   username: z.string().min(3).max(20),
   password: z.string().min(8),
-  referralCode: z.string().optional(),
+  referralCode: z.string().trim().optional(),
 });
 
 const loginSchema = z.object({
@@ -87,15 +88,19 @@ router.post('/register', async (req, res) => {
     // Generate unique referral code
     const userReferralCode = `XNRT${nanoid(8).toUpperCase()}`;
 
-    // Handle referral if provided
+    // Handle referral if provided. Store referrer userId, never the referral code string.
     let referredBy: string | null = null;
-    if (data.referralCode) {
+    const normalizedReferralCode = normalizeReferralCode(data.referralCode);
+    if (normalizedReferralCode) {
       const referrer = await prisma.user.findUnique({
-        where: { referralCode: data.referralCode },
+        where: { referralCode: normalizedReferralCode },
       });
-      if (referrer) {
-        referredBy = referrer.id;
+
+      if (!referrer) {
+        return res.status(400).json({ message: 'Invalid referral code' });
       }
+
+      referredBy = referrer.id;
     }
 
     // Generate email verification token
@@ -129,13 +134,24 @@ router.post('/register', async (req, res) => {
       const referrerChain = await getReferrerChain(referredBy);
       
       for (let i = 0; i < Math.min(referrerChain.length, 3); i++) {
-        await prisma.referral.create({
-          data: {
+        const existingReferral = await prisma.referral.findFirst({
+          where: {
             referrerId: referrerChain[i],
             referredUserId: user.id,
             level: i + 1,
           },
+          select: { id: true },
         });
+
+        if (!existingReferral) {
+          await prisma.referral.create({
+            data: {
+              referrerId: referrerChain[i],
+              referredUserId: user.id,
+              level: i + 1,
+            },
+          });
+        }
       }
     }
 
@@ -554,18 +570,44 @@ router.post('/reset-password', async (req, res) => {
 // Helper function to get referrer chain
 async function getReferrerChain(userId: string): Promise<string[]> {
   const chain: string[] = [userId];
+  const seen = new Set<string>([userId]);
   let currentUserId = userId;
 
   for (let i = 0; i < 2; i++) {
     const user = await prisma.user.findUnique({
       where: { id: currentUserId },
-      select: { referredBy: true },
+      select: { id: true, referredBy: true },
     });
 
     if (!user?.referredBy) break;
-    
-    chain.push(user.referredBy);
-    currentUserId = user.referredBy;
+
+    let referrer = await prisma.user.findUnique({
+      where: { id: user.referredBy },
+      select: { id: true },
+    });
+
+    if (!referrer) {
+      const normalizedCode = normalizeReferralCode(user.referredBy);
+      referrer = normalizedCode
+        ? await prisma.user.findUnique({
+            where: { referralCode: normalizedCode },
+            select: { id: true },
+          })
+        : null;
+
+      if (referrer) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { referredBy: referrer.id },
+        });
+      }
+    }
+
+    if (!referrer || seen.has(referrer.id)) break;
+
+    chain.push(referrer.id);
+    seen.add(referrer.id);
+    currentUserId = referrer.id;
   }
 
   return chain;

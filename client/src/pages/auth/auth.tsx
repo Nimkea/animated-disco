@@ -36,7 +36,7 @@ export default function Auth() {
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     if (refCode) {
-      setRegisterReferralCode(refCode);
+      setRegisterReferralCode(refCode.trim().toUpperCase());
       setActiveTab("register"); // Switch to register tab
       toast({
         title: "Referral code applied!",
@@ -147,7 +147,7 @@ export default function Auth() {
           email: registerEmail,
           username: registerUsername,
           password: registerPassword,
-          referralCode: registerReferralCode || undefined,
+          referralCode: registerReferralCode.trim().toUpperCase() || undefined,
         }),
       });
 
@@ -400,7 +400,7 @@ export default function Auth() {
                           type="text"
                           placeholder="Enter referral code"
                           value={registerReferralCode}
-                          onChange={(e) => setRegisterReferralCode(e.target.value)}
+                          onChange={(e) => setRegisterReferralCode(e.target.value.toUpperCase())}
                           className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
                           data-testid="input-register-referral"
                         />

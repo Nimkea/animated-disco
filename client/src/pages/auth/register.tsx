@@ -22,10 +22,10 @@ export default function Register() {
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     if (refCode) {
-      setReferralCode(refCode);
+      setReferralCode(refCode.trim().toUpperCase());
       toast({
         title: "Referral code applied!",
-        description: `You're signing up with referral code: ${refCode}`,
+        description: `You're signing up with referral code: ${refCode.trim().toUpperCase()}`,
       });
     }
   }, [toast]);
@@ -53,7 +53,7 @@ export default function Register() {
           email,
           username,
           password,
-          referralCode: referralCode || undefined,
+          referralCode: referralCode.trim().toUpperCase() || undefined,
         }),
       });
 
@@ -149,7 +149,7 @@ export default function Register() {
                 type="text"
                 placeholder="Enter referral code"
                 value={referralCode}
-                onChange={(e) => setReferralCode(e.target.value)}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
                 data-testid="input-register-referral"
               />
             </div>

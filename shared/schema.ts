@@ -134,6 +134,11 @@ export interface Referral {
   level: number;
   totalCommission: string;
   createdAt: Date;
+  displayName?: string;
+  joinedAt?: Date | string | null;
+  hasDeposited?: boolean;
+  depositCount?: number;
+  totalDeposited?: string;
 }
 
 export type InsertReferral = {
@@ -142,6 +147,20 @@ export type InsertReferral = {
   level: number;
   totalCommission?: string;
 };
+
+export interface ReferralCommission {
+  id: string;
+  transactionId: string;
+  referrerId: string;
+  referredUserId: string;
+  level: number;
+  baseAmount: string;
+  rate: string;
+  commission: string;
+  status: string;
+  createdAt: Date;
+  referredDisplayName?: string;
+}
 
 // ─── Transaction ─────────────────────────────────────────────────────────────
 
