@@ -192,8 +192,13 @@ export default function TasksTab() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="onboarding">Onboarding</SelectItem>
+              <SelectItem value="engagement">Engagement</SelectItem>
               <SelectItem value="daily">Daily</SelectItem>
               <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="staking">Staking</SelectItem>
+              <SelectItem value="mining">Mining</SelectItem>
+              <SelectItem value="referrals">Referrals</SelectItem>
               <SelectItem value="special">Special</SelectItem>
             </SelectContent>
           </Select>
@@ -368,8 +373,13 @@ export default function TasksTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="onboarding">Onboarding</SelectItem>
+                  <SelectItem value="engagement">Engagement</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="staking">Staking</SelectItem>
+                  <SelectItem value="mining">Mining</SelectItem>
+                  <SelectItem value="referrals">Referrals</SelectItem>
                   <SelectItem value="special">Special</SelectItem>
                 </SelectContent>
               </Select>

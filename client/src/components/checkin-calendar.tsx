@@ -18,10 +18,10 @@ export function CheckInCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const { data: checkinHistory } = useQuery<CheckInHistoryResponse>({
-    queryKey: ["/api/checkin/history", currentDate.getFullYear(), currentDate.getMonth()],
+    queryKey: ["/api/checkin/history", currentDate.getFullYear(), currentDate.getMonth() + 1],
     queryFn: async () => {
       const response = await fetch(
-        `/api/checkin/history?year=${currentDate.getFullYear()}&month=${currentDate.getMonth()}`
+        `/api/checkin/history?year=${currentDate.getFullYear()}&month=${currentDate.getMonth() + 1}`
       );
       if (!response.ok) throw new Error("Failed to fetch check-in history");
       return response.json();

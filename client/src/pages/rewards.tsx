@@ -182,7 +182,7 @@ export default function Rewards() {
                     {parseFloat(balance?.miningBalance || "0").toLocaleString()}
                   </p>
                 </div>
-                <Badge variant="outline">XP</Badge>
+                <Badge variant="outline">XNRT</Badge>
               </div>
 
               <div className="flex items-center justify-between p-4 border border-border rounded-md">

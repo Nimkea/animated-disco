@@ -1451,10 +1451,12 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (totalXpReward > 0) {
+      const nextXp = (user.xp || 0) + totalXpReward;
       await prisma.user.update({
         where: { id: userId },
         data: {
-          xp: (user.xp || 0) + totalXpReward,
+          xp: nextXp,
+          level: Math.floor(nextXp / 1000) + 1,
         },
       });
     }

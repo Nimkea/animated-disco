@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Trophy, Lock, CheckCircle2, TrendingUp, Users, Flame, Pickaxe } from "lucide-react";
-import type { Achievement, UserAchievement } from "@shared/schema";
+import type { Achievement } from "@shared/schema";
 import { useConfetti } from "@/hooks/use-confetti";
 
 export default function Achievements() {
@@ -37,6 +37,7 @@ export default function Achievements() {
 
   const totalAchievements = achievements?.length || 0;
   const unlockedAchievements = achievements?.filter(a => a.unlocked).length || 0;
+  const overallProgress = totalAchievements > 0 ? (unlockedAchievements / totalAchievements) * 100 : 0;
 
   return (
     <div className="space-y-6">
@@ -56,9 +57,9 @@ export default function Achievements() {
             </div>
             <Trophy className="h-16 w-16 text-primary" />
           </div>
-          <Progress value={(unlockedAchievements / totalAchievements) * 100} className="h-3" />
+          <Progress value={overallProgress} className="h-3" />
           <p className="text-sm text-muted-foreground mt-2">
-            {Math.round((unlockedAchievements / totalAchievements) * 100)}% Complete
+            {Math.round(overallProgress)}% Complete
           </p>
         </CardContent>
       </Card>
@@ -138,7 +139,7 @@ export default function Achievements() {
         );
       })}
 
-      {!achievements || achievements.length === 0 && (
+      {(!achievements || achievements.length === 0) && (
         <Card>
           <CardContent className="p-12 text-center">
             <Trophy className="h-16 w-16 text-muted-foreground mx-auto mb-4" />

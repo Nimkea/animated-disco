@@ -203,6 +203,184 @@ const DEFAULT_ACHIEVEMENTS = [
   },
 ];
 
+const DEFAULT_TASKS = [
+  {
+    title: "Complete Your Profile",
+    description: "Review your profile and complete your account setup",
+    category: "onboarding",
+    xpReward: 50,
+    xnrtReward: "10",
+    requirements: "Open your profile and make sure your account details are ready",
+    isActive: true,
+  },
+  {
+    title: "Daily Check-In",
+    description: "Use the Rewards page daily and build your streak",
+    category: "engagement",
+    xpReward: 25,
+    xnrtReward: "5",
+    requirements: "Visit Rewards and complete your daily check-in",
+    isActive: true,
+  },
+  {
+    title: "Start Mining",
+    description: "Visit the mining page and start your earning routine",
+    category: "mining",
+    xpReward: 75,
+    xnrtReward: "15",
+    requirements: "Start or complete your first mining session",
+    isActive: true,
+  },
+  {
+    title: "Create First Stake",
+    description: "Create your first staking position",
+    category: "staking",
+    xpReward: 100,
+    xnrtReward: "25",
+    requirements: "Stake any eligible XNRT amount",
+    isActive: true,
+  },
+  {
+    title: "Invite A Friend",
+    description: "Share your referral code with a new user",
+    category: "referrals",
+    xpReward: 120,
+    xnrtReward: "30",
+    requirements: "Get at least one direct referral",
+    isActive: true,
+  },
+] as const;
+
+async function ensureDefaultTasks() {
+  for (const def of DEFAULT_TASKS) {
+    try {
+      await prisma.task.upsert({
+        where: { title: def.title },
+        create: {
+          ...def,
+          xnrtReward: new Prisma.Decimal(def.xnrtReward),
+        },
+        update: {
+          description: def.description,
+          category: def.category,
+          xpReward: def.xpReward,
+          xnrtReward: new Prisma.Decimal(def.xnrtReward),
+          requirements: def.requirements,
+          isActive: def.isActive,
+        },
+      });
+    } catch (err) {
+      console.error("[Tasks] Failed to upsert default task", def.title, err);
+    }
+  }
+}
+
+function serializeTask(task: any) {
+  if (!task) return null;
+  return {
+    ...task,
+    xnrtReward: task.xnrtReward?.toString?.() ?? String(task.xnrtReward ?? "0"),
+  };
+}
+
+function serializeUserTaskWithTask(userTask: any) {
+  return {
+    ...userTask,
+    task: serializeTask(userTask.task),
+  };
+}
+
+async function syncUserTasksForActiveTasks(userId: string) {
+  const activeTasks = await prisma.task.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (activeTasks.length === 0) return [];
+
+  const taskIds = activeTasks.map((task) => task.id);
+  const existingUserTasks = await prisma.userTask.findMany({
+    where: { userId, taskId: { in: taskIds } },
+    select: { taskId: true },
+  });
+  const existingTaskIds = new Set(existingUserTasks.map((task) => task.taskId));
+
+  const missingTasks = activeTasks.filter((task) => !existingTaskIds.has(task.id));
+  if (missingTasks.length > 0) {
+    await prisma.userTask.createMany({
+      data: missingTasks.map((task) => ({
+        userId,
+        taskId: task.id,
+        progress: 0,
+        maxProgress: 1,
+        completed: false,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return prisma.userTask.findMany({
+    where: { userId, taskId: { in: taskIds } },
+    include: { task: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+function parseTaskPayload(body: any) {
+  const title = String(body?.title ?? "").trim();
+  const description = String(body?.description ?? "").trim();
+  const category = String(body?.category ?? "special")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 40) || "special";
+
+  if (!title || !description) {
+    throw new Error("Title and description are required");
+  }
+
+  const xpReward = Number(body?.xpReward ?? 0);
+  const xnrtReward = Number(body?.xnrtReward ?? 0);
+
+  if (!Number.isFinite(xpReward) || xpReward < 0) {
+    throw new Error("Invalid XP reward");
+  }
+  if (!Number.isFinite(xnrtReward) || xnrtReward < 0) {
+    throw new Error("Invalid XNRT reward");
+  }
+
+  const requirements = String(body?.requirements ?? "").trim();
+
+  return {
+    title,
+    description,
+    xpReward: Math.floor(xpReward),
+    xnrtReward: new Prisma.Decimal(xnrtReward.toString()),
+    category,
+    requirements: requirements || null,
+    isActive: body?.isActive === undefined ? true : Boolean(body.isActive),
+  };
+}
+
+async function awardUserXp(userId: string, xpReward: number) {
+  if (xpReward <= 0) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { xp: true },
+  });
+
+  if (!user) return null;
+
+  const nextXp = (user.xp || 0) + xpReward;
+  const nextLevel = Math.floor(nextXp / 1000) + 1;
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: { xp: nextXp, level: nextLevel },
+  });
+}
+
 function parseAchievementPayload(body: any) {
   const {
     title,
@@ -266,8 +444,9 @@ async function ensureDefaultAchievements() {
 /* -------------------------------------------------------------------------- */
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Seed / ensure default achievements exist once for everyone
+  // Seed / ensure default achievements/tasks exist once for everyone
   await ensureDefaultAchievements();
+  await ensureDefaultTasks();
 
   // CSP violation report endpoint
   app.post("/csp-report", (req, res) => {
@@ -1479,17 +1658,8 @@ Issued: ${issuedAt}`;
   app.get("/api/tasks/user", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const userTasks = await storage.getUserTasks(userId);
-      const allTasks = await storage.getAllTasks();
-
-      const populated = await Promise.all(
-        userTasks.map(async (ut) => {
-          const task = allTasks.find((t) => t.id === ut.taskId);
-          return { ...ut, task };
-        })
-      );
-
-      res.json(populated);
+      const userTasks = await syncUserTasksForActiveTasks(userId);
+      res.json(userTasks.map(serializeUserTaskWithTask));
     } catch (error) {
       console.error("Error fetching user tasks:", error);
       res.status(500).json({ message: "Failed to fetch user tasks" });
@@ -1505,56 +1675,93 @@ Issued: ${issuedAt}`;
         const userId = req.authUser!.id;
         const { taskId } = req.params;
 
-        const userTasks = await storage.getUserTasks(userId);
-        const userTask = userTasks.find((ut) => ut.taskId === taskId);
+        const task = await prisma.task.findUnique({ where: { id: taskId } });
+        if (!task || !task.isActive) {
+          return res.status(404).json({ message: "Task not found" });
+        }
 
-        if (!userTask) return res.status(404).json({ message: "Task not found" });
+        const userTask = await prisma.userTask.upsert({
+          where: { userId_taskId: { userId, taskId } },
+          create: {
+            userId,
+            taskId,
+            progress: 0,
+            maxProgress: 1,
+            completed: false,
+          },
+          update: {},
+        });
+
         if (userTask.completed) {
           return res.status(400).json({ message: "Task already completed" });
         }
 
-        const allTasks = await storage.getAllTasks();
-        const task = allTasks.find((t) => t.id === taskId);
-        if (!task) return res.status(404).json({ message: "Task not found" });
-
-        await storage.updateUserTask(userTask.id, {
-          completed: true,
-          completedAt: new Date(),
-          progress: userTask.maxProgress,
-        });
-
-        const user = await storage.getUser(userId);
-        const balance = await storage.getBalance(userId);
-
-        if (user) {
-          await storage.updateUser(userId, {
-            xp: (user.xp || 0) + task.xpReward,
+        const maxProgress = Math.max(userTask.maxProgress || 1, 1);
+        if (maxProgress > 1 && userTask.progress < maxProgress) {
+          return res.status(400).json({
+            message: `Task progress is incomplete (${userTask.progress}/${maxProgress})`,
           });
         }
 
-        if (balance && parseFloat(task.xnrtReward) > 0) {
-          const xnrtAmount = parseFloat(task.xnrtReward);
-          await storage.updateBalance(userId, {
-            xnrtBalance: (
-              parseFloat(balance.xnrtBalance) + xnrtAmount
-            ).toString(),
-            totalEarned: (
-              parseFloat(balance.totalEarned) + xnrtAmount
-            ).toString(),
+        const completedUserTask = await prisma.userTask.update({
+          where: { id: userTask.id },
+          data: {
+            completed: true,
+            completedAt: new Date(),
+            progress: maxProgress,
+          },
+        });
+
+        await awardUserXp(userId, task.xpReward);
+
+        const xnrtAmount = Number(task.xnrtReward);
+        if (Number.isFinite(xnrtAmount) && xnrtAmount > 0) {
+          const balance = await storage.getBalance(userId);
+          if (balance) {
+            await storage.updateBalance(userId, {
+              xnrtBalance: (parseFloat(balance.xnrtBalance) + xnrtAmount).toString(),
+              totalEarned: (parseFloat(balance.totalEarned) + xnrtAmount).toString(),
+            });
+          }
+
+          await storage.createTransaction({
+            userId,
+            type: "reward",
+            amount: xnrtAmount.toString(),
+            source: "task",
+            status: "approved",
+            approvedAt: new Date(),
+            verified: true,
           });
         }
 
         await storage.createActivity({
           userId,
           type: "task_completed",
-          description: `Completed task: ${task.title}`,
+          description: `Completed task: ${task.title} (+${task.xpReward} XP, +${task.xnrtReward.toString()} XNRT)`,
+        });
+
+        void notifyUser(userId, {
+          type: "task_completed",
+          title: "✅ Task Completed",
+          message: `You earned ${task.xpReward} XP and ${task.xnrtReward.toString()} XNRT from ${task.title}.`,
+          url: "/tasks",
+          metadata: {
+            taskId: task.id,
+            taskTitle: task.title,
+            xpReward: task.xpReward,
+            xnrtReward: task.xnrtReward.toString(),
+          },
+        }).catch((err) => {
+          console.error("Error sending task completion notification:", err);
         });
 
         await storage.checkAndUnlockAchievements(userId);
 
         res.json({
+          userTask: completedUserTask,
           xpReward: task.xpReward,
-          xnrtReward: task.xnrtReward,
+          xnrtReward: task.xnrtReward.toString(),
         });
       } catch (error) {
         console.error("Error completing task:", error);
@@ -1652,6 +1859,144 @@ Issued: ${issuedAt}`;
       } catch (error) {
         console.error("Error claiming achievement:", error);
         res.status(500).json({ message: "Failed to claim achievement" });
+      }
+    }
+  );
+
+  // Admin Task Management
+  app.get("/api/admin/tasks", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const [tasks, completionGroups] = await Promise.all([
+        prisma.task.findMany({ orderBy: { createdAt: "asc" } }),
+        prisma.userTask.groupBy({
+          by: ["taskId"],
+          where: { completed: true },
+          _count: { taskId: true },
+        }),
+      ]);
+
+      const completionMap = new Map<string, number>();
+      (completionGroups as any[]).forEach((row) => {
+        const count = row?._count?.taskId ?? row?._count?._all ?? row?._count ?? 0;
+        completionMap.set(row.taskId, Number(count) || 0);
+      });
+
+      res.json(
+        tasks.map((task) => ({
+          ...serializeTask(task),
+          completionCount: completionMap.get(task.id) ?? 0,
+        }))
+      );
+    } catch (error) {
+      console.error("Error fetching admin tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  app.post(
+    "/api/admin/tasks",
+    requireAuth,
+    requireAdmin,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        let payload;
+        try {
+          payload = parseTaskPayload(req.body);
+        } catch (e: any) {
+          return res.status(400).json({ message: e?.message ?? "Invalid task payload" });
+        }
+
+        const task = await prisma.task.create({ data: payload });
+        res.status(201).json({ ...serializeTask(task), completionCount: 0 });
+      } catch (error: any) {
+        console.error("Error creating task:", error);
+        if (error.code === "P2002") {
+          return res.status(409).json({ message: "A task with this title already exists" });
+        }
+        res.status(500).json({ message: "Failed to create task" });
+      }
+    }
+  );
+
+  app.put(
+    "/api/admin/tasks/:id",
+    requireAuth,
+    requireAdmin,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        let payload;
+        try {
+          payload = parseTaskPayload(req.body);
+        } catch (e: any) {
+          return res.status(400).json({ message: e?.message ?? "Invalid task payload" });
+        }
+
+        const task = await prisma.task.update({ where: { id }, data: payload });
+        const completionCount = await prisma.userTask.count({
+          where: { taskId: id, completed: true },
+        });
+
+        res.json({ ...serializeTask(task), completionCount });
+      } catch (error: any) {
+        console.error("Error updating task:", error);
+        if (error.code === "P2025") {
+          return res.status(404).json({ message: "Task not found" });
+        }
+        if (error.code === "P2002") {
+          return res.status(409).json({ message: "A task with this title already exists" });
+        }
+        res.status(500).json({ message: "Failed to update task" });
+      }
+    }
+  );
+
+  app.patch(
+    "/api/admin/tasks/:id/toggle",
+    requireAuth,
+    requireAdmin,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const existing = await prisma.task.findUnique({ where: { id } });
+        if (!existing) return res.status(404).json({ message: "Task not found" });
+
+        const task = await prisma.task.update({
+          where: { id },
+          data: { isActive: !existing.isActive },
+        });
+
+        const completionCount = await prisma.userTask.count({
+          where: { taskId: id, completed: true },
+        });
+
+        res.json({ ...serializeTask(task), completionCount });
+      } catch (error) {
+        console.error("Error toggling task:", error);
+        res.status(500).json({ message: "Failed to toggle task" });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/admin/tasks/:id",
+    requireAuth,
+    requireAdmin,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        await prisma.task.delete({ where: { id } });
+        res.status(204).send();
+      } catch (error: any) {
+        console.error("Error deleting task:", error);
+        if (error.code === "P2025") {
+          return res.status(404).json({ message: "Task not found" });
+        }
+        res.status(500).json({ message: "Failed to delete task" });
       }
     }
   );
@@ -1885,10 +2230,12 @@ Issued: ${issuedAt}`;
         return res.status(400).json({ message: "Already checked in today" });
       }
 
+      const nextXp = (user.xp || 0) + xpReward;
       await storage.updateUser(userId, {
         lastCheckIn: now,
         streak: newStreak,
-        xp: (user.xp || 0) + xpReward,
+        xp: nextXp,
+        level: Math.floor(nextXp / 1000) + 1,
       });
 
       const balance = await storage.getBalance(userId);
