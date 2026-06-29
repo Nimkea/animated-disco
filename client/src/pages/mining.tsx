@@ -1,67 +1,158 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Pickaxe, Zap, Clock } from "lucide-react";
-import type { MiningSession } from "@shared/schema";
-import { isUnauthorizedError, handleUnauthorized } from "@/lib/authUtils";
-import { useAuth } from "@/hooks/useAuth";
-import { nf } from "@/lib/number";
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Coins,
+  History,
+  Pickaxe,
+  ShieldCheck,
+  Sparkles,
+  TimerReset,
+  Wallet,
+  Zap,
+} from "lucide-react";
 
-const XP_TO_XNRT_RATE = 0.5;
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { handleUnauthorized, isUnauthorizedError } from "@/lib/authUtils";
+import { cn } from "@/lib/utils";
+import { nf } from "@/lib/number";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Balance, MiningSession } from "@shared/schema";
+
+const MINING_DURATION_HOURS = 24;
+const MINING_DURATION_MS = MINING_DURATION_HOURS * 60 * 60 * 1000;
+const MINING_XP_REWARD = 10;
+const MINING_XNRT_REWARD = 5;
+
+function clamp(value: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function toTime(value?: Date | string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatCountdown(ms: number) {
+  if (ms <= 0) return "Completing...";
+
+  const totalSeconds = Math.ceil(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [hours, minutes, seconds]
+    .map((part) => part.toString().padStart(2, "0"))
+    .join(":");
+}
+
+function formatDate(value?: Date | string | null) {
+  const date = toTime(value);
+  if (!date) return "—";
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function getSessionXnrtReward(session: MiningSession) {
+  // New Mining v2 sessions always pay exactly 5 XNRT. Older history may have
+  // different finalReward values, so keep their historical display sensible.
+  if ((session.finalReward || MINING_XP_REWARD) === MINING_XP_REWARD) {
+    return MINING_XNRT_REWARD;
+  }
+  return Number(((session.finalReward || 0) * 0.5).toFixed(1));
+}
+
+function invalidateMiningQueries() {
+  queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/achievements"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/leaderboard/xp"] });
+}
 
 export default function Mining() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const processedSessionRef = useRef<string | null>(null);
 
-  const { data: currentSession } = useQuery<MiningSession>({
+  const {
+    data: currentSession,
+    isLoading: currentLoading,
+    error: currentError,
+  } = useQuery<MiningSession | null>({
     queryKey: ["/api/mining/current"],
-    refetchInterval: 5000,
-    staleTime: 3000,
+    refetchInterval: 15_000,
+    staleTime: 3_000,
   });
 
-  const { data: sessions, isLoading: sessionsLoading } = useQuery<MiningSession[]>({
+  const {
+    data: sessions = [],
+    isLoading: sessionsLoading,
+    error: sessionsError,
+  } = useQuery<MiningSession[]>({
     queryKey: ["/api/mining/history"],
-    staleTime: 15000,
+    staleTime: 15_000,
     refetchOnWindowFocus: false,
   });
 
-  // Process mining rewards automatically on interval
+  const { data: balance } = useQuery<Balance | null>({
+    queryKey: ["/api/balance"],
+    staleTime: 10_000,
+  });
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const processRewardsMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/mining/process-rewards", {});
+      const response = await apiRequest("POST", "/api/mining/process-rewards", {});
+      return (await response.json()) as { success: boolean; processedCount: number };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+    onSuccess: (result) => {
+      if (result.processedCount > 0) {
+        toast({
+          title: "Mining rewards deposited",
+          description: `+${MINING_XP_REWARD} XP and +${MINING_XNRT_REWARD} XNRT added to your account.`,
+        });
+      }
+      invalidateMiningQueries();
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorized(toast);
+      }
     },
   });
 
-  // Auto-process rewards every 30 seconds to check for completed sessions
-  useEffect(() => {
-    const interval = setInterval(() => {
-      processRewardsMutation.mutate();
-    }, 30000); // Check every 30 seconds
-
-    // Also process on mount
-    processRewardsMutation.mutate();
-
-    return () => clearInterval(interval);
-  }, []);
-
   const startMiningMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/mining/start", {});
+      const response = await apiRequest("POST", "/api/mining/start", {});
+      return (await response.json()) as MiningSession;
     },
     onSuccess: () => {
+      processedSessionRef.current = null;
       toast({
-        title: "Mining Started!",
-        description: "Your 24-hour mining session has begun. Rewards will be automatically deposited when complete!",
+        title: "Mining started",
+        description: `Your ${MINING_DURATION_HOURS}-hour session is running. Reward: ${MINING_XP_REWARD} XP + ${MINING_XNRT_REWARD} XNRT.`,
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
+      invalidateMiningQueries();
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -69,256 +160,346 @@ export default function Mining() {
         return;
       }
       toast({
-        title: "Error",
+        title: "Mining could not start",
         description: error.message || "Failed to start mining",
         variant: "destructive",
       });
     },
   });
 
-  const [timeLeft, setTimeLeft] = useState("");
-  const hasInvalidatedRef = useRef(false);
-  const lastSessionIdRef = useRef<string | null>(null);
+  const activeSession = currentSession?.status === "active" ? currentSession : null;
+  const startTime = toTime(activeSession?.startTime);
+  const endTime = toTime(activeSession?.endTime);
+  const remainingMs = endTime ? Math.max(0, endTime.getTime() - nowMs) : 0;
+  const elapsedMs = startTime ? Math.max(0, nowMs - startTime.getTime()) : 0;
+  const sessionDurationMs = startTime && endTime ? Math.max(1, endTime.getTime() - startTime.getTime()) : MINING_DURATION_MS;
+  const progress = activeSession ? clamp((elapsedMs / sessionDurationMs) * 100) : 0;
+  const canStartMining = !activeSession && !currentLoading;
 
   useEffect(() => {
-    if (!currentSession || currentSession.status !== "active") {
-      hasInvalidatedRef.current = false;
-      lastSessionIdRef.current = null;
-      setTimeLeft("");
+    if (!activeSession || !endTime) {
+      processedSessionRef.current = null;
       return;
     }
 
-    // Reset flag when session ID changes (new session started)
-    if (currentSession.id !== lastSessionIdRef.current) {
-      hasInvalidatedRef.current = false;
-      lastSessionIdRef.current = currentSession.id;
+    if (remainingMs <= 0 && processedSessionRef.current !== activeSession.id) {
+      processedSessionRef.current = activeSession.id;
+      processRewardsMutation.mutate();
     }
+  }, [activeSession?.id, endTime?.getTime(), remainingMs]);
 
-    const interval = setInterval(() => {
-      const now = new Date().getTime();
-      
-      // Show time remaining until endTime
-      if (currentSession.endTime) {
-        const end = new Date(currentSession.endTime).getTime();
-        const diff = Math.max(0, end - now); // Prevent negative time if clock skews
+  const completedSessions = useMemo(
+    () => sessions.filter((session) => session.status === "completed"),
+    [sessions]
+  );
 
-        if (diff <= 0) {
-          setTimeLeft("Auto-completing...");
-          if (!hasInvalidatedRef.current) {
-            queryClient.invalidateQueries({ queryKey: ["/api/mining/current"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
-            hasInvalidatedRef.current = true;
-          }
-        } else {
-          const hours = Math.floor(diff / (1000 * 60 * 60));
-          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-          setTimeLeft(`${hours}h ${minutes}m remaining`);
-        }
-      }
-    }, 1000);
+  const historyStats = useMemo(() => {
+    const completed = completedSessions.length;
+    const totalXp = completedSessions.reduce(
+      (sum, session) => sum + (session.finalReward || MINING_XP_REWARD),
+      0
+    );
+    const totalXnrt = completedSessions.reduce(
+      (sum, session) => sum + getSessionXnrtReward(session),
+      0
+    );
 
-    return () => clearInterval(interval);
-  }, [currentSession]);
+    return { completed, totalXp, totalXnrt };
+  }, [completedSessions]);
 
-  const isSessionActive = currentSession?.status === "active";
-  const canStartMining = !isSessionActive;
-  const baseReward = currentSession?.baseReward || 10;
-  
-  // Disable start button during mutation to prevent double-clicks
-  const startDisabled = startMiningMutation.isPending;
-
-  const isReady = !isSessionActive;
-
-  const getSessionStatus = () => {
-    if (isSessionActive) {
-      return { label: "Mining in Progress", variant: "default" as const, icon: Pickaxe, bgClass: "" };
-    }
-    return { label: "Ready to Start!", variant: "default" as const, icon: Zap, bgClass: "bg-chart-2 text-white" };
-  };
-
-  const status = getSessionStatus();
+  const statusBadge = activeSession ? (
+    <Badge className="gap-1.5 border-primary/30 bg-primary/10 text-primary" variant="outline">
+      <Activity className="h-3.5 w-3.5" /> Live session
+    </Badge>
+  ) : (
+    <Badge className="gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-500" variant="outline">
+      <ShieldCheck className="h-3.5 w-3.5" /> Ready
+    </Badge>
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold font-serif">Mining</h1>
-        <p className="text-muted-foreground">Fully automated 24-hour mining sessions with auto-deposit rewards</p>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1.5 rounded-full px-3 py-1">
+              <Sparkles className="h-3.5 w-3.5" /> Mining v2
+            </Badge>
+            <Badge variant="outline" className="rounded-full px-3 py-1">
+              {MINING_XNRT_REWARD} XNRT / {MINING_DURATION_HOURS}h
+            </Badge>
+          </div>
+          <h1 className="text-3xl font-bold font-serif">Mining</h1>
+          <p className="text-muted-foreground">
+            Start one professional 24-hour session and earn exactly {MINING_XP_REWARD} XP + {MINING_XNRT_REWARD} XNRT.
+          </p>
+        </div>
+        {statusBadge}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-1">
-        <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Mining Session</CardTitle>
-              <Badge 
-                variant={status.variant}
-                className={`gap-1.5 ${status.bgClass}`}
-                data-testid="badge-status"
-              >
-                <status.icon className="h-3.5 w-3.5" />
-                {status.label}
-              </Badge>
+      {(currentError || sessionsError) && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex items-start gap-3 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
+            <div>
+              <p className="font-semibold text-destructive">Mining data could not load</p>
+              <p className="text-sm text-muted-foreground">
+                Please refresh the page. Backend routes required: /api/mining/current, /api/mining/history, and /api/mining/process-rewards.
+              </p>
             </div>
-            <CardDescription>
-              {isSessionActive && "Your mining session will auto-complete in 24 hours and rewards will be deposited automatically"}
-              {isReady && "Click START to begin a 24-hour automated mining session"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-center">
-              <div className="relative">
-                <div
-                  className={`w-40 h-40 rounded-full flex items-center justify-center transition-all ${
-                    isSessionActive
-                      ? "bg-gradient-to-br from-chart-2 to-chart-3"
-                      : isReady && !startDisabled
-                      ? "bg-gradient-to-br from-primary to-secondary hover:scale-105 active:scale-95 animate-pulse cursor-pointer"
-                      : "bg-muted cursor-not-allowed opacity-50"
-                  }`}
-                  onClick={() => {
-                    if (isReady && !startDisabled) {
-                      startMiningMutation.mutate();
-                    }
-                  }}
-                  aria-label="Start mining"
-                  data-testid="button-mining-start"
-                >
-                  <div className="text-center">
-                    <Pickaxe className="h-16 w-16 text-white mx-auto mb-2" />
-                    <p className="text-white font-bold">
-                      {isSessionActive ? "MINING" : "START"}
-                    </p>
-                  </div>
-                </div>
-              </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
+              <Coins className="h-5 w-5" />
             </div>
-
-            {isSessionActive && (
-              <>
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 text-lg font-mono font-semibold text-chart-2">
-                    <Clock className="h-5 w-5" />
-                    <span data-testid="text-active-countdown">{timeLeft}</span>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Base Reward:</span>
-                    <span className="font-bold text-chart-2 text-xl">{nf(currentSession.baseReward)} XP</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">XNRT Conversion:</span>
-                    <span className="font-bold text-chart-2 text-xl">{(currentSession.baseReward * XP_TO_XNRT_RATE).toFixed(1)} XNRT</span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {isReady && (
-              <div className="text-center space-y-2">
-                <p className="text-lg font-semibold text-chart-2">Ready to Mine!</p>
-                <p className="text-sm text-muted-foreground">Earn {nf(baseReward)} XP and {(baseReward * XP_TO_XNRT_RATE).toFixed(1)} XNRT automatically after 24 hours</p>
-              </div>
-            )}
+            <div>
+              <p className="text-sm text-muted-foreground">Reward per session</p>
+              <p className="text-xl font-bold">{MINING_XNRT_REWARD} XNRT</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-chart-2/10 text-chart-2">
+              <Zap className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">XP reward</p>
+              <p className="text-xl font-bold">{MINING_XP_REWARD} XP</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-muted text-foreground">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Mining balance</p>
+              <p className="text-xl font-bold">{nf(balance?.miningBalance || 0)} XNRT</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-muted text-foreground">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Completed</p>
+              <p className="text-xl font-bold">{nf(historyStats.completed)} sessions</p>
+            </div>
           </CardContent>
         </Card>
       </div>
 
+      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card">
+        <CardContent className="p-0">
+          <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="space-y-6 p-5 sm:p-6 lg:p-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle className="text-2xl sm:text-3xl">24-hour mining session</CardTitle>
+                  <CardDescription className="mt-2 max-w-2xl">
+                    Rewards are deposited automatically when the timer reaches zero. You can start the next session after the current one completes.
+                  </CardDescription>
+                </div>
+                {statusBadge}
+              </div>
+
+              {currentLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-24 w-full rounded-2xl" />
+                  <Skeleton className="h-4 w-full rounded-full" />
+                  <Skeleton className="h-11 w-44" />
+                </div>
+              ) : activeSession ? (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border bg-background/60 p-4 sm:p-5">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Time remaining</p>
+                        <p className="font-mono text-3xl font-black tracking-tight sm:text-5xl" data-testid="text-active-countdown">
+                          {formatCountdown(remainingMs)}
+                        </p>
+                      </div>
+                      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg sm:h-20 sm:w-20">
+                        <Pickaxe className="h-8 w-8 sm:h-10 sm:w-10" />
+                      </div>
+                    </div>
+                    <Progress value={progress} className="h-3" />
+                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Started: {formatDate(activeSession.startTime)}</span>
+                      <span>{nf(progress, { maximumFractionDigits: 1 })}%</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <RewardMiniCard icon={Coins} label="XNRT reward" value={`+${MINING_XNRT_REWARD} XNRT`} />
+                    <RewardMiniCard icon={Zap} label="XP reward" value={`+${MINING_XP_REWARD} XP`} />
+                    <RewardMiniCard icon={Clock} label="Ends at" value={formatDate(activeSession.endTime)} />
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => processRewardsMutation.mutate()}
+                      disabled={processRewardsMutation.isPending}
+                      data-testid="button-process-mining-rewards"
+                    >
+                      <TimerReset className="h-4 w-4" />
+                      Check rewards
+                    </Button>
+                    <Button type="button" variant="outline" onClick={invalidateMiningQueries}>
+                      Refresh status
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border bg-background/60 p-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-emerald-500">Ready to mine</p>
+                        <p className="mt-1 text-2xl font-black">Earn {MINING_XNRT_REWARD} XNRT in 24 hours</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Fixed reward: {MINING_XP_REWARD} XP + {MINING_XNRT_REWARD} XNRT per completed session.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="lg"
+                        className="min-h-14 rounded-xl px-8 text-base font-bold"
+                        disabled={!canStartMining || startMiningMutation.isPending}
+                        onClick={() => startMiningMutation.mutate()}
+                        data-testid="button-mining-start"
+                      >
+                        <Pickaxe className="h-5 w-5" />
+                        {startMiningMutation.isPending ? "Starting..." : "Start Mining"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <RewardMiniCard icon={ShieldCheck} label="Rule" value="1 active session" />
+                    <RewardMiniCard icon={Clock} label="Duration" value="24 hours" />
+                    <RewardMiniCard icon={Sparkles} label="Auto deposit" value="Enabled" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t bg-background/40 p-5 sm:p-6 lg:border-l lg:border-t-0 lg:p-8">
+              <div className="mb-5 flex items-center gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <Activity className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="font-bold">Mining performance</h2>
+                  <p className="text-sm text-muted-foreground">Lifetime summary from your history</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <SummaryRow label="Total sessions" value={nf(sessions.length)} />
+                <SummaryRow label="Completed sessions" value={nf(historyStats.completed)} />
+                <SummaryRow label="XP mined" value={`${nf(historyStats.totalXp)} XP`} />
+                <SummaryRow label="XNRT mined" value={`${nf(historyStats.totalXnrt, { maximumFractionDigits: 1 })} XNRT`} />
+              </div>
+
+              <Separator className="my-5" />
+
+              <div className="rounded-2xl border bg-card p-4">
+                <div className="mb-2 flex items-center gap-2 font-semibold">
+                  <TimerReset className="h-4 w-4 text-primary" />
+                  Mining policy
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Mining v2 uses fixed rewards, not XP conversion. Each completed 24-hour session gives exactly {MINING_XP_REWARD} XP and {MINING_XNRT_REWARD} XNRT.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <CardTitle>Mining History</CardTitle>
-          <CardDescription>Your recent mining sessions</CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-muted">
+              <History className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle>Mining history</CardTitle>
+              <CardDescription>Your latest mining sessions and rewards</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {sessionsLoading ? (
-            <div className="space-y-2.5 sm:space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-20 rounded-xl border-white/10 bg-white/5 animate-pulse" role="status" aria-label="Loading sessions" />
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-20 rounded-xl" />
               ))}
             </div>
-          ) : !sessions || sessions.length === 0 ? (
-            <div className="text-center py-12">
-              <Pickaxe className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No mining sessions yet</p>
+          ) : sessions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed py-12 text-center">
+              <Pickaxe className="mx-auto mb-4 h-14 w-14 text-muted-foreground" />
+              <p className="font-semibold">No mining sessions yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">Start your first 24-hour session to create history.</p>
             </div>
           ) : (
-            <div className="space-y-2.5 sm:space-y-3">
-              {sessions.slice(0, 10).map((session) => {
-                const started = new Date(session.startTime);
-                const ended = session.endTime ? new Date(session.endTime) : null;
-                const durationHrs = ended
-                  ? Math.max(1, Math.round((+ended - +started) / 3_600_000))
-                  : 24;
-
-                const statusClass =
-                  session.status === "completed"
-                    ? "border-chart-2/30 bg-chart-2/10 text-chart-2"
-                    : "border-muted bg-muted/50 text-muted-foreground";
+            <div className="space-y-3">
+              {sessions.slice(0, 12).map((session) => {
+                const isCompleted = session.status === "completed";
+                const sessionReward = getSessionXnrtReward(session);
+                const sessionStart = toTime(session.startTime);
+                const sessionEnd = toTime(session.endTime);
+                const durationHours = sessionStart && sessionEnd
+                  ? Math.max(1, Math.round((sessionEnd.getTime() - sessionStart.getTime()) / 3_600_000))
+                  : MINING_DURATION_HOURS;
 
                 return (
                   <div
                     key={session.id}
-                    className="relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 transition-colors hover:bg-white/[0.05]"
+                    className="flex flex-col gap-3 rounded-2xl border bg-card p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
                     data-testid={`session-${session.id}`}
                   >
-                    {/* subtle decorative grid */}
-                    <div
-                      className="pointer-events-none absolute inset-0 opacity-[0.04] sm:opacity-[0.06]"
-                      aria-hidden="true"
-                      style={{
-                        backgroundImage:
-                          "linear-gradient(to right, rgba(255,255,255,.3) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,.3) 1px, transparent 1px)",
-                        backgroundSize: "20px 20px",
-                      }}
-                    />
-                    <div className="relative z-10 flex items-center gap-3 sm:gap-4">
-                      {/* icon plate */}
+                    <div className="flex min-w-0 items-center gap-3">
                       <div
-                        className={`grid h-10 w-10 sm:h-12 sm:w-12 place-items-center rounded-lg ${
-                          session.status === "completed" ? "bg-chart-2/20" : "bg-muted"
-                        }`}
+                        className={cn(
+                          "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
+                          isCompleted ? "bg-emerald-500/10 text-emerald-500" : "bg-primary/10 text-primary"
+                        )}
                       >
-                        <Pickaxe
-                          className={
-                            session.status === "completed"
-                              ? "text-chart-2"
-                              : "text-muted-foreground"
-                          }
-                          aria-hidden="true"
-                        />
+                        {isCompleted ? <CheckCircle2 className="h-5 w-5" /> : <Pickaxe className="h-5 w-5" />}
                       </div>
-
-                      {/* details */}
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold leading-none text-sm sm:text-base">Mining Session</p>
-                          <Badge
-                            variant="outline"
-                            className={`h-5 sm:h-6 rounded-full px-2 text-[10px] sm:text-[11px] capitalize border ${statusClass}`}
-                          >
+                          <p className="font-semibold">Mining session</p>
+                          <Badge variant="outline" className="capitalize">
                             {session.status}
                           </Badge>
                         </div>
-                        <p className="mt-0.5 sm:mt-1 text-[11px] sm:text-xs text-muted-foreground">
-                          {new Intl.DateTimeFormat(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          }).format(started)}
-                          {ended && (
-                            <span className="hidden sm:inline"> · {durationHrs}h</span>
-                          )}
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {formatDate(session.startTime)} · {durationHours}h
                         </p>
                       </div>
-
-                      {/* rewards */}
-                      <div className="text-right">
-                        <div className="font-bold text-chart-2 text-sm sm:text-base">
-                          +{nf(session.finalReward)} XP
-                        </div>
-                        <div className="text-[11px] sm:text-sm text-muted-foreground">
-                          +{(session.finalReward * XP_TO_XNRT_RATE).toFixed(1)} XNRT
-                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-left sm:text-right">
+                      <div>
+                        <p className="text-xs text-muted-foreground">XP</p>
+                        <p className="font-bold text-chart-2">+{nf(session.finalReward || MINING_XP_REWARD)} XP</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">XNRT</p>
+                        <p className="font-bold text-primary">+{nf(sessionReward, { maximumFractionDigits: 1 })} XNRT</p>
                       </div>
                     </div>
                   </div>
@@ -328,6 +509,35 @@ export default function Mining() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function RewardMiniCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border bg-background/60 p-4">
+      <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+        <Icon className="h-4 w-4" />
+        {label}
+      </div>
+      <p className="font-bold">{value}</p>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-xl border bg-card px-4 py-3">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="font-bold">{value}</span>
     </div>
   );
 }
