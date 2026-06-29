@@ -1,5 +1,6 @@
 // server/storage.ts
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "./lib/db";
 import crypto from "crypto";
 import { nanoid } from "nanoid";
 import {
@@ -31,7 +32,6 @@ import {
   type InsertPushSubscription,
 } from "@shared/schema";
 
-const prisma = new PrismaClient();
 
 export const MINING_SESSION_DURATION_HOURS = 24;
 export const MINING_SESSION_DURATION_MS = MINING_SESSION_DURATION_HOURS * 60 * 60 * 1000;

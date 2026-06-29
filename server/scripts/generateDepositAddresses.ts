@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma, disconnectPrisma } from '../lib/db';
 import { deriveDepositAddress } from '../services/hdWallet';
 
-const prisma = new PrismaClient();
 
 /**
  * Migration script to generate unique deposit addresses for all existing users
@@ -78,7 +77,7 @@ async function generateDepositAddresses() {
     console.error('❌ Error during address generation:', error);
     throw error;
   } finally {
-    await prisma.$disconnect();
+    await disconnectPrisma();
   }
 }
 

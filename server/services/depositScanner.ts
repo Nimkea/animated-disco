@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../lib/db";
 import { storage } from "../storage";
 
-const prisma = new PrismaClient();
 
 const RPC_URL = process.env.RPC_BSC_URL || "";
 const USDT_ADDRESS = (process.env.USDT_BSC_ADDRESS || "").toLowerCase();

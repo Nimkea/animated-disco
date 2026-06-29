@@ -7,6 +7,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 import { startDepositScanner } from "./services/depositScanner";
 import { logTokenServiceStatus } from "./services/tokenService";
+import { disconnectPrisma } from "./lib/db";
 
 const app = express();
 
@@ -209,7 +210,9 @@ app.get("/readyz", (_req, res) => res.status(200).json({ ready: true }));
     stopRetryWorker();
     server.close(() => {
       log("Server closed");
-      process.exit(0);
+      disconnectPrisma()
+        .catch((err) => console.error("[prisma] disconnect failed:", err))
+        .finally(() => process.exit(0));
     });
     // Force exit if close hangs
     setTimeout(() => process.exit(1), 10_000).unref();

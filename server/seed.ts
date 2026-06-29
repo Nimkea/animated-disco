@@ -1,6 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma, disconnectPrisma } from "./lib/db";
 
-const prisma = new PrismaClient();
 
 async function seed() {
   try {
@@ -167,7 +166,7 @@ async function seed() {
     console.error("Error seeding database:", error);
     throw error;
   } finally {
-    await prisma.$disconnect();
+    await disconnectPrisma();
   }
 }
 

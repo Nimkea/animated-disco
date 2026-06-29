@@ -24,7 +24,8 @@ import {
   type StakingTier,
   insertAnnouncementSchema,
 } from "../shared/schema";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { prisma } from "./lib/db";
 import { notifyUser, sendPushNotification } from "./notifications";
 import webpush from "web-push";
 import rateLimit from "express-rate-limit";
@@ -34,7 +35,6 @@ import { ethers } from "ethers";
 import { deriveDepositAddress } from "./services/hdWallet";
 import { mintXNRT, isTokenServiceReady, getTxExplorerUrl } from "./services/tokenService";
 
-export const prisma = new PrismaClient();
 
 /* ─────────────────────── Trust Loan configuration ──────────────────────── */
 const TRUST_LOAN_CONFIG = {
