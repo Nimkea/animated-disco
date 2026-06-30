@@ -53,13 +53,15 @@ export default function Withdrawal() {
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/withdrawals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
       setAmount("");
       setWalletAddress("");
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({ title: "Unauthorized", description: "You are logged out. Logging in again...", variant: "destructive" });
-        setTimeout(() => { window.location.href = "/api/login"; }, 500);
+        setTimeout(() => { window.location.href = "/auth"; }, 500);
         return;
       }
       toast({ title: "Error", description: error.message || "Failed to request withdrawal", variant: "destructive" });

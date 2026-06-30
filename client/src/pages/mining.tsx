@@ -80,8 +80,9 @@ function invalidateMiningQueries() {
   queryClient.invalidateQueries({ queryKey: ["/api/mining/history"] });
   queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
   queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
   queryClient.invalidateQueries({ queryKey: ["/api/achievements"] });
-  queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/tasks/user"] });
   queryClient.invalidateQueries({ queryKey: ["/api/leaderboard/xp"] });
 }
 

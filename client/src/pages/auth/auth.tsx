@@ -429,7 +429,7 @@ export default function Auth() {
               <p className="text-sm text-muted-foreground">
                 Or continue with{" "}
                 <a 
-                  href="/api/login" 
+                  href="/auth" 
                   className="text-primary hover:underline font-medium"
                   data-testid="link-replit-login"
                 >

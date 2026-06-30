@@ -99,6 +99,9 @@ export default function Staking() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/stakes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
     },
   });
 
@@ -117,6 +120,9 @@ export default function Staking() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/stakes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
       setAmount("");
       setSelectedTier(null);
       setShowCreateDialog(false);
@@ -129,7 +135,7 @@ export default function Staking() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          window.location.href = "/auth";
         }, 500);
         return;
       }
@@ -152,6 +158,9 @@ export default function Staking() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/stakes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
       setSelectedStakeToWithdraw(null);
     },
     onError: (error: Error) => {

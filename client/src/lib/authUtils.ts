@@ -34,6 +34,6 @@ export function handleUnauthorized(toast: (options: any) => void) {
   
   // Give the toast a tick to render before redirect
   setTimeout(() => {
-    window.location.href = "/api/login";
+    window.location.href = "/auth";
   }, 500);
 }

@@ -107,7 +107,7 @@ export function registerCommunityRoutes(app: Express, ctx: RouteContext) {
     }
   });
 
-  app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
+  app.patch("/api/notifications/:id/read", requireAuth, validateCSRF, async (req, res) => {
     try {
       const { id } = req.params;
       const userId = req.authUser!.id;
@@ -134,6 +134,7 @@ export function registerCommunityRoutes(app: Express, ctx: RouteContext) {
   app.post(
     "/api/notifications/mark-all-read",
     requireAuth,
+    validateCSRF,
     async (req, res) => {
       try {
         const userId = req.authUser!.id;

@@ -95,7 +95,9 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ["/api/achievements"] });
       queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/profile/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -105,7 +107,7 @@ export default function Tasks() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          window.location.href = "/auth";
         }, 500);
         return;
       }

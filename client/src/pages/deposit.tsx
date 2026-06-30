@@ -65,6 +65,8 @@ export default function Deposit() {
       toast({ title: "Deposit Submitted", description: "Your deposit is queued for verification/admin review." });
       queryClient.invalidateQueries({ queryKey: ["/api/transactions/deposits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
       setUsdtAmount("");
       setTransactionHash("");
       setNotes("");
@@ -72,7 +74,7 @@ export default function Deposit() {
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({ title: "Unauthorized", description: "You are logged out. Logging in again...", variant: "destructive" });
-        setTimeout(() => { window.location.href = "/api/login"; }, 500);
+        setTimeout(() => { window.location.href = "/auth"; }, 500);
         return;
       }
       toast({ title: "Error", description: error.message || "Failed to submit deposit", variant: "destructive" });
