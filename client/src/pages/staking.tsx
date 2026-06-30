@@ -7,7 +7,6 @@ import { StakingSummaryCards } from "./staking/summary-cards";
 import { StakingTierGrid } from "./staking/tier-grid";
 import { StakingPositionsTab } from "./staking/positions-tab";
 import { StakingHistoryTab } from "./staking/history-tab";
-import { TrustLoanPanel } from "./staking/trust-loan-panel";
 import { CreateStakeDialog } from "./staking/create-stake-dialog";
 import { useStakingPage } from "./staking/use-staking-page";
 import { buildTierSummaries, formatXnrt } from "./staking/utils";
@@ -45,7 +44,6 @@ export default function Staking() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="positions">Positions</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="trust-loan">Trust Loan</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -76,17 +74,6 @@ export default function Staking() {
           />
         </TabsContent>
 
-        <TabsContent value="trust-loan" className="space-y-4">
-          <TrustLoanPanel
-            summary={staking.summary}
-            trustLoanStatus={staking.trustLoanStatus}
-            trustDirectProgress={staking.trustDirectProgress}
-            trustInvestorProgress={staking.trustInvestorProgress}
-            canClaimTrustLoan={staking.canClaimTrustLoan}
-            isClaiming={staking.claimTrustLoanMutation.isPending}
-            onClaim={() => staking.claimTrustLoanMutation.mutate()}
-          />
-        </TabsContent>
       </Tabs>
 
       <CreateStakeDialog

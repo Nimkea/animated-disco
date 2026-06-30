@@ -27,10 +27,10 @@ export function StakingHero({
             <Badge className="w-fit bg-primary/15 text-primary hover:bg-primary/20">Staking v3</Badge>
             <div>
               <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-                Professional XNRT Staking
+                XNRT STAKING
               </h1>
               <p className="mt-2 max-w-2xl text-muted-foreground">
-                Create platform reward positions, track maturity countdowns, refresh due rewards, and separate normal staking from Trust Loan profit-only rewards.
+                Create XNRT staking positions, track maturity countdowns, and refresh due rewards from one clean dashboard.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">

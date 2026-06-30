@@ -4,7 +4,7 @@ import { STAKING_TIERS, type StakingTier } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Stake, StakingSummary, TrustLoanStatus } from "./types";
+import type { Stake, StakingSummary } from "./types";
 import { formatXnrt, toNumber } from "./utils";
 
 function invalidateStakingQueries() {
@@ -14,7 +14,6 @@ function invalidateStakingQueries() {
   queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
   queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
   queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
-  queryClient.invalidateQueries({ queryKey: ["/api/trust-loan/status"] });
 }
 
 export function useStakingPage() {
@@ -29,9 +28,6 @@ export function useStakingPage() {
     queryKey: ["/api/stakes/summary"],
   });
 
-  const { data: trustLoanStatus } = useQuery<TrustLoanStatus>({
-    queryKey: ["/api/trust-loan/status"],
-  });
 
   const processRewardsMutation = useMutation({
     mutationFn: async () => apiRequest("POST", "/api/stakes/process-rewards", {}),
@@ -91,16 +87,6 @@ export function useStakingPage() {
     },
   });
 
-  const claimTrustLoanMutation = useMutation({
-    mutationFn: async () => apiRequest("POST", "/api/trust-loan/claim", {}),
-    onSuccess: () => {
-      invalidateStakingQueries();
-      toast({ title: "Trust Loan claimed", description: "Your virtual Trust Loan stake is now active." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message || "Failed to claim Trust Loan", variant: "destructive" });
-    },
-  });
 
   const selectedTierConfig = STAKING_TIERS[selectedTier];
   const enteredAmount = toNumber(amount);
@@ -123,23 +109,9 @@ export function useStakingPage() {
     return withdrawn.filter((stake) => stake.tier === historyFilter);
   }, [summary?.stakes, historyFilter]);
 
-  const trustLoan = trustLoanStatus ?? summary?.trustLoan;
-  const trustDirectProgress = Math.min(
-    100,
-    ((trustLoan?.directCount ?? 0) / Math.max(1, trustLoan?.requiredReferrals ?? 1)) * 100
-  );
-  const trustInvestorProgress = Math.min(
-    100,
-    ((trustLoan?.investingCount ?? 0) / Math.max(1, trustLoan?.requiredInvestingReferrals ?? 1)) * 100
-  );
-  const eligibleFromStatus = trustLoan && "eligible" in trustLoan ? Boolean((trustLoan as TrustLoanStatus).eligible) : false;
-  const canClaimTrustLoan =
-    Boolean(eligibleFromStatus || (trustDirectProgress >= 100 && trustInvestorProgress >= 100)) &&
-    !trustLoanStatus?.hasLoanStake;
 
   return {
     summary,
-    trustLoanStatus,
     isLoading,
     selectedTier,
     setSelectedTier,
@@ -156,12 +128,8 @@ export function useStakingPage() {
     dailyProfit,
     projectedProfit,
     canCreateStake,
-    trustDirectProgress,
-    trustInvestorProgress,
-    canClaimTrustLoan,
     processRewardsMutation,
     createStakeMutation,
     withdrawStakeMutation,
-    claimTrustLoanMutation,
   };
 }

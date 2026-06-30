@@ -48,9 +48,9 @@ export function CreateStakeDialog({
         <div className="space-y-5">
           <Alert className="border-amber-500/30 bg-amber-500/5">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Simulated platform rewards</AlertTitle>
+            <AlertTitle>Reward calculation notice</AlertTitle>
             <AlertDescription>
-              Daily rates are app reward mechanics. They are not guaranteed financial returns and may change by platform policy.
+              Daily rates are calculated by the platform rules and may change by policy. Review the selected tier before creating a stake.
             </AlertDescription>
           </Alert>
 

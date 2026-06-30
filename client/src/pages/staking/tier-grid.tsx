@@ -46,9 +46,6 @@ export function StakingTierGrid({
             </div>
             <div className="rounded-xl bg-background/60 p-3 text-xs text-muted-foreground">
               <p>Projected reward at minimum: {formatXnrt(tier.estimatedTotalProfitAtMin ?? 0)} XNRT.</p>
-              <p className="mt-1 font-medium text-amber-600">
-                {tier.riskLabel ?? "Simulated platform reward; not guaranteed yield."}
-              </p>
             </div>
             <Button
               variant={selectedTier === tier.key ? "default" : "outline"}

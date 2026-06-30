@@ -57,7 +57,16 @@ type TrustLoanStatus = {
   eligible: boolean;
   program: string;
   amountXnrt: number;
+  dailyRate?: number;
   durationDays: number;
+  projectedProfit?: number;
+  config?: {
+    enabled: boolean;
+    title: string;
+    description: string;
+    terms: string;
+    dailyRate: number;
+  };
 };
 
 function toNumber(value: unknown, fallback = 0) {
@@ -250,11 +259,18 @@ export default function TrustLoanPage() {
   const directProgress = percent(status.directCount, status.requiredReferrals);
   const investingProgress = percent(status.investingCount, status.requiredInvestingReferrals);
   const overallProgress = Math.round((directProgress + investingProgress) / 2);
-  const canClaim = status.eligible && !status.hasLoanStake;
+  const config = status.config;
+  const programEnabled = config?.enabled ?? true;
+  const programTitle = config?.title || "Trust Loan";
+  const programDescription = config?.description ||
+    `Trust Loan gives qualified users a virtual ${nf(status.amountXnrt)} XNRT staking principal for ${nf(status.durationDays)} days.`;
+  const programTerms = config?.terms ||
+    "Trust Loan is a rewards program feature. It is not a cash loan and it does not add withdrawable principal to the user wallet.";
+  const canClaim = programEnabled && status.eligible && !status.hasLoanStake;
   const stake = status.stake;
   const stakeProfit = toNumber(stake?.totalProfit);
-  const dailyRate = toNumber(stake?.dailyRate, 1.3);
-  const projectedProfit = (status.amountXnrt * dailyRate * status.durationDays) / 100;
+  const dailyRate = toNumber(stake?.dailyRate, toNumber(status.dailyRate, config?.dailyRate ?? 1.3));
+  const projectedProfit = toNumber(status.projectedProfit, (status.amountXnrt * dailyRate * status.durationDays) / 100);
 
   return (
     <div className="space-y-6">
@@ -265,13 +281,13 @@ export default function TrustLoanPage() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
               <Badge className="mb-4 gap-2 bg-amber-500/15 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300">
-                <HandCoins className="h-3.5 w-3.5" /> Trust Loan Program
+                <HandCoins className="h-3.5 w-3.5" /> {programEnabled ? "Trust Loan Program" : "Trust Loan Disabled"}
               </Badge>
               <h1 className="font-serif text-3xl font-bold leading-tight sm:text-5xl">
-                Unlock a virtual staking principal through referrals
+                {programTitle}
               </h1>
               <p className="mt-4 text-sm leading-6 text-muted-foreground sm:text-base">
-                Trust Loan gives qualified users a virtual {nf(status.amountXnrt)} XNRT staking principal for {nf(status.durationDays)} days. The principal is not withdrawable; only generated platform reward profit can be withdrawn after maturity.
+                {programDescription} The principal is not withdrawable; only generated platform reward profit can be withdrawn after maturity.
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button
@@ -281,7 +297,7 @@ export default function TrustLoanPage() {
                   data-testid="button-trust-loan-claim"
                 >
                   <Gift className="h-4 w-4" />
-                  {status.hasLoanStake ? "Already Claimed" : canClaim ? "Claim Trust Loan" : "Eligibility Pending"}
+                  {status.hasLoanStake ? "Already Claimed" : !programEnabled ? "Program Disabled" : canClaim ? "Claim Trust Loan" : "Eligibility Pending"}
                 </Button>
                 <Button asChild variant="outline" className="gap-2 rounded-2xl">
                   <Link href="/referrals">
@@ -324,6 +340,14 @@ export default function TrustLoanPage() {
           </div>
         </CardContent>
       </Card>
+
+      {!programEnabled && (
+        <Alert className="rounded-3xl border-muted-foreground/30 bg-muted/40">
+          <LockKeyhole className="h-4 w-4" />
+          <AlertTitle>Trust Loan is currently disabled</AlertTitle>
+          <AlertDescription>Admin has paused new claims. Existing claimed Trust Loan stakes remain visible in your staking history.</AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <MetricCard
@@ -419,7 +443,7 @@ export default function TrustLoanPage() {
                 </div>
                 <Button asChild className="w-full gap-2 rounded-2xl">
                   <Link href="/staking">
-                    Manage in Staking <ArrowRight className="h-4 w-4" />
+                    View Staking Positions <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               </div>
@@ -466,7 +490,7 @@ export default function TrustLoanPage() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Important Trust Loan rule</AlertTitle>
             <AlertDescription>
-              Trust Loan is a rewards program feature. It is not a cash loan and it does not add withdrawable principal to the user wallet. Only platform-generated profit is withdrawable according to staking maturity rules.
+              {programTerms}
             </AlertDescription>
           </Alert>
           <Card className="rounded-3xl">
@@ -479,7 +503,7 @@ export default function TrustLoanPage() {
                 <Link href="/referrals"><Users className="h-5 w-5 text-primary" /> Referral Dashboard</Link>
               </Button>
               <Button asChild variant="outline" className="h-auto justify-start gap-3 rounded-2xl p-4">
-                <Link href="/staking"><Gem className="h-5 w-5 text-primary" /> Staking Dashboard</Link>
+                <Link href="/staking"><Gem className="h-5 w-5 text-primary" /> Staking Positions</Link>
               </Button>
               <Button asChild variant="outline" className="h-auto justify-start gap-3 rounded-2xl p-4">
                 <Link href="/wallet"><Wallet className="h-5 w-5 text-primary" /> Wallet</Link>
