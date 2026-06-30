@@ -20,13 +20,13 @@ export interface FeatureFlags {
 const defaultFlags: FeatureFlags = {
   pwa: {
     offline: true,  // PWA offline support enabled
-    push: false,    // Push notifications not yet implemented
+    push: true,     // Push notifications enabled
     realtime: false, // WebSocket realtime not yet implemented
   },
   ux: {
     animations: true,  // Framer Motion animations enabled
     haptics: false,    // Haptic feedback not yet implemented
-    sounds: false,     // Sound effects not yet implemented
+    sounds: true,      // Foreground notification sounds enabled
   },
   admin: {
     analytics: true,   // Admin analytics enabled

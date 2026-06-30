@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import webpush from "web-push";
+import { shouldCreateInAppNotification, shouldSendPushNotification } from "./services/notificationPreference.service";
 
 const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || "").replace(/^"publicKey":"/, '').replace(/"$/, '');
 const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || "").replace(/^"privateKey":"/, '').replace(/}$/, '').replace(/"$/, '');
@@ -17,6 +18,12 @@ export async function sendPushNotification(
 ): Promise<boolean> {
   if (!ENABLE_PUSH_NOTIFICATIONS) {
     console.log(`Push notifications disabled`);
+    return false;
+  }
+
+  const notificationType = typeof payload.data?.type === "string" ? payload.data.type : undefined;
+  if (!(await shouldSendPushNotification(userId, notificationType))) {
+    console.log(`Push notification skipped by user preferences for user ${userId}`);
     return false;
   }
 
@@ -77,6 +84,12 @@ export async function notifyUser(
   }
 ) {
   try {
+    const shouldCreate = await shouldCreateInAppNotification(userId, notification.type);
+    if (!shouldCreate) {
+      console.log(`[Notifications] In-app notification skipped by preferences for user ${userId}: ${notification.type}`);
+      return null;
+    }
+
     const createdNotification = await storage.createNotification({
       userId,
       type: notification.type,

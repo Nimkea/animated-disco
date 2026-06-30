@@ -6,6 +6,7 @@ import { registerAdminWithdrawalRoutes } from "./admin/withdrawals.routes";
 import { registerAdminStakeRoutes } from "./admin/stakes.routes";
 import { registerAdminAnalyticsRoutes } from "./admin/analytics.routes";
 import { registerAdminAnnouncementRoutes } from "./admin/announcements.routes";
+import { registerAdminNotificationRoutes } from "./admin/notifications.routes";
 
 export function registerAdminRoutes(app: Express, ctx: RouteContext) {
   registerAdminOverviewRoutes(app, ctx);
@@ -14,4 +15,5 @@ export function registerAdminRoutes(app: Express, ctx: RouteContext) {
   registerAdminStakeRoutes(app, ctx);
   registerAdminAnalyticsRoutes(app, ctx);
   registerAdminAnnouncementRoutes(app, ctx);
+  registerAdminNotificationRoutes(app, ctx);
 }

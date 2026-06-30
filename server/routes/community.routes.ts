@@ -5,6 +5,10 @@ import {
   getReferralStatsForUser,
   getReferralTreeForUser,
 } from "../services/referral.service";
+import {
+  getNotificationPreferenceSummary,
+  updateNotificationPreference,
+} from "../services/notificationPreference.service";
 
 export function registerCommunityRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -118,19 +122,66 @@ export function registerCommunityRoutes(app: Express, ctx: RouteContext) {
       const vapidConfigured = Boolean(VAPID_PUBLIC_KEY);
       const pushEnabled = process.env.ENABLE_PUSH_NOTIFICATIONS !== "false" && vapidConfigured;
 
+      const preferences = await getNotificationPreferenceSummary(userId);
+
       res.json({
         unreadCount,
         subscriptions: subscriptions.length,
         pendingPush,
-        pushEnabled,
+        pushEnabled: pushEnabled && preferences.pushEnabled,
+        serverPushEnabled: pushEnabled,
         vapidConfigured,
         foregroundSoundSupported: true,
+        preferences,
       });
     } catch (error) {
       console.error("Error fetching notification status:", error);
       res.status(500).json({ message: "Failed to fetch notification status" });
     }
   });
+
+
+  app.get("/api/notifications/preferences", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const preferences = await getNotificationPreferenceSummary(userId);
+      res.json(preferences);
+    } catch (error) {
+      console.error("Error fetching notification preferences:", error);
+      res.status(500).json({ message: "Failed to fetch notification preferences" });
+    }
+  });
+
+  app.patch(
+    "/api/notifications/preferences",
+    requireAuth,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        const userId = req.authUser!.id;
+        const payload = {
+          pushEnabled: typeof req.body.pushEnabled === "boolean" ? req.body.pushEnabled : undefined,
+          inAppEnabled: typeof req.body.inAppEnabled === "boolean" ? req.body.inAppEnabled : undefined,
+          inAppSoundEnabled: typeof req.body.inAppSoundEnabled === "boolean" ? req.body.inAppSoundEnabled : undefined,
+          soundVolume: req.body.soundVolume,
+          soundType: req.body.soundType,
+          walletAlerts: typeof req.body.walletAlerts === "boolean" ? req.body.walletAlerts : undefined,
+          miningAlerts: typeof req.body.miningAlerts === "boolean" ? req.body.miningAlerts : undefined,
+          stakingAlerts: typeof req.body.stakingAlerts === "boolean" ? req.body.stakingAlerts : undefined,
+          referralAlerts: typeof req.body.referralAlerts === "boolean" ? req.body.referralAlerts : undefined,
+          achievementAlerts: typeof req.body.achievementAlerts === "boolean" ? req.body.achievementAlerts : undefined,
+          taskAlerts: typeof req.body.taskAlerts === "boolean" ? req.body.taskAlerts : undefined,
+          systemAlerts: typeof req.body.systemAlerts === "boolean" ? req.body.systemAlerts : undefined,
+          adminBroadcastAlerts: typeof req.body.adminBroadcastAlerts === "boolean" ? req.body.adminBroadcastAlerts : undefined,
+        };
+        const preferences = await updateNotificationPreference(userId, payload);
+        res.json(preferences);
+      } catch (error) {
+        console.error("Error updating notification preferences:", error);
+        res.status(500).json({ message: "Failed to update notification preferences" });
+      }
+    }
+  );
 
   app.patch("/api/notifications/:id/read", requireAuth, validateCSRF, async (req, res) => {
     try {

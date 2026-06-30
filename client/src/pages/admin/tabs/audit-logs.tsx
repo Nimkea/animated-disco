@@ -57,6 +57,7 @@ const ENTITY_OPTIONS = [
   { label: "Deposit reports", value: "deposit_report" },
   { label: "Unmatched deposits", value: "unmatched_deposit" },
   { label: "Scanner", value: "scanner" },
+  { label: "Notification broadcasts", value: "notification_broadcast" },
   { label: "Stakes", value: "stake" },
   { label: "Users", value: "user" },
 ];
@@ -76,6 +77,8 @@ const ACTION_OPTIONS = [
   { label: "Withdrawal approve", value: "withdrawal_approve" },
   { label: "Withdrawal reject", value: "withdrawal_reject" },
   { label: "Scanner manual run", value: "scanner_manual_run" },
+  { label: "Broadcast all", value: "notification_broadcast_all" },
+  { label: "Broadcast user", value: "notification_broadcast_user" },
   { label: "Unmatched deposit match", value: "unmatched_deposit_match" },
 ];
 

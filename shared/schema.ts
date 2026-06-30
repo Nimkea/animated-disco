@@ -312,6 +312,47 @@ export type InsertActivity = {
   metadata?: string | null;
 };
 
+
+// ─── Notification Preferences ───────────────────────────────────────────────
+
+export interface NotificationPreference {
+  id: string;
+  userId: string;
+  pushEnabled: boolean;
+  inAppEnabled: boolean;
+  inAppSoundEnabled: boolean;
+  soundVolume: number;
+  soundType: string;
+  walletAlerts: boolean;
+  miningAlerts: boolean;
+  stakingAlerts: boolean;
+  referralAlerts: boolean;
+  achievementAlerts: boolean;
+  taskAlerts: boolean;
+  systemAlerts: boolean;
+  adminBroadcastAlerts: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const notificationPreferenceUpdateSchema = z.object({
+  pushEnabled: z.boolean().optional(),
+  inAppEnabled: z.boolean().optional(),
+  inAppSoundEnabled: z.boolean().optional(),
+  soundVolume: z.number().int().min(0).max(100).optional(),
+  soundType: z.enum(["default", "success", "reward", "warning", "silent"]).optional(),
+  walletAlerts: z.boolean().optional(),
+  miningAlerts: z.boolean().optional(),
+  stakingAlerts: z.boolean().optional(),
+  referralAlerts: z.boolean().optional(),
+  achievementAlerts: z.boolean().optional(),
+  taskAlerts: z.boolean().optional(),
+  systemAlerts: z.boolean().optional(),
+  adminBroadcastAlerts: z.boolean().optional(),
+});
+
+export type NotificationPreferenceUpdate = z.infer<typeof notificationPreferenceUpdateSchema>;
+
 // ─── Notification ────────────────────────────────────────────────────────────
 
 export interface Notification {

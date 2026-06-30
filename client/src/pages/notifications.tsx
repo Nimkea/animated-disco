@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from "@/lib/queryClient";
-import { NotificationSoundSettings } from "@/components/notification-sound-settings";
+import { NotificationPreferencesPanel } from "@/components/notification-preferences";
 import type { Notification as AppNotification } from "@shared/schema";
 
 interface NotificationStatusResponse {
@@ -287,7 +287,7 @@ export default function NotificationsPage() {
         </Card>
 
         <div className="space-y-6">
-          <NotificationSoundSettings />
+          <NotificationPreferencesPanel />
 
           <Card>
             <CardHeader>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getNotificationSoundSettings,
   inferNotificationSound,
@@ -7,12 +7,36 @@ import {
   saveNotificationSoundSettings,
   type NotificationSoundSettings,
 } from "@/lib/notification-sound";
+import { apiRequest } from "@/lib/queryClient";
 import type { Notification as AppNotification } from "@shared/schema";
 
+type NotificationPreferenceLike = {
+  inAppSoundEnabled: boolean;
+  soundVolume: number;
+  soundType: NotificationSoundSettings["sound"];
+};
+
 export function useNotificationSoundSettings() {
+  const queryClient = useQueryClient();
   const [settings, setSettings] = useState<NotificationSoundSettings>(() =>
     getNotificationSoundSettings(),
   );
+
+  const { data: preferences } = useQuery<NotificationPreferenceLike>({
+    queryKey: ["/api/notifications/preferences"],
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!preferences) return;
+    const next: NotificationSoundSettings = {
+      enabled: preferences.inAppSoundEnabled,
+      volume: preferences.soundVolume,
+      sound: preferences.soundType || "default",
+    };
+    saveNotificationSoundSettings(next);
+    setSettings(next);
+  }, [preferences]);
 
   useEffect(() => {
     const syncSettings = () => setSettings(getNotificationSoundSettings());
@@ -34,6 +58,20 @@ export function useNotificationSoundSettings() {
     const next = { ...getNotificationSoundSettings(), ...patch };
     saveNotificationSoundSettings(next);
     setSettings(next);
+
+    void apiRequest("PATCH", "/api/notifications/preferences", {
+      inAppSoundEnabled: next.enabled,
+      soundVolume: next.volume,
+      soundType: next.sound,
+    })
+      .then((res) => res.json())
+      .then((updated) => {
+        queryClient.setQueryData(["/api/notifications/preferences"], updated);
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications/status"] });
+      })
+      .catch((error) => {
+        console.warn("Failed to sync notification sound preferences:", error);
+      });
   };
 
   return { settings, updateSettings };

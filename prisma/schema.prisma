@@ -47,6 +47,7 @@ model User {
   passwordResets  PasswordReset[]
   notifications   Notification[]
   pushSubscriptions PushSubscription[]
+  notificationPreference NotificationPreference?
   linkedWallets   LinkedWallet[]
   depositReports  DepositReport[]
   announcements   Announcement[]
@@ -304,6 +305,32 @@ model Notification {
   @@index([read])
   @@index([createdAt])
   @@index([pendingPush])
+}
+
+model NotificationPreference {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  pushEnabled           Boolean  @default(true)
+  inAppEnabled          Boolean  @default(true)
+  inAppSoundEnabled     Boolean  @default(true)
+  soundVolume           Int      @default(65)
+  soundType             String   @default("default")
+  walletAlerts          Boolean  @default(true)
+  miningAlerts          Boolean  @default(true)
+  stakingAlerts         Boolean  @default(true)
+  referralAlerts        Boolean  @default(true)
+  achievementAlerts     Boolean  @default(true)
+  taskAlerts            Boolean  @default(true)
+  systemAlerts          Boolean  @default(true)
+  adminBroadcastAlerts  Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([pushEnabled])
+  @@index([inAppEnabled])
 }
 
 model PushSubscription {
