@@ -1,6 +1,11 @@
 // server/storage.ts
 import { Prisma } from "@prisma/client";
 import { prisma } from "./lib/db";
+import { userRepository } from "./repositories/user.repository";
+import { balanceRepository } from "./repositories/balance.repository";
+import { transactionRepository } from "./repositories/transaction.repository";
+import { activityRepository } from "./repositories/activity.repository";
+import { notificationRepository } from "./repositories/notification.repository";
 import crypto from "crypto";
 import { nanoid } from "nanoid";
 import {
@@ -478,10 +483,7 @@ function extractXnrtFromActivity(description: string, type: string, category: Le
 export class DatabaseStorage implements IStorage {
   // User operations (IMPORTANT: mandatory for Replit Auth)
   async getUser(id: string): Promise<User | undefined> {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-    return user ? convertPrismaUser(user) : undefined;
+    return userRepository.findById(id);
   }
 
   async upsertUser(userData: UpsertUser, refCode?: string): Promise<User> {
@@ -590,77 +592,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(userId: string, updates: Partial<User>): Promise<User> {
-    const updateData: any = {};
-
-    if (updates.email !== undefined) updateData.email = updates.email;
-    if (updates.username !== undefined) updateData.username = updates.username;
-    if (updates.isAdmin !== undefined) updateData.isAdmin = updates.isAdmin;
-    if (updates.firstName !== undefined) updateData.firstName = updates.firstName || null;
-    if (updates.lastName !== undefined) updateData.lastName = updates.lastName || null;
-    if (updates.profileImageUrl !== undefined) updateData.profileImageUrl = updates.profileImageUrl || null;
-    if (updates.xp !== undefined) updateData.xp = updates.xp;
-    if (updates.level !== undefined) updateData.level = updates.level;
-    if (updates.streak !== undefined) updateData.streak = updates.streak;
-    if (updates.lastCheckIn !== undefined)
-      updateData.lastCheckIn = updates.lastCheckIn;
-    updateData.updatedAt = new Date();
-
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-    });
-    return convertPrismaUser(user);
+    return userRepository.update(userId, updates);
   }
 
   async getAllUsers(): Promise<User[]> {
-    const users = await prisma.user.findMany();
-    return users.map(convertPrismaUser);
+    return userRepository.findAll();
   }
 
   // Balance operations
   async getBalance(userId: string): Promise<Balance | undefined> {
-    const balance = await prisma.balance.findUnique({
-      where: { userId },
-    });
-    return balance ? convertPrismaBalance(balance) : undefined;
+    return balanceRepository.findByUserId(userId);
   }
 
   async createBalance(balance: InsertBalance): Promise<Balance> {
-    const newBalance = await prisma.balance.create({
-      data: {
-        userId: balance.userId,
-        xnrtBalance: new Prisma.Decimal(balance.xnrtBalance || "0"),
-        stakingBalance: new Prisma.Decimal(balance.stakingBalance || "0"),
-        miningBalance: new Prisma.Decimal(balance.miningBalance || "0"),
-        referralBalance: new Prisma.Decimal(balance.referralBalance || "0"),
-        totalEarned: new Prisma.Decimal(balance.totalEarned || "0"),
-      },
-    });
-    return convertPrismaBalance(newBalance);
+    return balanceRepository.create(balance);
   }
 
   async updateBalance(
     userId: string,
     updates: Partial<Balance>
   ): Promise<Balance> {
-    const data: any = { updatedAt: new Date() };
-
-    if (updates.xnrtBalance !== undefined)
-      data.xnrtBalance = new Prisma.Decimal(updates.xnrtBalance);
-    if (updates.stakingBalance !== undefined)
-      data.stakingBalance = new Prisma.Decimal(updates.stakingBalance);
-    if (updates.miningBalance !== undefined)
-      data.miningBalance = new Prisma.Decimal(updates.miningBalance);
-    if (updates.referralBalance !== undefined)
-      data.referralBalance = new Prisma.Decimal(updates.referralBalance);
-    if (updates.totalEarned !== undefined)
-      data.totalEarned = new Prisma.Decimal(updates.totalEarned);
-
-    const balance = await prisma.balance.update({
-      where: { userId },
-      data,
-    });
-    return convertPrismaBalance(balance);
+    return balanceRepository.update(userId, updates);
   }
 
   async adjustStakingBalance({
@@ -672,16 +624,7 @@ export class DatabaseStorage implements IStorage {
     amount: string;
     operation?: "add" | "subtract";
   }): Promise<Balance> {
-    const balance = await prisma.balance.update({
-      where: { userId },
-      data: {
-        stakingBalance: {
-          [operation === "add" ? "increment" : "decrement"]:
-            new Prisma.Decimal(amount),
-        },
-      },
-    });
-    return convertPrismaBalance(balance);
+    return balanceRepository.adjustStakingBalance({ userId, amount, operation });
   }
 
   // Staking operations
@@ -1405,187 +1348,32 @@ export class DatabaseStorage implements IStorage {
     userId: string,
     type?: string
   ): Promise<Transaction[]> {
-    const where: any = { userId };
-    if (type) {
-      where.type = type;
-    }
-
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 1000,
-    });
-    return transactions.map(convertPrismaTransaction);
+    return transactionRepository.findByUser(userId, type);
   }
 
   async getTransactionById(id: string): Promise<Transaction | undefined> {
-    const transaction = await prisma.transaction.findUnique({
-      where: { id },
-    });
-    return transaction ? convertPrismaTransaction(transaction) : undefined;
+    return transactionRepository.findById(id);
   }
 
   async createTransaction(
     transaction: InsertTransaction
   ): Promise<Transaction> {
-    const data: any = {
-      userId: transaction.userId,
-      type: transaction.type,
-      amount: new Prisma.Decimal(transaction.amount),
-      status: transaction.status || "pending",
-    };
-
-    if (transaction.usdtAmount !== undefined && transaction.usdtAmount !== null)
-      data.usdtAmount = new Prisma.Decimal(transaction.usdtAmount);
-    if (transaction.source !== undefined && transaction.source !== null)
-      data.source = transaction.source;
-    if (
-      transaction.walletAddress !== undefined &&
-      transaction.walletAddress !== null
-    ) {
-      data.walletAddress = transaction.walletAddress;
-    }
-    if (
-      transaction.transactionHash !== undefined &&
-      transaction.transactionHash !== null
-    ) {
-      data.transactionHash = transaction.transactionHash;
-    }
-    if (
-      transaction.proofImageUrl !== undefined &&
-      transaction.proofImageUrl !== null
-    ) {
-      data.proofImageUrl = transaction.proofImageUrl;
-    }
-    if (
-      transaction.adminNotes !== undefined &&
-      transaction.adminNotes !== null
-    ) {
-      data.adminNotes = transaction.adminNotes;
-    }
-    if (transaction.fee !== undefined && transaction.fee !== null) {
-      data.fee = new Prisma.Decimal(transaction.fee);
-    }
-    if (transaction.netAmount !== undefined && transaction.netAmount !== null) {
-      data.netAmount = new Prisma.Decimal(transaction.netAmount);
-    }
-    if (
-      transaction.approvedBy !== undefined &&
-      transaction.approvedBy !== null
-    ) {
-      data.approvedBy = transaction.approvedBy;
-    }
-    if (
-      transaction.approvedAt !== undefined &&
-      transaction.approvedAt !== null
-    ) {
-      data.approvedAt = transaction.approvedAt;
-    }
-    if (transaction.verified !== undefined) {
-      data.verified = transaction.verified;
-    }
-    if (transaction.confirmations !== undefined) {
-      data.confirmations = transaction.confirmations;
-    }
-    if (
-      transaction.verificationData !== undefined &&
-      transaction.verificationData !== null
-    ) {
-      data.verificationData = transaction.verificationData;
-    }
-
-    const newTransaction = await prisma.transaction.create({ data });
-    return convertPrismaTransaction(newTransaction);
+    return transactionRepository.create(transaction);
   }
 
   async updateTransaction(
     id: string,
     updates: Partial<Transaction>
   ): Promise<Transaction> {
-    const data: any = {};
-
-    if (updates.amount !== undefined && updates.amount !== null) {
-      data.amount = new Prisma.Decimal(updates.amount);
-    }
-    if (updates.usdtAmount !== undefined && updates.usdtAmount !== null) {
-      data.usdtAmount = new Prisma.Decimal(updates.usdtAmount);
-    }
-    if (updates.status !== undefined) data.status = updates.status;
-    if (
-      updates.adminNotes !== undefined &&
-      updates.adminNotes !== null
-    ) {
-      data.adminNotes = updates.adminNotes;
-    }
-    if (updates.fee !== undefined && updates.fee !== null) {
-      data.fee = new Prisma.Decimal(updates.fee);
-    }
-    if (updates.netAmount !== undefined && updates.netAmount !== null) {
-      data.netAmount = new Prisma.Decimal(updates.netAmount);
-    }
-    if (
-      updates.approvedBy !== undefined &&
-      updates.approvedBy !== null
-    ) {
-      data.approvedBy = updates.approvedBy;
-    }
-    if (
-      updates.approvedAt !== undefined &&
-      updates.approvedAt !== null
-    ) {
-      data.approvedAt = updates.approvedAt;
-    }
-    if (updates.verified !== undefined) {
-      data.verified = updates.verified;
-    }
-    if (updates.confirmations !== undefined) {
-      data.confirmations = updates.confirmations;
-    }
-    if (
-      updates.verificationData !== undefined &&
-      updates.verificationData !== null
-    ) {
-      data.verificationData = updates.verificationData;
-    }
-
-    const transaction = await prisma.transaction.update({
-      where: { id },
-      data,
-    });
-    return convertPrismaTransaction(transaction);
+    return transactionRepository.update(id, updates);
   }
 
   async getAllTransactions(type?: string): Promise<Transaction[]> {
-    const where: any = {};
-    if (type) {
-      where.type = type;
-    }
-
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 1000,
-    });
-    return transactions.map(convertPrismaTransaction);
+    return transactionRepository.findAll(type);
   }
 
   async getPendingTransactions(type: string): Promise<Transaction[]> {
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        type,
-        status: "pending",
-      },
-      include: {
-        user: {
-          select: {
-            email: true,
-            username: true,
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    return transactions.map(convertPrismaTransaction);
+    return transactionRepository.findPending(type);
   }
 
   // Task operations
@@ -1771,110 +1559,46 @@ export class DatabaseStorage implements IStorage {
 
   // Activity operations
   async createActivity(activity: InsertActivity): Promise<Activity> {
-    const data: any = {
-      userId: activity.userId,
-      type: activity.type,
-      description: activity.description,
-    };
-
-    if (activity.metadata !== undefined && activity.metadata !== null) {
-      data.metadata = activity.metadata;
-    }
-
-    const newActivity = await prisma.activity.create({ data });
-    return convertPrismaActivity(newActivity);
+    return activityRepository.create(activity);
   }
 
   async getActivities(
     userId: string,
     limit: number = 10
   ): Promise<Activity[]> {
-    const activities = await prisma.activity.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
-    return activities.map(convertPrismaActivity);
+    return activityRepository.findByUser(userId, limit);
   }
 
   // Notification operations
   async createNotification(
     notification: InsertNotification
   ): Promise<Notification> {
-    const data: any = {
-      userId: notification.userId,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      read: notification.read || false,
-    };
-
-    // Expect metadata as a plain object or value; stringify only if not already a JSON string
-    if (notification.metadata !== undefined && notification.metadata !== null) {
-      data.metadata =
-        typeof notification.metadata === "string"
-          ? notification.metadata
-          : JSON.stringify(notification.metadata);
-    }
-
-    const newNotification = await prisma.notification.create({ data });
-    return convertPrismaNotification(newNotification);
+    return notificationRepository.create(notification);
   }
 
   async getNotifications(
     userId: string,
     limit: number = 20
   ): Promise<Notification[]> {
-    const notifications = await prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
-    return notifications.map(convertPrismaNotification);
+    return notificationRepository.findByUser(userId, limit);
   }
 
   async getUnreadNotificationCount(userId: string): Promise<number> {
-    return await prisma.notification.count({
-      where: {
-        userId,
-        read: false,
-      },
-    });
+    return notificationRepository.countUnread(userId);
   }
 
   async markNotificationAsRead(id: string): Promise<Notification> {
-    const notification = await prisma.notification.update({
-      where: { id },
-      data: { read: true },
-    });
-    return convertPrismaNotification(notification);
+    return notificationRepository.markAsRead(id);
   }
 
   async markAllNotificationsAsRead(userId: string): Promise<void> {
-    await prisma.notification.updateMany({
-      where: {
-        userId,
-        read: false,
-      },
-      data: { read: true },
-    });
+    return notificationRepository.markAllAsRead(userId);
   }
 
   async getNotificationsPendingPush(
     limit: number = 50
   ): Promise<Notification[]> {
-    // @ts-ignore pendingPush field exists in runtime but may not be in local type cache
-    const notifications = await prisma.notification.findMany({
-      where: {
-        pendingPush: true,
-        deliveryAttempts: {
-          lt: 5,
-        },
-      },
-      orderBy: { createdAt: "asc" },
-      take: limit,
-    });
-    return notifications.map(convertPrismaNotification);
+    return notificationRepository.findPendingPush(limit);
   }
 
   async updateNotificationDelivery(
@@ -1887,22 +1611,7 @@ export class DatabaseStorage implements IStorage {
       pushError?: string;
     }
   ): Promise<Notification> {
-    const data: any = {};
-    if (updates.deliveredAt !== undefined)
-      data.deliveredAt = updates.deliveredAt;
-    if (updates.deliveryAttempts !== undefined)
-      data.deliveryAttempts = updates.deliveryAttempts;
-    if (updates.lastAttemptAt !== undefined)
-      data.lastAttemptAt = updates.lastAttemptAt;
-    if (updates.pendingPush !== undefined)
-      data.pendingPush = updates.pendingPush;
-    if (updates.pushError !== undefined) data.pushError = updates.pushError;
-
-    const notification = await prisma.notification.update({
-      where: { id },
-      data,
-    });
-    return convertPrismaNotification(notification);
+    return notificationRepository.updateDelivery(id, updates);
   }
 
   // Push Subscription operations
@@ -1911,10 +1620,7 @@ export class DatabaseStorage implements IStorage {
     endpoint: string
   ): Promise<PushSubscription | null> {
     try {
-      const subscription = await prisma.pushSubscription.findFirst({
-        where: { userId, endpoint },
-      });
-      return subscription ? convertPrismaPushSubscription(subscription) : null;
+      return await notificationRepository.findPushSubscription(userId, endpoint);
     } catch (error) {
       console.error("Error getting push subscription:", error);
       return null;
@@ -1925,30 +1631,7 @@ export class DatabaseStorage implements IStorage {
     data: InsertPushSubscription
   ): Promise<PushSubscription> {
     try {
-      const subscription = await prisma.pushSubscription.upsert({
-        where: {
-          userId_endpoint: {
-            userId: data.userId,
-            endpoint: data.endpoint,
-          },
-        },
-        update: {
-          p256dh: data.p256dh,
-          auth: data.auth,
-          expirationTime: data.expirationTime || null,
-          enabled: true,
-          updatedAt: new Date(),
-        },
-        create: {
-          userId: data.userId,
-          endpoint: data.endpoint,
-          p256dh: data.p256dh,
-          auth: data.auth,
-          expirationTime: data.expirationTime || null,
-          enabled: true,
-        },
-      });
-      return convertPrismaPushSubscription(subscription);
+      return await notificationRepository.upsertPushSubscription(data);
     } catch (error) {
       console.error("Error creating push subscription:", error);
       throw new Error("Failed to create push subscription");
@@ -1960,9 +1643,7 @@ export class DatabaseStorage implements IStorage {
     endpoint: string
   ): Promise<void> {
     try {
-      await prisma.pushSubscription.deleteMany({
-        where: { userId, endpoint },
-      });
+      await notificationRepository.deletePushSubscription(userId, endpoint);
     } catch (error) {
       console.error("Error deleting push subscription:", error);
       throw new Error("Failed to delete push subscription");
@@ -1973,11 +1654,7 @@ export class DatabaseStorage implements IStorage {
     userId: string
   ): Promise<PushSubscription[]> {
     try {
-      const subscriptions = await prisma.pushSubscription.findMany({
-        where: { userId, enabled: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return subscriptions.map(convertPrismaPushSubscription);
+      return await notificationRepository.findUserPushSubscriptions(userId);
     } catch (error) {
       console.error("Error getting user push subscriptions:", error);
       return [];
@@ -1986,10 +1663,7 @@ export class DatabaseStorage implements IStorage {
 
   async disablePushSubscription(endpoint: string): Promise<void> {
     try {
-      await prisma.pushSubscription.updateMany({
-        where: { endpoint },
-        data: { enabled: false, updatedAt: new Date() },
-      });
+      await notificationRepository.disablePushSubscription(endpoint);
     } catch (error) {
       console.error("Error disabling push subscription:", error);
     }
