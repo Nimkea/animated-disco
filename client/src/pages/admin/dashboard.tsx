@@ -9,7 +9,8 @@ import {
   TrendingUp,
   ListChecks,
   Award,
-  Megaphone
+  Megaphone,
+  ShieldCheck
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
@@ -23,6 +24,7 @@ import StakesTab from "./tabs/stakes";
 import TasksTab from "./tabs/tasks";
 import AchievementsTab from "./tabs/achievements";
 import AnnouncementsTab from "./tabs/announcements";
+import AuditLogsTab from "./tabs/audit-logs";
 
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
@@ -32,7 +34,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements"].includes(tab)) {
+    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -53,7 +55,7 @@ export default function AdminDashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-10 lg:w-auto lg:inline-grid">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl bg-muted/70 p-1 lg:w-auto">
           <TabsTrigger value="overview" className="gap-2" data-testid="tab-overview">
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -93,6 +95,10 @@ export default function AdminDashboard() {
           <TabsTrigger value="settings" className="gap-2" data-testid="tab-settings">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Settings</span>
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2" data-testid="tab-audit">
+            <ShieldCheck className="h-4 w-4" />
+            <span className="hidden sm:inline">Audit</span>
           </TabsTrigger>
         </TabsList>
 
@@ -134,6 +140,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="settings" className="space-y-6">
           <SettingsTab />
+        </TabsContent>
+
+        <TabsContent value="audit" className="space-y-6">
+          <AuditLogsTab />
         </TabsContent>
       </Tabs>
     </div>
