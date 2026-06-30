@@ -3,8 +3,12 @@ import type {
   Balance,
   Notification,
   PushSubscription,
+  Referral,
+  Stake,
+  Task,
   Transaction,
   User,
+  UserTask,
 } from "@shared/schema";
 
 export function decimalToString(value: unknown): string {
@@ -34,6 +38,45 @@ export function convertPrismaBalance(balance: any): Balance {
     referralBalance: decimalToString(balance.referralBalance),
     totalEarned: decimalToString(balance.totalEarned),
   } as Balance;
+}
+
+
+export function convertPrismaStake(stake: any): Stake {
+  return {
+    ...stake,
+    amount: decimalToString(stake.amount),
+    dailyRate: decimalToString(stake.dailyRate),
+    totalProfit: decimalToString(stake.totalProfit),
+    lastProfitDate: stake.lastProfitDate || undefined,
+    isLoan: !!(stake.loanProgram && stake.loanProgram.startsWith("trust_")),
+    loanProgram: stake.loanProgram || undefined,
+    unlockMet: stake.unlockMet,
+    requiredReferrals: stake.requiredReferrals,
+    requiredInvestingReferrals: stake.requiredInvestingReferrals,
+    minInvestUsdtPerReferral: decimalToString(stake.minInvestUsdtPerReferral),
+  } as Stake;
+}
+
+export function convertPrismaReferral(referral: any): Referral {
+  return {
+    ...referral,
+    totalCommission: decimalToString(referral.totalCommission),
+  } as Referral;
+}
+
+export function convertPrismaTask(task: any): Task {
+  return {
+    ...task,
+    xnrtReward: decimalToString(task.xnrtReward),
+    requirements: task.requirements || undefined,
+  } as Task;
+}
+
+export function convertPrismaUserTask(userTask: any): UserTask {
+  return {
+    ...userTask,
+    completedAt: userTask.completedAt || undefined,
+  } as UserTask;
 }
 
 export function convertPrismaTransaction(transaction: any): Transaction {
