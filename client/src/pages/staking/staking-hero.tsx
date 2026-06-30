@@ -20,7 +20,7 @@ export function StakingHero({
   const openStakes = (summary?.totals.activeCount ?? 0) + (summary?.totals.completedCount ?? 0);
 
   return (
-    <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/15 via-background to-background">
+    <Card className="premium-hero-card rounded-3xl">
       <CardContent className="p-6 md:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr] lg:items-center">
           <div className="space-y-4">
@@ -34,11 +34,12 @@ export function StakingHero({
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Button onClick={onCreateStake} data-testid="button-open-create-stake">
+              <Button className="premium-action-button" onClick={onCreateStake} data-testid="button-open-create-stake">
                 Start Staking <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
+                className="premium-action-button"
                 onClick={onRefreshRewards}
                 disabled={isRefreshing}
                 data-testid="button-refresh-staking-rewards"
@@ -48,13 +49,13 @@ export function StakingHero({
               </Button>
             </div>
           </div>
-          <div className="rounded-3xl border bg-background/80 p-5 shadow-sm">
+          <div className="premium-stat-card rounded-3xl p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Next maturity</p>
                 <p className="text-xl font-semibold">{formatDate(summary?.totals.nextMaturityAt)}</p>
               </div>
-              <Clock className="h-9 w-9 text-primary" />
+              <div className="premium-icon-bubble h-14 w-14"><Clock className="h-7 w-7 text-primary" /></div>
             </div>
             <Separator className="my-4" />
             <div className="grid grid-cols-2 gap-4 text-sm">

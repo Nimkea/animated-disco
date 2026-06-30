@@ -472,4 +472,181 @@
   .theme-soft-border {
     border-color: hsl(var(--border) / 0.68);
   }
+
+  .premium-card {
+    position: relative;
+    overflow: hidden;
+    border-color: hsl(var(--border) / 0.72);
+    background:
+      radial-gradient(circle at 14% 0%, hsl(var(--primary) / 0.10), transparent 16rem),
+      linear-gradient(145deg, hsl(var(--card) / 0.92), hsl(var(--background) / 0.74));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 16px 42px hsl(var(--foreground) / 0.06);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .dark .premium-card {
+    border-color: hsl(var(--primary) / 0.15);
+    background:
+      radial-gradient(circle at 14% 0%, hsl(var(--primary) / 0.14), transparent 16rem),
+      linear-gradient(145deg, hsl(var(--card) / 0.82), hsl(var(--background) / 0.72));
+    box-shadow: 0 18px 50px hsl(var(--primary) / 0.08);
+  }
+
+  .premium-card::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, hsl(var(--primary) / 0.16), transparent 34%, hsl(var(--secondary) / 0.08));
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+
+  .premium-card:hover {
+    transform: translateY(-3px);
+    border-color: hsl(var(--primary) / 0.42);
+    box-shadow: 0 22px 60px hsl(var(--primary) / 0.14);
+  }
+
+  .premium-card:hover::before {
+    opacity: 1;
+  }
+
+  .premium-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .premium-hero-card {
+    position: relative;
+    overflow: hidden;
+    border-color: hsl(var(--primary) / 0.30);
+    background:
+      radial-gradient(circle at 10% 20%, hsl(var(--primary) / 0.22), transparent 18rem),
+      radial-gradient(circle at 86% 10%, hsl(var(--secondary) / 0.18), transparent 20rem),
+      linear-gradient(135deg, hsl(var(--card) / 0.92), hsl(var(--background) / 0.74));
+    box-shadow: 0 28px 90px hsl(var(--primary) / 0.14);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .premium-hero-card:hover {
+    transform: translateY(-2px);
+    border-color: hsl(var(--primary) / 0.48);
+    box-shadow: 0 32px 100px hsl(var(--primary) / 0.18);
+  }
+
+  .premium-stat-card {
+    position: relative;
+    overflow: hidden;
+    border-color: hsl(var(--border) / 0.72);
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary) / 0.12), transparent 12rem),
+      hsl(var(--card) / 0.82);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .premium-stat-card:hover {
+    transform: translateY(-4px);
+    border-color: hsl(var(--primary) / 0.45);
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary) / 0.18), transparent 12rem),
+      hsl(var(--card) / 0.92);
+    box-shadow: 0 20px 55px hsl(var(--primary) / 0.14);
+  }
+
+  .premium-select-card {
+    position: relative;
+    overflow: hidden;
+    border-color: hsl(var(--border) / 0.72);
+    background: hsl(var(--card) / 0.78);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .premium-select-card:hover {
+    transform: translateY(-3px);
+    border-color: hsl(var(--primary) / 0.42);
+    box-shadow: 0 18px 50px hsl(var(--primary) / 0.12);
+  }
+
+  .premium-select-card-active {
+    border-color: hsl(var(--primary) / 0.62);
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.24), 0 22px 60px hsl(var(--primary) / 0.16);
+    background:
+      radial-gradient(circle at top right, hsl(var(--primary) / 0.22), transparent 12rem),
+      hsl(var(--card) / 0.92);
+  }
+
+  .premium-icon-bubble {
+    display: grid;
+    place-items: center;
+    border-radius: 1rem;
+    background:
+      radial-gradient(circle at 35% 25%, hsl(var(--primary) / 0.28), transparent 60%),
+      hsl(var(--primary) / 0.12);
+    color: hsl(var(--primary));
+    box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.16), 0 10px 24px hsl(var(--primary) / 0.10);
+    transition: transform 180ms ease, box-shadow 180ms ease;
+  }
+
+  .group:hover .premium-icon-bubble,
+  .premium-card:hover .premium-icon-bubble,
+  .premium-stat-card:hover .premium-icon-bubble,
+  .premium-select-card:hover .premium-icon-bubble {
+    transform: scale(1.06) rotate(-3deg);
+    box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.24), 0 14px 32px hsl(var(--primary) / 0.18);
+  }
+
+  .premium-number {
+    letter-spacing: -0.04em;
+    background: linear-gradient(90deg, hsl(var(--foreground)), hsl(var(--primary)) 54%, hsl(var(--secondary)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .premium-info-tile {
+    border-color: hsl(var(--border) / 0.72);
+    background:
+      linear-gradient(145deg, hsl(var(--muted) / 0.58), hsl(var(--background) / 0.42));
+    transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+  }
+
+  .premium-info-tile:hover {
+    transform: translateY(-2px);
+    border-color: hsl(var(--primary) / 0.34);
+    background:
+      linear-gradient(145deg, hsl(var(--primary) / 0.10), hsl(var(--muted) / 0.56));
+  }
+
+  .premium-list-row {
+    border-color: hsl(var(--border) / 0.72);
+    background: hsl(var(--card) / 0.54);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  }
+
+  .premium-list-row:hover {
+    transform: translateX(2px);
+    border-color: hsl(var(--primary) / 0.34);
+    background: hsl(var(--accent) / 0.46);
+    box-shadow: 0 12px 32px hsl(var(--primary) / 0.10);
+  }
+
+  .premium-action-button {
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .premium-action-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px hsl(var(--primary) / 0.18);
+  }
+
+  .premium-soft-divider {
+    border-color: hsl(var(--primary) / 0.14);
+  }
+
 }

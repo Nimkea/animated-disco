@@ -137,13 +137,13 @@ export default function Withdrawal() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {sources.map((item) => (
-          <Card key={item.key} className={`cursor-pointer transition-all ${source === item.key ? "border-primary ring-2 ring-primary/20" : "hover:border-primary/50"}`} onClick={() => setSource(item.key)}>
+          <Card key={item.key} className={`group cursor-pointer rounded-2xl premium-select-card ${source === item.key ? "premium-select-card-active" : ""}`} onClick={() => setSource(item.key)}>
             <CardContent className="p-5">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">{sourceLabel[item.key]}</p>
-                <Wallet className="h-5 w-5 text-primary" />
+                <div className="premium-icon-bubble h-11 w-11"><Wallet className="h-5 w-5 text-primary" /></div>
               </div>
-              <p className="text-3xl font-bold font-mono" data-testid={`text-${item.key}-balance`}>{formatNumber(getAvailableBalance(item.key))}</p>
+              <p className="text-3xl font-bold font-mono premium-number" data-testid={`text-${item.key}-balance`}>{formatNumber(getAvailableBalance(item.key))}</p>
               <p className="text-xs text-muted-foreground">XNRT · {item.helper}</p>
             </CardContent>
           </Card>
@@ -151,7 +151,7 @@ export default function Withdrawal() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[.95fr_1.05fr]">
-        <Card>
+        <Card className="premium-card rounded-3xl">
           <CardHeader>
             <CardTitle>Withdrawal Request</CardTitle>
             <CardDescription>Selected source: {sourceLabel[source]}</CardDescription>
@@ -167,7 +167,7 @@ export default function Withdrawal() {
               {walletAddress && !isValidAddress && <p className="mt-1 text-xs text-destructive">Invalid BEP-20 address format.</p>}
             </div>
 
-            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
+            <div className="premium-info-tile rounded-xl border p-4 space-y-2">
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Requested</span><span>{formatNumber(withdrawAmount)} XNRT</span></div>
               <div className="flex justify-between text-sm"><span className="text-muted-foreground">Fee ({formatNumber(feePercent)}%)</span><span>{formatNumber(fee)} XNRT</span></div>
               <div className="flex justify-between border-t border-border pt-2 font-semibold"><span>You receive</span><span>{formatNumber(netAmount)} XNRT</span></div>
@@ -181,14 +181,14 @@ export default function Withdrawal() {
               </div>
             </div>
 
-            <Button className="w-full gap-2" onClick={handleWithdraw} disabled={withdrawMutation.isPending} data-testid="button-request-withdrawal">
+            <Button className="w-full gap-2 premium-action-button" onClick={handleWithdraw} disabled={withdrawMutation.isPending} data-testid="button-request-withdrawal">
               <ArrowUpFromLine className="h-4 w-4" />
               {withdrawMutation.isPending ? "Submitting..." : "Request Withdrawal"}
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="premium-card rounded-3xl">
           <CardHeader>
             <CardTitle>Withdrawal History</CardTitle>
             <CardDescription>Your pending, approved, and rejected withdrawals</CardDescription>
@@ -243,7 +243,7 @@ function WithdrawalItem({ withdrawal }: { withdrawal: Transaction }) {
   };
 
   return (
-    <div className="rounded-xl border border-border p-4 hover-elevate" data-testid={`withdrawal-${withdrawal.id}`}>
+    <div className="premium-list-row rounded-xl border p-4" data-testid={`withdrawal-${withdrawal.id}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           {getStatusIcon(withdrawal.status)}

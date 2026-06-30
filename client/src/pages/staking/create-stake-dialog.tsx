@@ -81,7 +81,7 @@ export function CreateStakeDialog({
             <p className="text-xs text-muted-foreground">Available: {formatXnrt(availableBalance)} XNRT</p>
           </div>
 
-          <div className="rounded-2xl border bg-muted/30 p-4">
+          <div className="premium-info-tile rounded-2xl border p-4">
             <div className="grid gap-3 text-sm sm:grid-cols-3">
               <div>
                 <p className="text-muted-foreground">Daily reward</p>
@@ -109,7 +109,7 @@ export function CreateStakeDialog({
           )}
 
           <Button
-            className="w-full"
+            className="w-full premium-action-button"
             onClick={onCreate}
             disabled={!canCreateStake || isCreating}
             data-testid="button-create-stake"

@@ -115,12 +115,12 @@ export default function Wallet() {
           <p className="text-muted-foreground">Professional wallet dashboard for deposits, reserved withdrawals, and XNRT balances</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/deposit"><Button className="gap-2"><ArrowDownToLine className="h-4 w-4" /> Deposit</Button></Link>
-          <Link href="/withdrawal"><Button variant="outline" className="gap-2"><ArrowUpFromLine className="h-4 w-4" /> Withdraw</Button></Link>
+          <Link href="/deposit"><Button className="gap-2 premium-action-button"><ArrowDownToLine className="h-4 w-4" /> Deposit</Button></Link>
+          <Link href="/withdrawal"><Button variant="outline" className="gap-2 premium-action-button"><ArrowUpFromLine className="h-4 w-4" /> Withdraw</Button></Link>
         </div>
       </div>
 
-      <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-card to-secondary/10">
+      <Card className="premium-hero-card rounded-3xl">
         <CardContent className="p-6 md:p-8">
           <div className="grid gap-6 lg:grid-cols-[1.35fr_.65fr] lg:items-center">
             <div className="space-y-4">
@@ -131,7 +131,7 @@ export default function Wallet() {
               <div>
                 <p className="text-sm uppercase tracking-wide text-muted-foreground">Total Wallet Value</p>
                 <div className="mt-1 flex flex-wrap items-baseline gap-3">
-                  <p className="text-5xl md:text-6xl font-bold font-mono bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent" data-testid="text-total-wallet-value">
+                  <p className="text-5xl md:text-6xl font-bold font-mono premium-number" data-testid="text-total-wallet-value">
                     {formatNumber(summary.balance.totalWalletValue)}
                   </p>
                   <p className="text-xl text-muted-foreground">XNRT</p>
@@ -141,10 +141,10 @@ export default function Wallet() {
                 </p>
               </div>
             </div>
-            <div className="rounded-2xl border border-border/60 bg-background/60 p-5 backdrop-blur">
+            <div className="premium-stat-card rounded-2xl p-5">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">Pending / Reserved</p>
-                <Clock className="h-5 w-5 text-chart-3" />
+                <div className="premium-icon-bubble h-11 w-11"><Clock className="h-5 w-5 text-chart-3" /></div>
               </div>
               <p className="mt-2 text-3xl font-bold font-mono">{formatNumber(reserved)} XNRT</p>
               <p className="mt-1 text-xs text-muted-foreground">Pending withdrawals are reserved so users cannot double-spend the same balance.</p>
@@ -155,13 +155,13 @@ export default function Wallet() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {balanceBreakdown.map((item) => (
-          <Card key={item.label} className="hover-elevate">
+          <Card key={item.label} className="premium-stat-card group rounded-2xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm text-muted-foreground">{item.label} Balance</p>
-                <item.icon className={`h-5 w-5 ${item.tone}`} />
+                <div className="premium-icon-bubble h-11 w-11"><item.icon className={`h-5 w-5 ${item.tone}`} /></div>
               </div>
-              <p className="text-3xl font-bold font-mono" data-testid={`balance-${item.label.toLowerCase()}`}>
+              <p className="text-3xl font-bold font-mono premium-number" data-testid={`balance-${item.label.toLowerCase()}`}>
                 {formatNumber(item.value)}
               </p>
               <p className="text-xs text-muted-foreground mt-1">XNRT</p>
@@ -171,7 +171,7 @@ export default function Wallet() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="premium-card rounded-3xl lg:col-span-2">
           <CardHeader>
             <CardTitle>Deposit Address</CardTitle>
             <CardDescription>Send USDT BEP-20 to your personal deposit address for auto-credit.</CardDescription>
@@ -186,7 +186,7 @@ export default function Wallet() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="premium-card rounded-3xl">
           <CardHeader>
             <CardTitle>Withdrawal Rules</CardTitle>
             <CardDescription>Current platform withdrawal configuration.</CardDescription>
@@ -201,7 +201,7 @@ export default function Wallet() {
 
       <TokenContractCard tokenInfo={tokenInfo} />
 
-      <Card>
+      <Card className="premium-card rounded-3xl">
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
           <CardDescription>Recent deposits and withdrawals</CardDescription>
@@ -250,7 +250,7 @@ function TransactionRows({ transactions, emptyLabel }: { transactions: Transacti
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/20 p-3">
+    <div className="premium-info-tile rounded-xl border p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 font-semibold">{value}</p>
     </div>
@@ -265,7 +265,7 @@ function CopyText({ value }: { value: string }) {
     setTimeout(() => setCopied(false), 1800);
   };
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 p-3">
+    <div className="premium-info-tile flex items-center gap-2 rounded-xl border p-3">
       <code className="flex-1 break-all text-xs md:text-sm font-mono">{value}</code>
       <Button size="sm" variant="outline" onClick={copy} className="shrink-0 gap-2">
         {copied ? <CheckCheck className="h-4 w-4 text-chart-2" /> : <Copy className="h-4 w-4" />}
@@ -287,7 +287,7 @@ function TokenContractCard({ tokenInfo }: { tokenInfo?: TokenInfo }) {
   };
 
   return (
-    <Card className="border-secondary/20 bg-gradient-to-br from-card to-secondary/5">
+    <Card className="premium-card rounded-3xl border-secondary/20">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Gem className="h-5 w-5 text-secondary" />
@@ -298,7 +298,7 @@ function TokenContractCard({ tokenInfo }: { tokenInfo?: TokenInfo }) {
       <CardContent>
         {tokenInfo?.address ? (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 bg-muted/50 rounded-md px-3 py-2">
+            <div className="premium-info-tile flex items-center gap-2 rounded-xl border px-3 py-2">
               <code className="text-xs font-mono flex-1 break-all text-foreground/80" data-testid="text-xnrt-contract-address">
                 {tokenInfo.address}
               </code>
@@ -343,9 +343,9 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border p-4 hover-elevate sm:flex-row sm:items-center sm:justify-between" data-testid={`transaction-${transaction.id}`}>
+    <div className="premium-list-row flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`transaction-${transaction.id}`}>
       <div className="flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isDeposit ? "bg-primary/20" : "bg-chart-2/20"}`}>
+        <div className="premium-icon-bubble h-12 w-12">
           <Icon className={`h-6 w-6 ${isDeposit ? "text-primary" : "text-chart-2"}`} />
         </div>
         <div>

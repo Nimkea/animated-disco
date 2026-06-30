@@ -180,18 +180,18 @@ function StatCard({
   className?: string;
 }) {
   const card = (
-    <Card className={cn("group h-full overflow-hidden rounded-2xl theme-elevated-card transition-all hover:-translate-y-0.5 hover:bg-accent/60", className)}>
+    <Card className={cn("group h-full overflow-hidden rounded-2xl premium-stat-card transition-all", className)}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-foreground">{nf(value)}</span>
+              <span className="text-2xl font-bold premium-number">{nf(value)}</span>
               {suffix ? <span className="text-xs font-semibold text-muted-foreground">{suffix}</span> : null}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
           </div>
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+          <div className="premium-icon-bubble h-10 w-10 shrink-0">
             {icon}
           </div>
         </div>
@@ -220,7 +220,7 @@ function ProgressCard({
   helper: string;
 }) {
   return (
-    <Card className="overflow-hidden rounded-2xl theme-elevated-card">
+    <Card className="overflow-hidden rounded-2xl premium-card">
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -265,7 +265,7 @@ function QuickAction({
       variant={primary ? "default" : "outline"}
       className={cn(
         "h-auto w-full justify-between rounded-2xl px-4 py-4 text-left",
-        !primary && "theme-outline-action"
+        !primary && "theme-outline-action premium-action-button"
       )}
     >
       <Link href={href}>
@@ -468,7 +468,7 @@ export default function Home() {
                   </span>
                 </span>
               </Button>
-              <Button asChild variant="outline" className="h-auto justify-start gap-3 rounded-2xl theme-outline-action py-4">
+              <Button asChild variant="outline" className="h-auto justify-start gap-3 rounded-2xl theme-outline-action premium-action-button py-4">
                 <Link href="/profile">
                   <ShieldCheck className="h-5 w-5 text-primary" />
                   <span className="text-left">
@@ -561,7 +561,7 @@ export default function Home() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
+        <Card className="overflow-hidden rounded-3xl premium-card">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -572,7 +572,7 @@ export default function Home() {
                   Every full mining cycle gives exactly {nf(summary.mining.reward.xnrt)} XNRT + {nf(summary.mining.reward.xp)} XP.
                 </p>
               </div>
-              <Badge variant="outline" className={cn("w-fit gap-2 theme-outline-action", miningActive && "border-primary/30 bg-primary/10 text-primary")}>
+              <Badge variant="outline" className={cn("w-fit gap-2 theme-outline-action premium-action-button", miningActive && "border-primary/30 bg-primary/10 text-primary")}>
                 {miningActive ? <Clock3 className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
                 {miningActive ? "Mining active" : "Ready to start"}
               </Badge>
@@ -622,14 +622,14 @@ export default function Home() {
                   {miningReadyToClaim ? (
                     <Button
                       variant="outline"
-                      className="flex-1 gap-2 rounded-2xl theme-outline-action"
+                      className="flex-1 gap-2 rounded-2xl theme-outline-action premium-action-button"
                       onClick={() => processMiningMutation.mutate()}
                       disabled={processMiningMutation.isPending}
                     >
                       <Gift className="h-4 w-4" /> Claim Reward
                     </Button>
                   ) : (
-                    <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl theme-outline-action">
+                    <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl theme-outline-action premium-action-button">
                       <Link href="/rewards">
                         <Gift className="h-4 w-4" /> Rewards
                       </Link>
@@ -641,7 +641,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
+        <Card className="overflow-hidden rounded-3xl premium-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <Rocket className="h-5 w-5 text-primary" /> Quick actions
@@ -705,7 +705,7 @@ export default function Home() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
+        <Card className="overflow-hidden rounded-3xl premium-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <Share2 className="h-5 w-5 text-primary" /> Invite and earn
@@ -716,7 +716,7 @@ export default function Home() {
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Your referral code</p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <code className="rounded-xl bg-muted px-3 py-2 dark:bg-white/10 font-mono text-lg font-bold text-primary">{summary.user.referralCode}</code>
-                <Button variant="outline" size="sm" className="gap-2 theme-outline-action" onClick={copyReferralLink}>
+                <Button variant="outline" size="sm" className="gap-2 theme-outline-action premium-action-button" onClick={copyReferralLink}>
                   <Clipboard className="h-4 w-4" /> Copy
                 </Button>
               </div>
@@ -739,7 +739,7 @@ export default function Home() {
               <Button onClick={shareReferralLink} className="flex-1 gap-2 rounded-2xl">
                 <Share2 className="h-4 w-4" /> Share link
               </Button>
-              <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl theme-outline-action">
+              <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl theme-outline-action premium-action-button">
                 <Link href="/referrals">
                   <Users className="h-4 w-4" /> Referral dashboard
                 </Link>
@@ -748,7 +748,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
+        <Card className="overflow-hidden rounded-3xl premium-card">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-xl">

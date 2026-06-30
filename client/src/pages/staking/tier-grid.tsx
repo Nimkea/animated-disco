@@ -19,7 +19,7 @@ export function StakingTierGrid({
       {tiers.map((tier) => (
         <Card
           key={tier.key}
-          className={`overflow-hidden border bg-gradient-to-br ${tierAccent[tier.key] ?? "from-primary/10 to-background"}`}
+          className={`premium-card group rounded-3xl border bg-gradient-to-br ${tierAccent[tier.key] ?? "from-primary/10 to-background"}`}
         >
           <CardHeader>
             <div className="flex items-start justify-between gap-2">
@@ -44,12 +44,12 @@ export function StakingTierGrid({
                 <p className="font-semibold">{formatXnrt(tier.maxAmount, 0)}</p>
               </div>
             </div>
-            <div className="rounded-xl bg-background/60 p-3 text-xs text-muted-foreground">
+            <div className="premium-info-tile rounded-xl border p-3 text-xs text-muted-foreground">
               <p>Projected reward at minimum: {formatXnrt(tier.estimatedTotalProfitAtMin ?? 0)} XNRT.</p>
             </div>
             <Button
               variant={selectedTier === tier.key ? "default" : "outline"}
-              className="w-full"
+              className="w-full premium-action-button"
               onClick={() => onSelectTier(tier.key as StakingTier)}
               data-testid={`button-select-tier-${tier.key}`}
             >
