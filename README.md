@@ -56,3 +56,8 @@ Never commit real values for:
 - `VAPID_PRIVATE_KEY`
 
 Use a separate test database for `TEST_DATABASE_URL`.
+
+## Dependency stability
+
+Critical runtime/build dependencies are pinned to known-working versions. See `docs/DEPENDENCY_POLICY.md` before upgrading Prisma, Vite, TypeScript, or test tooling. Prisma is intentionally held at `6.19.3`; do not upgrade to Prisma 7 in normal feature patches.
+
