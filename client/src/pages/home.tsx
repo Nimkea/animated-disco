@@ -12,6 +12,7 @@ import {
   Flame,
   Gem,
   Gift,
+  HandCoins,
   Pickaxe,
   RefreshCw,
   Rocket,
@@ -659,6 +660,12 @@ export default function Home() {
               icon={<Target className="h-5 w-5" />}
               title="Complete Tasks"
               hint={`${nf(summary.tasks.remaining)} remaining today`}
+            />
+            <QuickAction
+              href="/trust-loan"
+              icon={<HandCoins className="h-5 w-5" />}
+              title="Trust Loan"
+              hint="Referral-based virtual stake"
             />
             <QuickAction
               href="/leaderboard"

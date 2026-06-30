@@ -14,6 +14,7 @@ import {
   Shield,
   TrendingUp,
   MessageCircle,
+  HandCoins,
 } from "lucide-react";
 
 import {
@@ -40,6 +41,7 @@ const menuItems = [
   { title: "Deposit", url: "/deposit", icon: ArrowDownToLine, testId: "nav-deposit" },
   { title: "Withdrawal", url: "/withdrawal", icon: ArrowUpFromLine, testId: "nav-withdrawal" },
   { title: "Staking", url: "/staking", icon: Gem, testId: "nav-staking" },
+  { title: "Trust Loan", url: "/trust-loan", icon: HandCoins, testId: "nav-trust-loan" },
   { title: "Mining", url: "/mining", icon: Pickaxe, testId: "nav-mining" },
   { title: "Referrals", url: "/referrals", icon: Users, testId: "nav-referrals" },
   { title: "Leaderboard", url: "/leaderboard", icon: TrendingUp, testId: "nav-leaderboard" },

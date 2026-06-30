@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import {
   AlertCircle,
   ArrowRight,
@@ -646,13 +647,18 @@ export default function Staking() {
                   Trust Loan is a virtual principal stake for qualified users. It does not add withdrawable principal to your wallet; only earned platform reward profit can be withdrawn after maturity.
                 </AlertDescription>
               </Alert>
-              <Button
-                disabled={!canClaimTrustLoan || claimTrustLoanMutation.isPending}
-                onClick={() => claimTrustLoanMutation.mutate()}
-                data-testid="button-claim-trust-loan"
-              >
-                {trustLoanStatus?.hasLoanStake ? "Already Claimed" : canClaimTrustLoan ? "Claim Trust Loan" : "Eligibility Not Complete"}
-              </Button>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button
+                  disabled={!canClaimTrustLoan || claimTrustLoanMutation.isPending}
+                  onClick={() => claimTrustLoanMutation.mutate()}
+                  data-testid="button-claim-trust-loan"
+                >
+                  {trustLoanStatus?.hasLoanStake ? "Already Claimed" : canClaimTrustLoan ? "Claim Trust Loan" : "Eligibility Not Complete"}
+                </Button>
+                <Button asChild variant="outline" data-testid="button-open-trust-loan-page">
+                  <Link href="/trust-loan">Open Trust Loan Page</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

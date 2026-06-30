@@ -39,6 +39,7 @@ const StakingPage = lazy(() => import("@/pages/staking"));
 const MiningPage = lazy(() => import("@/pages/mining"));
 const ReferralsPage = lazy(() => import("@/pages/referrals"));
 const LeaderboardPage = lazy(() => import("@/pages/leaderboard"));
+const TrustLoanPage = lazy(() => import("@/pages/trust-loan"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 
 // Create Suspense wrappers for lazy-loaded pages
@@ -111,6 +112,12 @@ const Referrals = () => (
 const Leaderboard = () => (
   <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
     <LeaderboardPage />
+  </Suspense>
+);
+
+const TrustLoan = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <TrustLoanPage />
   </Suspense>
 );
 
@@ -190,6 +197,7 @@ function AuthenticatedApp() {
                 <Route path="/achievements" component={Achievements} />
                 <Route path="/rewards" component={Rewards} />
                 <Route path="/leaderboard" component={Leaderboard} />
+                <Route path="/trust-loan" component={TrustLoan} />
                 <Route path="/admin" component={ProtectedAdminDashboard} />
                 <Route component={NotFound} />
               </Switch>
