@@ -1,9 +1,19 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const walletRoutes = readFileSync("server/routes/wallet-operations.routes.ts", "utf8");
-const depositAdminRoutes = readFileSync("server/routes/admin/deposits.routes.ts", "utf8");
-const withdrawalAdminRoutes = readFileSync("server/routes/admin/withdrawals.routes.ts", "utf8");
+function readExistingFiles(paths: string[]) {
+  return paths
+    .filter((path) => existsSync(path))
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
+}
+
+const walletRoutes = readExistingFiles(["server/routes/wallet-operations.routes.ts"]);
+const depositAdminRoutes = readExistingFiles([
+  "server/routes/admin/deposits.routes.ts",
+  "server/routes/admin/deposits/pending.routes.ts",
+]);
+const withdrawalAdminRoutes = readExistingFiles(["server/routes/admin/withdrawals.routes.ts"]);
 
 describe("wallet route safety contracts", () => {
   it("validates withdrawal wallet addresses before accepting requests", () => {

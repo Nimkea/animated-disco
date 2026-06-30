@@ -14,7 +14,12 @@
     "test:coverage": "vitest run --coverage",
     "test:services": "vitest run tests/services",
     "test:contracts": "vitest run tests/contracts",
-    "test:api": "vitest run tests/api"
+    "test:api": "vitest run tests/api",
+    "test:all": "pnpm test && pnpm test:integration",
+    "test:integration": "vitest run tests/integration",
+    "test:integration:db:push": "tsx tests/scripts/push-test-db.ts",
+    "test:integration:db:reset": "tsx tests/scripts/reset-test-db.ts",
+    "test:integration:db:check": "tsx tests/scripts/check-test-db.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
