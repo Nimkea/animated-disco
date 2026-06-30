@@ -25,7 +25,7 @@ declare const self: ServiceWorkerGlobalScope;
 // Cache version - increment this to force COMPLETE cache invalidation
 // v10: Removed navigation preload to fix preloadResponse warning,
 //      separated D3 from Recharts in build chunks to prevent init errors
-const CACHE_VERSION = "v10";
+const CACHE_VERSION = "v11";
 const CACHE_PREFIX = "xnrt";
 
 // Take control of clients immediately after activate
@@ -240,8 +240,32 @@ self.addEventListener("push", (event: PushEvent) => {
   );
 });
 
-// Notification click → open URL (or home)
+// Notification click → focus an existing app window when possible, then navigate.
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
-  event.waitUntil(self.clients.openWindow(event.notification.data?.url || "/"));
+
+  event.waitUntil(
+    (async () => {
+      const rawUrl = event.notification.data?.url || "/";
+      const targetUrl = new URL(rawUrl, self.location.origin).href;
+      const clientList = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+
+      for (const client of clientList) {
+        const windowClient = client as WindowClient;
+        if (new URL(windowClient.url).origin !== self.location.origin) continue;
+
+        if ("navigate" in windowClient) {
+          await windowClient.navigate(targetUrl);
+        }
+        if ("focus" in windowClient) {
+          return windowClient.focus();
+        }
+      }
+
+      return self.clients.openWindow(targetUrl);
+    })(),
+  );
 });

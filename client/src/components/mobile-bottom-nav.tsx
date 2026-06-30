@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, Wallet, Pickaxe, Gem, MoreHorizontal, ArrowDownToLine, ArrowUpFromLine, Users, TrendingUp, ListChecks, Trophy, Gift, User, MessageCircle, LogOut, HandCoins } from "lucide-react";
+import { Home, Wallet, Pickaxe, Gem, MoreHorizontal, ArrowDownToLine, ArrowUpFromLine, Users, TrendingUp, ListChecks, Trophy, Gift, User, MessageCircle, LogOut, HandCoins, Bell } from "lucide-react";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ const moreGroups = [
     items: [
       { title: "Profile", url: "/profile", icon: User, testId: "more-profile" },
       { title: "Rewards", url: "/rewards", icon: Gift, testId: "more-rewards" },
+      { title: "Notifications", url: "/notifications", icon: Bell, testId: "more-notifications" },
       { title: "Trust Loan", url: "/trust-loan", icon: HandCoins, testId: "more-trust-loan" },
       { title: "Achievements", url: "/achievements", icon: Trophy, testId: "more-achievements" },
     ],

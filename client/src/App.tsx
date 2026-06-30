@@ -15,6 +15,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { ChatBot } from "@/components/chat-bot";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotificationBadge } from "@/hooks/use-notification-badge";
+import { useNotificationSoundListener } from "@/hooks/use-notification-sound";
 
 // Eager (lightweight) pages - only auth and landing
 import NotFound from "@/pages/not-found";
@@ -40,6 +41,7 @@ const MiningPage = lazy(() => import("@/pages/mining"));
 const ReferralsPage = lazy(() => import("@/pages/referrals"));
 const LeaderboardPage = lazy(() => import("@/pages/leaderboard"));
 const TrustLoanPage = lazy(() => import("@/pages/trust-loan"));
+const NotificationsPage = lazy(() => import("@/pages/notifications"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 
 // Create Suspense wrappers for lazy-loaded pages
@@ -121,6 +123,12 @@ const TrustLoan = () => (
   </Suspense>
 );
 
+const Notifications = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <NotificationsPage />
+  </Suspense>
+);
+
 /** Admin-protected Dashboard component */
 function ProtectedAdminDashboard() {
   const { user, isLoading } = useAuth();
@@ -156,8 +164,9 @@ function AuthenticatedApp() {
     ["--sidebar-width-icon" as any]: "3rem",
   };
 
-  // Enable notification badge on app icon
+  // Enable notification badge and foreground notification sounds
   useNotificationBadge();
+  useNotificationSoundListener();
 
   // Chat bot state
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -198,6 +207,7 @@ function AuthenticatedApp() {
                 <Route path="/rewards" component={Rewards} />
                 <Route path="/leaderboard" component={Leaderboard} />
                 <Route path="/trust-loan" component={TrustLoan} />
+                <Route path="/notifications" component={Notifications} />
                 <Route path="/admin" component={ProtectedAdminDashboard} />
                 <Route component={NotFound} />
               </Switch>

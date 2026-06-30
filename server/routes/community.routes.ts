@@ -107,6 +107,31 @@ export function registerCommunityRoutes(app: Express, ctx: RouteContext) {
     }
   });
 
+  app.get("/api/notifications/status", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const unreadCount = await storage.getUnreadNotificationCount(userId);
+      const subscriptions = await storage.getUserPushSubscriptions(userId);
+      const pendingPush = await prisma.notification.count({
+        where: { userId, pendingPush: true },
+      });
+      const vapidConfigured = Boolean(VAPID_PUBLIC_KEY);
+      const pushEnabled = process.env.ENABLE_PUSH_NOTIFICATIONS !== "false" && vapidConfigured;
+
+      res.json({
+        unreadCount,
+        subscriptions: subscriptions.length,
+        pendingPush,
+        pushEnabled,
+        vapidConfigured,
+        foregroundSoundSupported: true,
+      });
+    } catch (error) {
+      console.error("Error fetching notification status:", error);
+      res.status(500).json({ message: "Failed to fetch notification status" });
+    }
+  });
+
   app.patch("/api/notifications/:id/read", requireAuth, validateCSRF, async (req, res) => {
     try {
       const { id } = req.params;
@@ -150,7 +175,9 @@ export function registerCommunityRoutes(app: Express, ctx: RouteContext) {
   // Push Notification routes
   app.get("/api/push/vapid-public-key", async (_req, res) => {
     try {
-      res.json({ publicKey: VAPID_PUBLIC_KEY });
+      const configured = Boolean(VAPID_PUBLIC_KEY);
+      const enabled = process.env.ENABLE_PUSH_NOTIFICATIONS !== "false" && configured;
+      res.json({ publicKey: VAPID_PUBLIC_KEY, configured, enabled });
     } catch (error) {
       console.error("Error getting VAPID public key:", error);
       res.status(500).json({ message: "Failed to get VAPID public key" });
