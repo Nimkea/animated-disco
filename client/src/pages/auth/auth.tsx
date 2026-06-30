@@ -184,7 +184,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden p-4">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden theme-page-bg p-4">
       <CosmicBackground />
 
       <motion.div
@@ -194,7 +194,7 @@ export default function Auth() {
         className="relative z-10 w-full max-w-md"
       >
         {/* Glassmorphic Card */}
-        <Card className="relative overflow-hidden border-primary/20 backdrop-blur-xl bg-white/10 dark:bg-black/20 shadow-2xl">
+        <Card className="relative overflow-hidden theme-glass-card shadow-2xl">
           {/* Gradient Background Effect */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-secondary/10 pointer-events-none" />
           
@@ -206,7 +206,7 @@ export default function Auth() {
               className="flex justify-center mb-4"
             >
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/50">
-                <Sparkles className="w-12 h-12 text-white" />
+                <Sparkles className="w-12 h-12 text-primary-foreground" />
               </div>
             </motion.div>
             
@@ -226,7 +226,7 @@ export default function Auth() {
 
           <CardContent className="relative z-10">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 backdrop-blur-sm bg-white/20 dark:bg-black/30">
+              <TabsList className="grid w-full grid-cols-2 mb-6 theme-muted-panel backdrop-blur-sm">
                 <TabsTrigger 
                   value="login" 
                   className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -264,7 +264,7 @@ export default function Auth() {
                           placeholder="your@email.com"
                           value={loginEmail}
                           onChange={(e) => setLoginEmail(e.target.value)}
-                          className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
+                          className="pl-10 bg-background/70 border-border/70 focus:border-primary/50 focus:ring-primary/50"
                           required
                           data-testid="input-login-email"
                         />
@@ -291,7 +291,7 @@ export default function Auth() {
                           placeholder="••••••••"
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
-                          className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
+                          className="pl-10 bg-background/70 border-border/70 focus:border-primary/50 focus:ring-primary/50"
                           required
                           data-testid="input-login-password"
                         />
@@ -346,7 +346,7 @@ export default function Auth() {
                           placeholder="your@email.com"
                           value={registerEmail}
                           onChange={(e) => setRegisterEmail(e.target.value)}
-                          className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
+                          className="pl-10 bg-background/70 border-border/70 focus:border-primary/50 focus:ring-primary/50"
                           required
                           data-testid="input-register-email"
                         />
@@ -363,7 +363,7 @@ export default function Auth() {
                           placeholder="username"
                           value={registerUsername}
                           onChange={(e) => setRegisterUsername(e.target.value)}
-                          className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
+                          className="pl-10 bg-background/70 border-border/70 focus:border-primary/50 focus:ring-primary/50"
                           required
                           minLength={3}
                           maxLength={20}
@@ -382,7 +382,7 @@ export default function Auth() {
                           placeholder="••••••••"
                           value={registerPassword}
                           onChange={(e) => setRegisterPassword(e.target.value)}
-                          className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
+                          className="pl-10 bg-background/70 border-border/70 focus:border-primary/50 focus:ring-primary/50"
                           required
                           minLength={8}
                           data-testid="input-register-password"
@@ -401,7 +401,7 @@ export default function Auth() {
                           placeholder="Enter referral code"
                           value={registerReferralCode}
                           onChange={(e) => setRegisterReferralCode(e.target.value.toUpperCase())}
-                          className="pl-10 backdrop-blur-sm bg-white/50 dark:bg-black/30 border-white/20 focus:border-primary/50 focus:ring-primary/50"
+                          className="pl-10 bg-background/70 border-border/70 focus:border-primary/50 focus:ring-primary/50"
                           data-testid="input-register-referral"
                         />
                       </div>

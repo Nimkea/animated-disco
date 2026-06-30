@@ -21,11 +21,11 @@ export default function Landing() {
   }, []);
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden theme-page-bg">
       {/* background */}
       <CosmicBackground />
       {/* subtle overlay so content pops */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/70" />
+      <div className="pointer-events-none absolute inset-0 theme-hero-overlay" />
 
       {/* theme toggle */}
       <div className="absolute top-4 right-4 z-20">
@@ -43,15 +43,15 @@ export default function Landing() {
             <h1 className="text-6xl md:text-9xl font-bold tracking-wide font-serif mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-400 bg-clip-text text-transparent drop-shadow-[0_0_24px_rgba(245,158,11,0.25)]">
               XNRT
             </h1>
-            <h2 className="text-xl md:text-2xl text-white/90 font-serif">We Build the NextGen</h2>
-            <p className="mt-1 text-sm md:text-base text-white/60">
+            <h2 className="text-xl md:text-2xl text-foreground font-serif">We Build the NextGen</h2>
+            <p className="mt-1 text-sm md:text-base text-muted-foreground">
               A project of NextGen Rise Foundation
             </p>
           </header>
         </div>
 
         {/* Description */}
-        <p className="mx-auto mb-12 max-w-2xl text-lg md:text-xl text-white/70">
+        <p className="mx-auto mb-12 max-w-2xl text-lg md:text-xl text-muted-foreground">
           Join the ultimate off-chain gamification earning platform. Earn XNRT tokens through
           staking, mining, referrals, and task completion.
         </p>
@@ -82,7 +82,7 @@ export default function Landing() {
           ].map((card, i) => (
             <TiltCard
               key={card.label}
-              className="relative overflow-hidden rounded-2xl border border-amber-500/25 bg-white/5 p-6 backdrop-blur-md animate-in slide-in-from-bottom fade-in duration-500"
+              className="relative overflow-hidden rounded-2xl theme-glass-card p-6 animate-in slide-in-from-bottom fade-in duration-500"
               style={{ animationDelay: `${150 * i}ms` }}
               tiltIntensity={8}
               glowIntensity={0.4}
@@ -92,7 +92,7 @@ export default function Landing() {
               <div className="mb-2 text-3xl font-bold bg-gradient-to-r from-amber-400 to-yellow-500 bg-clip-text text-transparent leading-tight">
                 {card.value}
               </div>
-              <div className="text-sm text-white/55">{card.label}</div>
+              <div className="text-sm text-muted-foreground">{card.label}</div>
             </TiltCard>
           ))}
         </section>
@@ -100,20 +100,20 @@ export default function Landing() {
         {/* Contact Us Section */}
         <section
           aria-label="Contact information"
-          className="mt-20 pt-12 border-t border-amber-500/20"
+          className="mt-20 pt-12 border-t border-border/70"
         >
-          <h3 className="text-2xl font-bold text-white mb-6">Contact Us</h3>
+          <h3 className="text-2xl font-bold text-foreground mb-6">Contact Us</h3>
           <div className="flex items-center justify-center gap-3">
             <Mail className="h-5 w-5 text-amber-400" aria-hidden="true" />
             <a
               href="mailto:support@xnrt.org"
-              className="text-lg text-white/80 hover:text-amber-400 transition-colors duration-200 underline underline-offset-4 decoration-amber-400/40 hover:decoration-amber-400"
+              className="text-lg text-foreground hover:text-primary transition-colors duration-200 underline underline-offset-4 decoration-amber-400/40 hover:decoration-amber-400"
               data-testid="link-contact-email"
             >
               support@xnrt.org
             </a>
           </div>
-          <p className="mt-3 text-sm text-white/50">
+          <p className="mt-3 text-sm text-muted-foreground">
             Our support team is here to help you 24/7
           </p>
         </section>

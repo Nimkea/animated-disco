@@ -180,7 +180,7 @@ function StatCard({
   className?: string;
 }) {
   const card = (
-    <Card className={cn("group h-full overflow-hidden rounded-2xl border-white/10 bg-white/[0.045] backdrop-blur-md transition-all hover:-translate-y-0.5 hover:bg-white/[0.07]", className)}>
+    <Card className={cn("group h-full overflow-hidden rounded-2xl theme-elevated-card transition-all hover:-translate-y-0.5 hover:bg-accent/60", className)}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -220,7 +220,7 @@ function ProgressCard({
   helper: string;
 }) {
   return (
-    <Card className="overflow-hidden rounded-2xl border-white/10 bg-white/[0.045] backdrop-blur-md">
+    <Card className="overflow-hidden rounded-2xl theme-elevated-card">
       <CardContent className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ function ProgressCard({
           <span className="font-semibold">{nf(value)} / {nf(total)}</span>
           <span className="text-muted-foreground">{nf(percent)}%</span>
         </div>
-        <Progress value={Math.max(0, Math.min(100, percent || 0))} className="mt-2 h-2 bg-white/10" />
+        <Progress value={Math.max(0, Math.min(100, percent || 0))} className="mt-2 h-2 bg-muted" />
       </CardContent>
     </Card>
   );
@@ -265,7 +265,7 @@ function QuickAction({
       variant={primary ? "default" : "outline"}
       className={cn(
         "h-auto w-full justify-between rounded-2xl px-4 py-4 text-left",
-        !primary && "border-white/10 bg-white/[0.025] hover:bg-white/[0.06]"
+        !primary && "theme-outline-action"
       )}
     >
       <Link href={href}>
@@ -427,13 +427,13 @@ export default function Home() {
     <div className="space-y-6">
       <AnnouncementBanner />
 
-      <Card className="relative overflow-hidden rounded-3xl border-white/10 bg-gradient-to-br from-primary/25 via-white/[0.055] to-background shadow-2xl shadow-primary/10">
+      <Card className="relative overflow-hidden rounded-3xl theme-hero-card">
         <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 left-10 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
         <CardContent className="relative p-5 sm:p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-4">
-              <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/15 bg-white/10 text-xl font-bold text-primary shadow-inner">
+              <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl border border-border/70 bg-background/60 dark:border-white/15 dark:bg-white/10 text-xl font-bold text-primary shadow-inner">
                 {summary.user.profileImageUrl ? (
                   <img src={summary.user.profileImageUrl} alt="Profile" className="h-full w-full object-cover" />
                 ) : (
@@ -468,7 +468,7 @@ export default function Home() {
                   </span>
                 </span>
               </Button>
-              <Button asChild variant="outline" className="h-auto justify-start gap-3 rounded-2xl border-white/10 bg-white/5 py-4">
+              <Button asChild variant="outline" className="h-auto justify-start gap-3 rounded-2xl theme-outline-action py-4">
                 <Link href="/profile">
                   <ShieldCheck className="h-5 w-5 text-primary" />
                   <span className="text-left">
@@ -481,7 +481,7 @@ export default function Home() {
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="rounded-2xl border border-white/10 bg-black/10 p-4 backdrop-blur-md">
+            <div className="rounded-2xl border theme-inset-panel p-4 backdrop-blur-md">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Total XNRT earned</p>
@@ -491,15 +491,15 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[310px]">
-                  <div className="rounded-xl bg-white/[0.055] p-3">
+                  <div className="rounded-xl theme-tile p-3">
                     <p className="text-xs text-muted-foreground">Available</p>
                     <p className="font-bold">{nf(summary.balance.available)}</p>
                   </div>
-                  <div className="rounded-xl bg-white/[0.055] p-3">
+                  <div className="rounded-xl theme-tile p-3">
                     <p className="text-xs text-muted-foreground">Mining</p>
                     <p className="font-bold">{nf(summary.balance.mining)}</p>
                   </div>
-                  <div className="rounded-xl bg-white/[0.055] p-3">
+                  <div className="rounded-xl theme-tile p-3">
                     <p className="text-xs text-muted-foreground">Referral</p>
                     <p className="font-bold">{nf(summary.balance.referral)}</p>
                   </div>
@@ -507,7 +507,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/10 p-4 backdrop-blur-md">
+            <div className="rounded-2xl border theme-inset-panel p-4 backdrop-blur-md">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">XP Level</p>
@@ -521,7 +521,7 @@ export default function Home() {
                 <span>{nf(summary.xp.total)} XP</span>
                 <span className="text-muted-foreground">{nf(summary.xp.toNextLevel)} XP to next</span>
               </div>
-              <Progress value={summary.xp.progressPercent} className="mt-2 h-2 bg-white/10" />
+              <Progress value={summary.xp.progressPercent} className="mt-2 h-2 bg-muted" />
             </div>
           </div>
         </CardContent>
@@ -561,7 +561,7 @@ export default function Home() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="overflow-hidden rounded-3xl border-white/10 bg-white/[0.045] backdrop-blur-md">
+        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -572,7 +572,7 @@ export default function Home() {
                   Every full mining cycle gives exactly {nf(summary.mining.reward.xnrt)} XNRT + {nf(summary.mining.reward.xp)} XP.
                 </p>
               </div>
-              <Badge variant="outline" className={cn("w-fit gap-2 border-white/10 bg-white/5", miningActive && "border-primary/30 bg-primary/10 text-primary")}>
+              <Badge variant="outline" className={cn("w-fit gap-2 theme-outline-action", miningActive && "border-primary/30 bg-primary/10 text-primary")}>
                 {miningActive ? <Clock3 className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
                 {miningActive ? "Mining active" : "Ready to start"}
               </Badge>
@@ -580,7 +580,7 @@ export default function Home() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
-              <div className="grid place-items-center rounded-3xl border border-white/10 bg-black/10 p-6 text-center">
+              <div className="grid place-items-center rounded-3xl border theme-inset-panel p-6 text-center">
                 <div className="relative grid h-40 w-40 place-items-center rounded-full border border-primary/30 bg-primary/10 shadow-inner shadow-primary/20">
                   <div className="absolute inset-3 rounded-full border border-dashed border-primary/25" />
                   <div>
@@ -591,23 +591,23 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="space-y-4 rounded-3xl border border-white/10 bg-black/10 p-5">
+              <div className="space-y-4 rounded-3xl border theme-inset-panel p-5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">Mining progress</span>
                   <span className="text-muted-foreground">{nf(miningActive ? miningProgress : 0)}%</span>
                 </div>
-                <Progress value={miningActive ? miningProgress : 0} className="h-3 bg-white/10" />
+                <Progress value={miningActive ? miningProgress : 0} className="h-3 bg-muted" />
 
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-white/[0.055] p-3">
+                  <div className="rounded-2xl theme-tile p-3">
                     <p className="text-xs text-muted-foreground">Reward</p>
                     <p className="mt-1 font-bold text-primary">{nf(summary.mining.reward.xnrt)} XNRT</p>
                   </div>
-                  <div className="rounded-2xl bg-white/[0.055] p-3">
+                  <div className="rounded-2xl theme-tile p-3">
                     <p className="text-xs text-muted-foreground">XP</p>
                     <p className="mt-1 font-bold">+{nf(summary.mining.reward.xp)} XP</p>
                   </div>
-                  <div className="rounded-2xl bg-white/[0.055] p-3">
+                  <div className="rounded-2xl theme-tile p-3">
                     <p className="text-xs text-muted-foreground">Duration</p>
                     <p className="mt-1 font-bold">{nf(summary.mining.reward.durationHours)} hours</p>
                   </div>
@@ -622,14 +622,14 @@ export default function Home() {
                   {miningReadyToClaim ? (
                     <Button
                       variant="outline"
-                      className="flex-1 gap-2 rounded-2xl border-white/10 bg-white/5"
+                      className="flex-1 gap-2 rounded-2xl theme-outline-action"
                       onClick={() => processMiningMutation.mutate()}
                       disabled={processMiningMutation.isPending}
                     >
                       <Gift className="h-4 w-4" /> Claim Reward
                     </Button>
                   ) : (
-                    <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl border-white/10 bg-white/5">
+                    <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl theme-outline-action">
                       <Link href="/rewards">
                         <Gift className="h-4 w-4" /> Rewards
                       </Link>
@@ -641,7 +641,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-3xl border-white/10 bg-white/[0.045] backdrop-blur-md">
+        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <Rocket className="h-5 w-5 text-primary" /> Quick actions
@@ -705,32 +705,32 @@ export default function Home() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="overflow-hidden rounded-3xl border-white/10 bg-white/[0.045] backdrop-blur-md">
+        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <Share2 className="h-5 w-5 text-primary" /> Invite and earn
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-black/10 p-4">
+            <div className="rounded-2xl border theme-inset-panel p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Your referral code</p>
               <div className="mt-2 flex items-center justify-between gap-3">
-                <code className="rounded-xl bg-white/10 px-3 py-2 font-mono text-lg font-bold text-primary">{summary.user.referralCode}</code>
-                <Button variant="outline" size="sm" className="gap-2 border-white/10 bg-white/5" onClick={copyReferralLink}>
+                <code className="rounded-xl bg-muted px-3 py-2 dark:bg-white/10 font-mono text-lg font-bold text-primary">{summary.user.referralCode}</code>
+                <Button variant="outline" size="sm" className="gap-2 theme-outline-action" onClick={copyReferralLink}>
                   <Clipboard className="h-4 w-4" /> Copy
                 </Button>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-white/[0.055] p-3 text-center">
+              <div className="rounded-2xl theme-tile p-3 text-center">
                 <p className="text-xs text-muted-foreground">Direct</p>
                 <p className="text-xl font-bold">{nf(summary.referrals.direct)}</p>
               </div>
-              <div className="rounded-2xl bg-white/[0.055] p-3 text-center">
+              <div className="rounded-2xl theme-tile p-3 text-center">
                 <p className="text-xs text-muted-foreground">Network</p>
                 <p className="text-xl font-bold">{nf(summary.referrals.totalNetwork)}</p>
               </div>
-              <div className="rounded-2xl bg-white/[0.055] p-3 text-center">
+              <div className="rounded-2xl theme-tile p-3 text-center">
                 <p className="text-xs text-muted-foreground">Commission</p>
                 <p className="text-xl font-bold">{nf(summary.referrals.paidCommission)}</p>
               </div>
@@ -739,7 +739,7 @@ export default function Home() {
               <Button onClick={shareReferralLink} className="flex-1 gap-2 rounded-2xl">
                 <Share2 className="h-4 w-4" /> Share link
               </Button>
-              <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl border-white/10 bg-white/5">
+              <Button asChild variant="outline" className="flex-1 gap-2 rounded-2xl theme-outline-action">
                 <Link href="/referrals">
                   <Users className="h-4 w-4" /> Referral dashboard
                 </Link>
@@ -748,7 +748,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-3xl border-white/10 bg-white/[0.045] backdrop-blur-md">
+        <Card className="overflow-hidden rounded-3xl theme-elevated-card">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="flex items-center gap-2 text-xl">
@@ -763,7 +763,7 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             {!summary.recentActivities.length ? (
-              <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center">
+              <div className="rounded-2xl border border-dashed border-border/70 p-8 text-center">
                 <Sparkles className="mx-auto h-8 w-8 text-primary" />
                 <p className="mt-3 font-semibold">No activity yet</p>
                 <p className="mt-1 text-sm text-muted-foreground">Start mining, complete a task, or invite friends to build your timeline.</p>
@@ -771,7 +771,7 @@ export default function Home() {
             ) : (
               <div className="space-y-3">
                 {summary.recentActivities.map((activity) => (
-                  <div key={activity.id} className="flex gap-3 rounded-2xl border border-white/10 bg-black/10 p-3">
+                  <div key={activity.id} className="flex gap-3 rounded-2xl border theme-inset-panel p-3">
                     <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-foreground">{activity.description}</p>

@@ -296,7 +296,7 @@ export default function TrustLoanPage() {
               </div>
             </div>
 
-            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-background/70 p-5 backdrop-blur-xl">
+            <div className="w-full max-w-md rounded-3xl border theme-glass-card p-5 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Eligibility</p>
