@@ -69,15 +69,21 @@ export function registerTrustLoanRoutes(app: Express, ctx: RouteContext) {
             .json({ message: "Trust Loan already claimed." });
         }
 
-        // Ensure tier exists
-        const tierKey = TRUST_LOAN_CONFIG.programKey as unknown as StakingTier;
-        const tier = STAKING_TIERS[tierKey];
-        if (!tier) {
-          return res
-            .status(400)
-            .json({ message: "Trust Loan tier not configured." });
+        const { directCount, investingCount } = await getDirectReferralStats(userId);
+        if (
+          directCount < TRUST_LOAN_CONFIG.requiredReferrals ||
+          investingCount < TRUST_LOAN_CONFIG.requiredInvestingReferrals
+        ) {
+          return res.status(403).json({
+            message: `Trust Loan requires ${TRUST_LOAN_CONFIG.requiredReferrals} direct referrals and ${TRUST_LOAN_CONFIG.requiredInvestingReferrals} investing referrals.`,
+            directCount,
+            investingCount,
+            requiredReferrals: TRUST_LOAN_CONFIG.requiredReferrals,
+            requiredInvestingReferrals: TRUST_LOAN_CONFIG.requiredInvestingReferrals,
+          });
         }
 
+        const tierKey = TRUST_LOAN_CONFIG.programKey;
         const now = new Date();
         const endDate = new Date(
           now.getTime() +
@@ -100,7 +106,7 @@ export function registerTrustLoanRoutes(app: Express, ctx: RouteContext) {
           // Trust Loan specific fields
           isLoan: true,
           loanProgram: tierKey,
-          unlockMet: false,
+          unlockMet: true,
           requiredReferrals: TRUST_LOAN_CONFIG.requiredReferrals,
           requiredInvestingReferrals:
             TRUST_LOAN_CONFIG.requiredInvestingReferrals,
@@ -156,6 +162,7 @@ export function registerTrustLoanRoutes(app: Express, ctx: RouteContext) {
         requiredReferrals,
         requiredInvestingReferrals,
         minInvestUsdtPerReferral: String(minInvestUsdtPerReferral),
+        eligible: directCount >= requiredReferrals && investingCount >= requiredInvestingReferrals,
         program: TRUST_LOAN_CONFIG.programKey,
         amountXnrt: TRUST_LOAN_CONFIG.amountXnrt,
         durationDays: TRUST_LOAN_CONFIG.durationDays,

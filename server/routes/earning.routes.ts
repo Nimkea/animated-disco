@@ -7,6 +7,14 @@ import {
   processMiningRewardsForUser,
   startMiningSessionForUser,
 } from "../services/mining.service";
+import {
+  createStakeForUser,
+  getStakesForUser,
+  getStakingSummaryForUser,
+  processStakingRewardsForUser,
+  StakingServiceError,
+  withdrawStakeForUser,
+} from "../services/staking.service";
 
 export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -55,7 +63,7 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   app.get("/api/stakes", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const stakes = await storage.getStakes(userId);
+      const stakes = await getStakesForUser(userId);
       res.json(stakes);
     } catch (error) {
       console.error("Error fetching stakes:", error);
@@ -63,148 +71,51 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
     }
   });
 
-  app.post("/api/stakes", requireAuth, validateCSRF, async (req, res) => {
+  app.get("/api/stakes/summary", requireAuth, async (req, res) => {
     try {
       const userId = req.authUser!.id;
-      const { tier, amount } = req.body;
-
-      if (!STAKING_TIERS[tier as StakingTier]) {
-        return res.status(400).json({ message: "Invalid staking tier" });
-      }
-
-      const tierConfig = STAKING_TIERS[tier as StakingTier];
-      const stakeAmount = parseFloat(amount);
-
-      if (stakeAmount < tierConfig.minAmount || stakeAmount > tierConfig.maxAmount) {
-        return res.status(400).json({
-          message: `Stake amount must be between ${tierConfig.minAmount} and ${tierConfig.maxAmount} XNRT`,
-        });
-      }
-
-      const balance = await storage.getBalance(userId);
-      if (!balance || parseFloat(balance.xnrtBalance) < stakeAmount) {
-        return res.status(400).json({ message: "Insufficient balance" });
-      }
-
-      const startDate = new Date();
-      const endDate = new Date(
-        startDate.getTime() + tierConfig.duration * 24 * 60 * 60 * 1000
-      );
-
-      const stake = await storage.createStake({
-        userId,
-        tier,
-        amount: amount.toString(),
-        dailyRate: tierConfig.dailyRate.toString(),
-        duration: tierConfig.duration,
-        startDate,
-        endDate,
-        totalProfit: "0",
-        lastProfitDate: null,
-        status: "active",
-      });
-
-      // Deduct from balance
-      await storage.updateBalance(userId, {
-        xnrtBalance: (parseFloat(balance.xnrtBalance) - stakeAmount).toString(),
-        stakingBalance: (parseFloat(balance.stakingBalance) + stakeAmount).toString(),
-      });
-
-      // Log activity
-      await storage.createActivity({
-        userId,
-        type: "stake_created",
-        description: `Staked ${stakeAmount.toLocaleString()} XNRT in ${tierConfig.name}`,
-      });
-
-      res.json(stake);
+      const summary = await getStakingSummaryForUser(userId);
+      res.json(summary);
     } catch (error) {
-      console.error("Error creating stake:", error);
-      res.status(500).json({ message: "Failed to create stake" });
+      console.error("Error fetching staking summary:", error);
+      res.status(500).json({ message: "Failed to fetch staking summary" });
     }
   });
 
-  app.post(
-    "/api/stakes/process-rewards",
-    requireAuth,
-    validateCSRF,
-    async (_req, res) => {
-      try {
-        await storage.processStakingRewards();
-        res.json({ success: true, message: "Staking rewards processed successfully" });
-      } catch (error) {
-        console.error("Error processing staking rewards:", error);
-        res.status(500).json({ message: "Failed to process staking rewards" });
-      }
+  app.post("/api/stakes", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const stake = await createStakeForUser(userId, req.body ?? {});
+      res.status(201).json(stake);
+    } catch (error: any) {
+      const statusCode = error instanceof StakingServiceError ? error.statusCode : 500;
+      if (statusCode >= 500) console.error("Error creating stake:", error);
+      res.status(statusCode).json({ message: error?.message || "Failed to create stake" });
     }
-  );
+  });
 
-  app.post(
-    "/api/stakes/:id/withdraw",
-    requireAuth,
-    validateCSRF,
-    async (req, res) => {
-      try {
-        const userId = req.authUser!.id;
-        const stakeId = req.params.id;
-
-        const stake = await storage.getStakeById(stakeId);
-
-        if (!stake) return res.status(404).json({ message: "Stake not found" });
-        if (stake.userId !== userId)
-          return res.status(403).json({ message: "Unauthorized" });
-
-        if (stake.status !== "completed" && stake.status !== "active") {
-          return res.status(400).json({
-            message: "Stake has already been withdrawn or is not ready for withdrawal",
-          });
-        }
-
-        if (new Date(stake.endDate) > new Date()) {
-          return res.status(400).json({ message: "Stake has not matured yet" });
-        }
-
-        const dailyRate = parseFloat(stake.dailyRate) / 100;
-        const startDate = new Date(stake.startDate);
-        const endDate = new Date(stake.endDate);
-        const totalDurationDays = Math.floor(
-          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-        );
-        const stakeAmount = parseFloat(stake.amount);
-        const dailyProfit = stakeAmount * dailyRate;
-        const totalProfit = dailyProfit * totalDurationDays;
-
-        const withdrawnStake = await storage.atomicWithdrawStake(
-          stakeId,
-          totalProfit.toString()
-        );
-        if (!withdrawnStake)
-          return res.status(409).json({ message: "Stake has already been withdrawn" });
-
-        const balance = await storage.getBalance(userId);
-        if (!balance) return res.status(404).json({ message: "Balance not found" });
-
-        const totalWithdrawalAmount = stakeAmount + totalProfit;
-
-        await storage.updateBalance(userId, {
-          xnrtBalance: (parseFloat(balance.xnrtBalance) + totalWithdrawalAmount).toString(),
-          stakingBalance: (parseFloat(balance.stakingBalance) - stakeAmount).toString(),
-        });
-
-        const tierConfig = STAKING_TIERS[stake.tier as StakingTier];
-        await storage.createActivity({
-          userId,
-          type: "stake_withdrawn",
-          description: `Withdrew ${stakeAmount.toLocaleString()} XNRT + ${totalProfit.toLocaleString()} profit from ${tierConfig.name}`,
-        });
-
-        res.json({ success: true, totalAmount: totalWithdrawalAmount, profit: totalProfit });
-      } catch (error) {
-        console.error("Error withdrawing stake:", error);
-        res.status(500).json({ message: "Failed to withdraw stake" });
-      }
+  app.post("/api/stakes/process-rewards", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const result = await processStakingRewardsForUser(userId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error processing staking rewards:", error);
+      res.status(500).json({ message: "Failed to process staking rewards" });
     }
-  );
+  });
+
+  app.post("/api/stakes/:id/withdraw", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const result = await withdrawStakeForUser(userId, req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      const statusCode = error instanceof StakingServiceError ? error.statusCode : 500;
+      if (statusCode >= 500) console.error("Error withdrawing stake:", error);
+      res.status(statusCode).json({ message: error?.message || "Failed to withdraw stake" });
+    }
+  });
 
   // Mining routes
   app.get("/api/mining/current", requireAuth, async (req, res) => {
