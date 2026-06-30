@@ -4,8 +4,10 @@ import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
   Database,
+  Download,
   FileText,
   RefreshCw,
+  ShieldAlert,
   ShieldCheck,
   UserCog,
 } from "lucide-react";
@@ -16,7 +18,7 @@ import { AdminSearchToolbar } from "@/components/admin/admin-search-toolbar";
 import { AdminStatusBadge } from "@/components/admin/admin-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -59,9 +61,29 @@ const ENTITY_OPTIONS = [
   { label: "Users", value: "user" },
 ];
 
-function buildAuditQuery(limit: number, entityType: string) {
+const STATUS_OPTIONS = [
+  { label: "All statuses", value: "all" },
+  { label: "Success", value: "success" },
+  { label: "Failed", value: "failed" },
+  { label: "Blocked", value: "blocked" },
+];
+
+const ACTION_OPTIONS = [
+  { label: "All actions", value: "all" },
+  { label: "Deposit approve", value: "deposit_approve" },
+  { label: "Deposit force approve", value: "deposit_force_approve" },
+  { label: "Deposit reject", value: "deposit_reject" },
+  { label: "Withdrawal approve", value: "withdrawal_approve" },
+  { label: "Withdrawal reject", value: "withdrawal_reject" },
+  { label: "Scanner manual run", value: "scanner_manual_run" },
+  { label: "Unmatched deposit match", value: "unmatched_deposit_match" },
+];
+
+function buildAuditQuery(limit: number, entityType: string, status: string, action: string) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (entityType !== "all") params.set("entityType", entityType);
+  if (status !== "all") params.set("status", status);
+  if (action !== "all") params.set("action", action);
   return `/api/admin/audit-logs?${params.toString()}`;
 }
 
@@ -84,12 +106,54 @@ function getMetadataPreview(metadata: unknown) {
     .join(" • ");
 }
 
+function csvEscape(value: unknown) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(logs: AdminAuditLog[]) {
+  const header = [
+    "createdAt",
+    "status",
+    "action",
+    "entityType",
+    "entityId",
+    "adminUserId",
+    "targetUserId",
+    "summary",
+    "ipAddress",
+  ];
+  const rows = logs.map((log) => [
+    log.createdAt,
+    log.status,
+    log.action,
+    log.entityType,
+    log.entityId ?? "",
+    log.adminUserId ?? "",
+    log.targetUserId ?? "",
+    log.summary,
+    log.ipAddress ?? "",
+  ]);
+  const csv = [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `admin-audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function AuditLogsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [entityType, setEntityType] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [action, setAction] = useState("all");
   const [limit, setLimit] = useState(100);
 
-  const auditQuery = buildAuditQuery(limit, entityType);
+  const auditQuery = buildAuditQuery(limit, entityType, status, action);
   const { data: logs = [], isLoading, refetch, isFetching } = useQuery<AdminAuditLog[]>({
     queryKey: [auditQuery],
   });
@@ -107,6 +171,7 @@ export default function AuditLogsTab() {
         log.adminUserId,
         log.targetUserId,
         log.ipAddress,
+        getMetadataPreview(log.metadata),
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
@@ -116,6 +181,7 @@ export default function AuditLogsTab() {
   const successCount = logs.filter((log) => String(log.status).toLowerCase() === "success").length;
   const failureCount = logs.filter((log) => String(log.status).toLowerCase() !== "success").length;
   const forceCount = logs.filter((log) => log.action.toLowerCase().includes("force")).length;
+  const scannerCount = logs.filter((log) => log.entityType === "scanner").length;
 
   return (
     <div className="space-y-6">
@@ -124,14 +190,20 @@ export default function AuditLogsTab() {
         title="Audit Logs"
         description="Review high-risk admin actions like deposit approvals, forced overrides, withdrawal decisions, scanner runs, and manual matching."
         actions={
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <>
+            <Button variant="outline" size="sm" onClick={() => downloadCsv(filteredLogs)} disabled={filteredLogs.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </>
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <AdminKpiCard
           title="Loaded events"
           value={logs.length.toLocaleString()}
@@ -152,7 +224,7 @@ export default function AuditLogsTab() {
           title="Failed / blocked"
           value={failureCount.toLocaleString()}
           description="Needs review if non-zero"
-          icon={Activity}
+          icon={ShieldAlert}
           accent={failureCount > 0 ? "danger" : "default"}
           testId="audit-failure-count"
         />
@@ -164,6 +236,14 @@ export default function AuditLogsTab() {
           accent={forceCount > 0 ? "warning" : "default"}
           testId="audit-force-count"
         />
+        <AdminKpiCard
+          title="Scanner events"
+          value={scannerCount.toLocaleString()}
+          description="Manual scanner runs and failures"
+          icon={Activity}
+          accent="default"
+          testId="audit-scanner-count"
+        />
       </div>
 
       <Card>
@@ -172,12 +252,15 @@ export default function AuditLogsTab() {
             <Database className="h-5 w-5 text-primary" />
             Audit trail
           </CardTitle>
+          <CardDescription>
+            Server filters reduce data before loading. Search filters the loaded rows locally, including metadata previews.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <AdminSearchToolbar
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Search summary, action, user ID, entity ID, IP..."
+            placeholder="Search summary, action, user ID, entity ID, IP, metadata..."
             testId="input-search-audit-logs"
             actions={
               <>
@@ -187,6 +270,30 @@ export default function AuditLogsTab() {
                   </SelectTrigger>
                   <SelectContent>
                     {ENTITY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="w-full md:w-[160px]" data-testid="select-audit-status">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={action} onValueChange={setAction}>
+                  <SelectTrigger className="w-full md:w-[210px]" data-testid="select-audit-action">
+                    <SelectValue placeholder="Action" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACTION_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -266,6 +373,12 @@ export default function AuditLogsTab() {
                             <span className="text-muted-foreground">Target:</span>{" "}
                             <span className="font-mono">{formatId(log.targetUserId)}</span>
                           </div>
+                          {log.ipAddress && (
+                            <div>
+                              <span className="text-muted-foreground">IP:</span>{" "}
+                              <span className="font-mono">{log.ipAddress}</span>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="min-w-[280px] max-w-xl">
                           <p className="text-sm font-medium">{log.summary}</p>

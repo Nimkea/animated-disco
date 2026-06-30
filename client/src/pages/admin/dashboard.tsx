@@ -10,7 +10,8 @@ import {
   ListChecks,
   Award,
   Megaphone,
-  ShieldCheck
+  ShieldCheck,
+  Radar
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
@@ -25,6 +26,7 @@ import TasksTab from "./tabs/tasks";
 import AchievementsTab from "./tabs/achievements";
 import AnnouncementsTab from "./tabs/announcements";
 import AuditLogsTab from "./tabs/audit-logs";
+import ScannerDashboardTab from "./tabs/scanner-dashboard";
 
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
@@ -34,7 +36,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit"].includes(tab)) {
+    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit", "scanner"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -100,6 +102,10 @@ export default function AdminDashboard() {
             <ShieldCheck className="h-4 w-4" />
             <span className="hidden sm:inline">Audit</span>
           </TabsTrigger>
+          <TabsTrigger value="scanner" className="gap-2" data-testid="tab-scanner">
+            <Radar className="h-4 w-4" />
+            <span className="hidden sm:inline">Scanner</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -144,6 +150,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="audit" className="space-y-6">
           <AuditLogsTab />
+        </TabsContent>
+
+        <TabsContent value="scanner" className="space-y-6">
+          <ScannerDashboardTab />
         </TabsContent>
       </Tabs>
     </div>

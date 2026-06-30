@@ -243,11 +243,27 @@ export function registerAdminOverviewRoutes(app: Express, ctx: RouteContext) {
         const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 50, 1), 200);
         const entityType = typeof req.query.entityType === "string" ? req.query.entityType : undefined;
         const action = typeof req.query.action === "string" ? req.query.action : undefined;
+        const status = typeof req.query.status === "string" ? req.query.status : undefined;
+        const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
 
         const logs = await (prisma as any).adminAuditLog.findMany({
           where: {
             ...(entityType ? { entityType } : {}),
             ...(action ? { action } : {}),
+            ...(status ? { status } : {}),
+            ...(q
+              ? {
+                  OR: [
+                    { summary: { contains: q, mode: "insensitive" } },
+                    { action: { contains: q, mode: "insensitive" } },
+                    { entityType: { contains: q, mode: "insensitive" } },
+                    { entityId: { contains: q, mode: "insensitive" } },
+                    { adminUserId: { contains: q, mode: "insensitive" } },
+                    { targetUserId: { contains: q, mode: "insensitive" } },
+                    { ipAddress: { contains: q, mode: "insensitive" } },
+                  ],
+                }
+              : {}),
           },
           orderBy: { createdAt: "desc" },
           take: limit,
