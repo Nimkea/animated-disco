@@ -1,4 +1,4 @@
-// Referenced from Replit Auth blueprint
+// Auth helpers for custom JWT email/password auth
 // Enhanced with robust status/code checking instead of fragile regex
 
 export type ApiError = Error & {

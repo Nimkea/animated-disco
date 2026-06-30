@@ -193,7 +193,7 @@ function convertPrismaPushSubscription(subscription: any): PushSubscription {
 }
 
 export interface IStorage {
-  // User operations (IMPORTANT: mandatory for Replit Auth)
+  // User operations
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser, referralCode?: string): Promise<User>;
   updateUser(userId: string, updates: Partial<User>): Promise<User>;
@@ -481,7 +481,7 @@ function extractXnrtFromActivity(description: string, type: string, category: Le
 }
 
 export class DatabaseStorage implements IStorage {
-  // User operations (IMPORTANT: mandatory for Replit Auth)
+  // User operations
   async getUser(id: string): Promise<User | undefined> {
     return userRepository.findById(id);
   }

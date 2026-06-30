@@ -425,18 +425,6 @@ export default function Auth() {
               </>
             </Tabs>
 
-            <div className="mt-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Or continue with{" "}
-                <a 
-                  href="/auth" 
-                  className="text-primary hover:underline font-medium"
-                  data-testid="link-replit-login"
-                >
-                  Replit Account
-                </a>
-              </p>
-            </div>
           </CardContent>
         </Card>
 
