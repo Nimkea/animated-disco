@@ -365,3 +365,39 @@
     display: none;
   }
 }
+@layer utilities {
+  .theme-page-bg {
+    background:
+      radial-gradient(circle at top left, hsl(var(--primary) / 0.14), transparent 30rem),
+      radial-gradient(circle at bottom right, hsl(var(--chart-1) / 0.10), transparent 26rem),
+      hsl(var(--background));
+  }
+
+  .theme-glass-card {
+    border-color: hsl(var(--border) / 0.68);
+    background: hsl(var(--card) / 0.78);
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 24px 70px hsl(var(--foreground) / 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .dark .theme-glass-card {
+    border-color: hsl(var(--primary) / 0.18);
+    background: hsl(var(--card) / 0.74);
+    box-shadow: 0 24px 70px hsl(var(--primary) / 0.10);
+  }
+
+  .theme-muted-panel {
+    border-color: hsl(var(--border) / 0.68);
+    background: hsl(var(--muted) / 0.48);
+  }
+
+  .dark .theme-muted-panel {
+    background: hsl(var(--muted) / 0.36);
+  }
+
+  .theme-soft-border {
+    border-color: hsl(var(--border) / 0.68);
+  }
+}

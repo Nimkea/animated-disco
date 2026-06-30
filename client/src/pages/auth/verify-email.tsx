@@ -55,15 +55,15 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black px-4">
+    <div className="min-h-screen flex items-center justify-center theme-page-bg px-4">
       {/* Cosmic background */}
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-black to-black" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/15 via-background to-background" />
         <div className="stars" />
         <div className="twinkling" />
       </div>
 
-      <Card className="w-full max-w-md relative z-10 border-amber-500/20 bg-black/80 backdrop-blur-xl">
+      <Card className="w-full max-w-md relative z-10 theme-glass-card">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center mb-4">
             {verifyEmailMutation.isPending && <Loader2 className="w-8 h-8 text-black animate-spin" />}
@@ -72,14 +72,14 @@ export default function VerifyEmailPage() {
             {!token && <Mail className="w-8 h-8 text-black" />}
           </div>
           
-          <CardTitle className="text-2xl font-bold text-amber-500">
+          <CardTitle className="text-2xl font-bold text-primary">
             {verifyEmailMutation.isPending && 'Verifying Email...'}
             {verifyEmailMutation.isSuccess && 'Email Verified!'}
             {verifyEmailMutation.isError && 'Verification Failed'}
             {!token && 'Email Verification'}
           </CardTitle>
           
-          <CardDescription className="text-gray-400">
+          <CardDescription className="text-muted-foreground">
             {verifyEmailMutation.isPending && 'Please wait while we verify your email address.'}
             {verifyEmailMutation.isSuccess && 'Your email has been successfully verified. You can now access all features.'}
             {verifyEmailMutation.isError && 'We couldn\'t verify your email. The link may be expired or invalid.'}
@@ -90,8 +90,8 @@ export default function VerifyEmailPage() {
         <CardContent className="space-y-4">
           {verifyEmailMutation.isSuccess && (
             <div className="text-center">
-              <p className="text-sm text-gray-400 mb-4">Redirecting to dashboard...</p>
-              <Loader2 className="w-6 h-6 mx-auto animate-spin text-amber-500" />
+              <p className="text-sm text-muted-foreground mb-4">Redirecting to dashboard...</p>
+              <Loader2 className="w-6 h-6 mx-auto animate-spin text-primary" />
             </div>
           )}
 
@@ -99,7 +99,7 @@ export default function VerifyEmailPage() {
             <div className="space-y-3">
               <Button
                 onClick={handleResendVerification}
-                className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-semibold"
+                className="w-full bg-gradient-to-r from-primary to-yellow-500 hover:from-primary/90 hover:to-yellow-500/90 text-primary-foreground font-semibold"
                 data-testid="button-resend-verification"
               >
                 <Mail className="w-4 h-4 mr-2" />
@@ -109,7 +109,7 @@ export default function VerifyEmailPage() {
               <Button
                 onClick={() => setLocation('/auth')}
                 variant="outline"
-                className="w-full border-amber-500/30 hover:bg-amber-500/10 text-amber-500"
+                className="w-full border-primary/30 hover:bg-primary/10 text-primary"
                 data-testid="button-back-to-login"
               >
                 Back to Login

@@ -164,20 +164,20 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
   const ChatContent = (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-amber-500/20 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 px-4 py-3 rounded-t-2xl md:rounded-t-2xl">
+      <div className="flex items-center justify-between border-b border-primary/20 bg-gradient-to-r from-primary/15 to-yellow-500/10 px-4 py-3 rounded-t-2xl md:rounded-t-2xl">
         <div className="flex items-center gap-2">
           <div className="h-2.5 w-2.5 rounded-full bg-green-400 animate-pulse" />
-          <h3 className="text-sm font-semibold text-white">XNRT Support</h3>
+          <h3 className="text-sm font-semibold text-foreground">XNRT Support</h3>
         </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setIsOpen(false)}
-          className="h-8 w-8 p-0 hover:bg-white/10"
+          className="h-8 w-8 p-0 hover:bg-muted"
           data-testid="button-close-chat"
           aria-label="Close chat"
         >
-          <X className="h-4 w-4 text-white/70" />
+          <X className="h-4 w-4 text-muted-foreground" />
         </Button>
       </div>
 
@@ -193,8 +193,8 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
                 className={cn(
                   "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
                   msg.sender === "user"
-                    ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white"
-                    : "bg-white/10 text-white/90 border border-amber-500/20"
+                    ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-black"
+                    : "border border-border bg-muted/60 text-foreground"
                 )}
                 data-testid={`message-${msg.sender}`}
               >
@@ -206,7 +206,7 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
       </ScrollArea>
 
       {/* Quick Actions */}
-      <div className="border-t border-amber-500/20 px-4 py-2">
+      <div className="border-t border-border px-4 py-2">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {["Staking", "Mining", "Referrals", "Withdrawal"].map((topic) => (
             <Button
@@ -214,7 +214,7 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
               variant="outline"
               size="sm"
               onClick={() => handleSend(topic)}
-              className="shrink-0 border-amber-500/30 bg-white/5 text-xs text-white/70 hover:bg-amber-500/20 hover:text-white"
+              className="shrink-0 border-primary/30 bg-muted/60 text-xs text-muted-foreground hover:bg-primary/15 hover:text-foreground"
               data-testid={`button-quick-${topic.toLowerCase()}`}
             >
               {topic}
@@ -224,14 +224,14 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
       </div>
 
       {/* Input */}
-      <div className="border-t border-amber-500/20 bg-black/40 p-4 rounded-b-2xl">
+      <div className="border-t border-border bg-background/80 p-4 rounded-b-2xl">
         <div className="flex gap-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Ask me anything..."
-            className="flex-1 border-amber-500/30 bg-white/5 text-white placeholder:text-white/40 focus-visible:border-amber-500 focus-visible:ring-amber-500/20"
+            className="flex-1 border-primary/30 bg-background/70 text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
             data-testid="input-chat-message"
           />
           <Button
@@ -245,12 +245,12 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
             <Send className="h-4 w-4" />
           </Button>
         </div>
-        <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-white/40">
+        <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
           <Mail className="h-3 w-3" />
           <span>Need more help?</span>
           <a
             href="mailto:support@xnrt.org"
-            className="text-amber-400 hover:underline"
+            className="text-primary hover:underline"
             data-testid="link-chat-email"
           >
             support@xnrt.org
@@ -278,7 +278,7 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
       {/* When open: dimmer/backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:bg-black/30"
+          className="fixed inset-0 z-40 bg-background/55 backdrop-blur-sm md:bg-background/45"
           onClick={() => setIsOpen(false)}
           aria-hidden="true"
         />
@@ -289,20 +289,20 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-x-0 bottom-0 z-50 md:hidden h-[min(85vh,640px)] rounded-t-2xl bg-zinc-900/95 border-t border-white/10 shadow-xl flex flex-col"
+          className="fixed inset-x-0 bottom-0 z-50 md:hidden h-[min(85vh,640px)] rounded-t-2xl theme-glass-card border-t shadow-xl flex flex-col"
           style={sheetStyle}
           data-testid="container-chat-window-mobile"
         >
           {/* drag handle + close (header duplicated for mobile top chrome) */}
           <div className="relative flex items-center justify-center pt-2 pb-1">
-            <div className="h-1.5 w-10 rounded-full bg-white/20" />
+            <div className="h-1.5 w-10 rounded-full bg-muted-foreground/25" />
             <button
               onClick={() => setIsOpen(false)}
               aria-label="Close chat"
-              className="absolute right-2 top-2 p-2 rounded-full hover:bg-white/10"
+              className="absolute right-2 top-2 p-2 rounded-full hover:bg-muted"
               data-testid="button-close-chat-mobile"
             >
-              <X className="h-5 w-5 text-white/70" />
+              <X className="h-5 w-5 text-muted-foreground" />
             </button>
           </div>
           <div className="flex-1 flex flex-col overflow-hidden">{ChatContent}</div>
@@ -314,7 +314,7 @@ export function ChatBot({ isOpen: controlledIsOpen, onOpenChange, showLauncher =
         <div
           role="dialog"
           aria-modal="true"
-          className="hidden md:flex fixed bottom-6 right-6 z-50 w-[380px] max-w-[92vw] h-[500px] rounded-2xl border border-amber-500/30 bg-black/90 backdrop-blur-xl shadow-2xl shadow-amber-500/20 flex-col"
+          className="hidden md:flex fixed bottom-6 right-6 z-50 w-[380px] max-w-[92vw] h-[500px] rounded-2xl theme-glass-card border shadow-2xl flex-col"
           data-testid="container-chat-window"
         >
           {ChatContent}
