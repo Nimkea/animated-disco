@@ -50,14 +50,13 @@ import {
 import { TRUST_LOAN_CONFIG, getDirectReferralStats } from "./services/trustLoan.service";
 import {
   awardUserXp,
-  ensureDefaultAchievements,
-  ensureDefaultTasks,
   parseAchievementPayload,
   parseTaskPayload,
   serializeTask,
   serializeUserTaskWithTask,
   syncUserTasksForActiveTasks,
 } from "./services/reward.service";
+import { runStartupDatabaseSeeds } from "./services/health.service";
 
 
 
@@ -164,9 +163,8 @@ export function createRouteContext() {
 export type RouteContext = ReturnType<typeof createRouteContext>;
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Seed / ensure default achievements/tasks exist once for everyone
-  await ensureDefaultAchievements();
-  await ensureDefaultTasks();
+  // Seed / ensure default achievements/tasks exist only after a DB health check.
+  await runStartupDatabaseSeeds();
 
   // CSP violation report endpoint
   app.post("/csp-report", (req, res) => {

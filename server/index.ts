@@ -8,6 +8,7 @@ import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 import { startDepositScanner } from "./services/depositScanner";
 import { logTokenServiceStatus } from "./services/tokenService";
 import { disconnectPrisma } from "./lib/db";
+import { getApplicationHealth, getDatabaseHealth, getStartupHealthSnapshot } from "./services/health.service";
 
 const app = express();
 
@@ -137,7 +138,25 @@ function safeStringify(v: unknown): string {
 
 // Basic liveness/readiness endpoints
 app.get("/healthz", (_req, res) => res.status(200).json({ ok: true, env: app.get("env") }));
-app.get("/readyz", (_req, res) => res.status(200).json({ ready: true }));
+
+app.get("/readyz", (_req, res) => {
+  const startup = getStartupHealthSnapshot();
+  const ready = startup.databaseOk !== false;
+  res.status(ready ? 200 : 503).json({
+    ready,
+    databaseOk: startup.databaseOk,
+    startupSeed: startup,
+  });
+});
+
+app.get("/api/health", (_req, res) => {
+  res.status(200).json(getApplicationHealth(app.get("env")));
+});
+
+app.get("/api/health/db", async (_req, res) => {
+  const health = await getDatabaseHealth();
+  res.status(health.ok ? 200 : 503).json(health);
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 (async () => {
