@@ -428,6 +428,27 @@ model ScannerState {
   updatedAt     DateTime @updatedAt
 }
 
+model TrustLoanConfig {
+  id                         String   @id @default("default")
+  enabled                    Boolean  @default(true)
+  programKey                 String   @default("trust_loan")
+  title                      String   @default("Trust Loan") @db.VarChar(120)
+  description                String   @db.Text
+  terms                      String   @db.Text
+  amountXnrt                 Decimal  @default(10000) @db.Decimal(38, 18)
+  dailyRate                  Decimal  @default(1.3) @db.Decimal(8, 6)
+  durationDays               Int      @default(30)
+  requiredReferrals          Int      @default(3)
+  requiredInvestingReferrals Int      @default(2)
+  minInvestUsdtPerReferral   Decimal  @default(100) @db.Decimal(38, 18)
+  updatedBy                  String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([programKey])
+}
+
 model AdminAuditLog {
   id          String   @id @default(uuid())
   adminUserId String?

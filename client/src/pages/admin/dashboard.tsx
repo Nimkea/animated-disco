@@ -12,7 +12,8 @@ import {
   Megaphone,
   ShieldCheck,
   Radar,
-  BellRing
+  BellRing,
+  HandCoins
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
@@ -29,6 +30,7 @@ import AnnouncementsTab from "./tabs/announcements";
 import AuditLogsTab from "./tabs/audit-logs";
 import ScannerDashboardTab from "./tabs/scanner-dashboard";
 import NotificationBroadcastTab from "./tabs/notification-broadcast";
+import TrustLoanConfigTab from "./tabs/trust-loan-config";
 
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
@@ -38,7 +40,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit", "scanner", "broadcast"].includes(tab)) {
+    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit", "scanner", "broadcast", "trust-loan"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -112,6 +114,10 @@ export default function AdminDashboard() {
             <BellRing className="h-4 w-4" />
             <span className="hidden sm:inline">Broadcast</span>
           </TabsTrigger>
+          <TabsTrigger value="trust-loan" className="gap-2" data-testid="tab-trust-loan">
+            <HandCoins className="h-4 w-4" />
+            <span className="hidden sm:inline">Trust Loan</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -164,6 +170,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="broadcast" className="space-y-6">
           <NotificationBroadcastTab />
+        </TabsContent>
+
+        <TabsContent value="trust-loan" className="space-y-6">
+          <TrustLoanConfigTab />
         </TabsContent>
       </Tabs>
     </div>

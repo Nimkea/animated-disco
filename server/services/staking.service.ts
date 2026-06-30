@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { STAKING_TIERS, type StakingTier } from "../../shared/schema";
 import { prisma } from "../lib/db";
 import { notifyUser } from "../notifications";
-import { getDirectReferralStats, TRUST_LOAN_CONFIG } from "./trustLoan.service";
+import { getDirectReferralStats, getTrustLoanConfig, TRUST_LOAN_CONFIG } from "./trustLoan.service";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STAKE_STATUSES = new Set(["active", "completed", "withdrawn"]);
@@ -323,10 +323,11 @@ export async function getStakesForUser(userId: string) {
 }
 
 export async function getStakingSummaryForUser(userId: string) {
+  const trustLoanConfig = await getTrustLoanConfig();
   const [stakes, balance, referralStats] = await Promise.all([
     prisma.stake.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.balance.findUnique({ where: { userId } }),
-    getDirectReferralStats(userId),
+    getDirectReferralStats(userId, trustLoanConfig),
   ]);
 
   const serializedStakes = stakes.map(serializeStake);
@@ -368,15 +369,20 @@ export async function getStakingSummaryForUser(userId: string) {
       nextMaturityAt: nextMaturity?.endDate ?? null,
     },
     trustLoan: {
+      enabled: trustLoanConfig.enabled,
+      title: trustLoanConfig.title,
       directCount: referralStats.directCount,
       investingCount: referralStats.investingCount,
-      requiredReferrals: TRUST_LOAN_CONFIG.requiredReferrals,
-      requiredInvestingReferrals: TRUST_LOAN_CONFIG.requiredInvestingReferrals,
-      amountXnrt: TRUST_LOAN_CONFIG.amountXnrt,
-      durationDays: TRUST_LOAN_CONFIG.durationDays,
+      requiredReferrals: trustLoanConfig.requiredReferrals,
+      requiredInvestingReferrals: trustLoanConfig.requiredInvestingReferrals,
+      minInvestUsdtPerReferral: trustLoanConfig.minInvestUsdtPerReferral,
+      amountXnrt: trustLoanConfig.amountXnrt,
+      dailyRate: trustLoanConfig.dailyRate,
+      durationDays: trustLoanConfig.durationDays,
       eligible:
-        referralStats.directCount >= TRUST_LOAN_CONFIG.requiredReferrals &&
-        referralStats.investingCount >= TRUST_LOAN_CONFIG.requiredInvestingReferrals,
+        trustLoanConfig.enabled &&
+        referralStats.directCount >= trustLoanConfig.requiredReferrals &&
+        referralStats.investingCount >= trustLoanConfig.requiredInvestingReferrals,
     },
     tiers: tierStats,
     stakes: serializedStakes,
