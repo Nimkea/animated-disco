@@ -401,6 +401,27 @@ model ScannerState {
   updatedAt     DateTime @updatedAt
 }
 
+model AdminAuditLog {
+  id          String   @id @default(uuid())
+  adminUserId String?
+  targetUserId String?
+  entityType  String
+  entityId    String?
+  action      String
+  status      String   @default("success")
+  summary     String
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminUserId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
+
 model Announcement {
   id          String    @id @default(uuid())
   title       String    @db.VarChar(255)

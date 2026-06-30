@@ -56,6 +56,23 @@ interface Transaction {
   };
 }
 
+interface ScannerStatus {
+  enabled: boolean;
+  running: boolean;
+  rpcConfigured: boolean;
+  watchedAddresses: number;
+  pendingScannerDeposits: number;
+  unmatchedDeposits: number;
+  openReports: number;
+  requiredConfirmations: number;
+  state?: {
+    lastBlock: number;
+    lastScanAt: string;
+    errorCount: number;
+    lastError?: string | null;
+  } | null;
+}
+
 export default function DepositsTab() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,29 +80,65 @@ export default function DepositsTab() {
   const [adminNotes, setAdminNotes] = useState("");
   const [proofDialogOpen, setProofDialogOpen] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState("");
+  const [forceApprove, setForceApprove] = useState(false);
   
   // Bulk selection state
   const [selectedDepositIds, setSelectedDepositIds] = useState<Set<string>>(new Set());
   const [bulkConfirmDialogOpen, setBulkConfirmDialogOpen] = useState(false);
   const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
   const [bulkAdminNotes, setBulkAdminNotes] = useState("");
+  const [bulkForceApprove, setBulkForceApprove] = useState(false);
 
   const { data: pendingDeposits, isLoading } = useQuery<Transaction[]>({
     queryKey: ["/api/admin/deposits/pending"],
   });
 
+  const { data: scannerStatus } = useQuery<ScannerStatus>({
+    queryKey: ["/api/admin/scanner/status"],
+  });
+
+  const runScannerMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/scanner/run", {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/scanner/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
+      toast({
+        title: "Scanner run completed",
+        description: "Deposit scanner status has been refreshed.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Scanner run failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const approveMutation = useMutation({
-    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
-      return await apiRequest("POST", `/api/admin/deposits/${id}/approve`, { notes });
+    mutationFn: async ({ id, notes, force }: { id: string; notes?: string; force?: boolean }) => {
+      return await apiRequest("POST", `/api/admin/deposits/${id}/approve`, { notes, force });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       setSelectedDeposit(null);
       setAdminNotes("");
+      setForceApprove(false);
       toast({
         title: "Success",
         description: "Deposit approved successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Approval blocked",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
@@ -108,8 +161,9 @@ export default function DepositsTab() {
 
   // Bulk mutations
   const bulkApproveMutation = useMutation({
-    mutationFn: async ({ depositIds, notes }: { depositIds: string[]; notes?: string }) => {
-      return await apiRequest("POST", "/api/admin/deposits/bulk-approve", { depositIds, notes });
+    mutationFn: async ({ depositIds, notes, force }: { depositIds: string[]; notes?: string; force?: boolean }) => {
+      const response = await apiRequest("POST", "/api/admin/deposits/bulk-approve", { depositIds, notes, force });
+      return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
@@ -117,6 +171,7 @@ export default function DepositsTab() {
       setSelectedDepositIds(new Set());
       setBulkConfirmDialogOpen(false);
       setBulkAdminNotes("");
+      setBulkForceApprove(false);
       
       const { approved, failed, total } = data;
       if (failed > 0) {
@@ -143,7 +198,8 @@ export default function DepositsTab() {
 
   const bulkRejectMutation = useMutation({
     mutationFn: async ({ depositIds, notes }: { depositIds: string[]; notes?: string }) => {
-      return await apiRequest("POST", "/api/admin/deposits/bulk-reject", { depositIds, notes });
+      const response = await apiRequest("POST", "/api/admin/deposits/bulk-reject", { depositIds, notes });
+      return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/deposits/pending"] });
@@ -244,13 +300,14 @@ export default function DepositsTab() {
 
   const handleBulkAction = (action: 'approve' | 'reject') => {
     setBulkAction(action);
+    setBulkForceApprove(false);
     setBulkConfirmDialogOpen(true);
   };
 
   const confirmBulkAction = () => {
     const depositIds = Array.from(selectedDepositIds);
     if (bulkAction === 'approve') {
-      bulkApproveMutation.mutate({ depositIds, notes: bulkAdminNotes || undefined });
+      bulkApproveMutation.mutate({ depositIds, notes: bulkAdminNotes || undefined, force: bulkForceApprove });
     } else if (bulkAction === 'reject') {
       bulkRejectMutation.mutate({ depositIds, notes: bulkAdminNotes || undefined });
     }
@@ -258,10 +315,60 @@ export default function DepositsTab() {
 
   // Calculate total XNRT for selected deposits
   const selectedDeposits = filteredDeposits?.filter(d => selectedDepositIds.has(d.id)) || [];
+  const selectedUnverifiedCount = selectedDeposits.filter((deposit) => deposit.verified !== true).length;
   const totalXNRT = selectedDeposits.reduce((sum, d) => sum + parseFloat(d.amount), 0);
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-base">Deposit Scanner Status</CardTitle>
+              <CardDescription>Auto-detection health, pending scanner items, and manual scanner run.</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => runScannerMutation.mutate()}
+              disabled={runScannerMutation.isPending || scannerStatus?.running}
+              data-testid="button-run-deposit-scanner"
+            >
+              {runScannerMutation.isPending || scannerStatus?.running ? "Running..." : "Run Scanner"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+            <div className="rounded-lg border p-3">
+              <p className="text-muted-foreground">Status</p>
+              <p className="font-semibold">{scannerStatus?.enabled ? "Enabled" : "Disabled"}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-muted-foreground">Watched</p>
+              <p className="font-semibold">{scannerStatus?.watchedAddresses ?? 0} addresses</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-muted-foreground">Pending</p>
+              <p className="font-semibold">{scannerStatus?.pendingScannerDeposits ?? 0}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-muted-foreground">Unmatched</p>
+              <p className="font-semibold">{scannerStatus?.unmatchedDeposits ?? 0}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-muted-foreground">Open Reports</p>
+              <p className="font-semibold">{scannerStatus?.openReports ?? 0}</p>
+            </div>
+          </div>
+          {scannerStatus?.state?.lastError && (
+            <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-400">
+              Last scanner error: {scannerStatus.state.lastError}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="flex items-center gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -495,6 +602,7 @@ export default function DepositsTab() {
                       onClick={() => {
                         setSelectedDeposit(deposit);
                         setAdminNotes("");
+                        setForceApprove(false);
                       }}
                       disabled={approveMutation.isPending || rejectMutation.isPending}
                       className="gap-1"
@@ -538,6 +646,21 @@ export default function DepositsTab() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-4">
+              {selectedDeposit.verified !== true && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm space-y-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600" />
+                    <div>
+                      <p className="font-medium">On-chain verification is not confirmed.</p>
+                      <p className="text-muted-foreground">Approve only if you have manually verified this deposit. This action will be saved in the admin audit log.</p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox checked={forceApprove} onCheckedChange={(checked) => setForceApprove(checked === true)} />
+                    <span>I confirm this is a manual force approval.</span>
+                  </label>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Admin Notes (Optional)</label>
                 <Textarea
@@ -558,9 +681,10 @@ export default function DepositsTab() {
                 <Button
                   onClick={() => approveMutation.mutate({ 
                     id: selectedDeposit.id, 
-                    notes: adminNotes || undefined 
+                    notes: adminNotes || undefined,
+                    force: forceApprove,
                   })}
-                  disabled={approveMutation.isPending}
+                  disabled={approveMutation.isPending || (selectedDeposit.verified !== true && !forceApprove)}
                   data-testid="button-confirm-approve"
                 >
                   <CheckCircle className="h-4 w-4 mr-1" />
@@ -604,6 +728,21 @@ export default function DepositsTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 py-4">
+            {bulkAction === 'approve' && selectedUnverifiedCount > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600" />
+                  <div>
+                    <p className="font-medium">{selectedUnverifiedCount} selected deposit{selectedUnverifiedCount !== 1 ? 's are' : ' is'} not verified.</p>
+                    <p className="text-muted-foreground">Bulk force approval should only be used after manual verification. Each action will be audited.</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={bulkForceApprove} onCheckedChange={(checked) => setBulkForceApprove(checked === true)} />
+                  <span>I confirm force approval for unverified selected deposits.</span>
+                </label>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium">Admin Notes (Optional)</label>
               <Textarea
@@ -628,7 +767,7 @@ export default function DepositsTab() {
             <Button
               variant={bulkAction === 'approve' ? 'default' : 'destructive'}
               onClick={confirmBulkAction}
-              disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
+              disabled={bulkApproveMutation.isPending || bulkRejectMutation.isPending || (bulkAction === 'approve' && selectedUnverifiedCount > 0 && !bulkForceApprove)}
               data-testid="button-confirm-bulk-action"
             >
               {bulkApproveMutation.isPending || bulkRejectMutation.isPending ? (

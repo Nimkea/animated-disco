@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { RouteContext } from "../../routes";
+import { appendTransactionAuditTrail, recordAdminAuditLog } from "../../services/audit.service";
 
 export function registerAdminWithdrawalRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -130,6 +131,14 @@ export function registerAdminWithdrawalRoutes(app: Express, ctx: RouteContext) {
                   reservedAt: new Date().toISOString(),
                   reservedBy: req.authUser!.id,
                   sourceBalanceKey,
+                  auditTrail: [
+                    ...((Array.isArray((meta as any).auditTrail) ? (meta as any).auditTrail : []) as any[]),
+                    {
+                      action: "withdrawal_reserved_by_admin",
+                      adminUserId: req.authUser!.id,
+                      at: new Date().toISOString(),
+                    },
+                  ],
                 } as any,
               },
             });
@@ -174,14 +183,15 @@ export function registerAdminWithdrawalRoutes(app: Express, ctx: RouteContext) {
             approvedBy: req.authUser!.id,
             approvedAt: new Date(),
             adminNotes: notes ?? withdrawal.adminNotes,
-            verificationData: {
-              ...((withdrawal.verificationData || {}) as any),
+            verificationData: appendTransactionAuditTrail((withdrawal.verificationData || {}) as any, {
+              action: "withdrawal_approved",
+              adminUserId: req.authUser!.id,
+              notes: notes ?? null,
+              onChainTxHash: onChainTxHash ?? null,
               reservedBalance: true,
-              approvedAt: new Date().toISOString(),
-              approvedBy: req.authUser!.id,
               withdrawalMode: getWalletRates().withdrawalMode,
               withdrawalToken: getWalletRates().withdrawalToken,
-            } as any,
+            }) as any,
           },
         });
 
@@ -191,6 +201,16 @@ export function registerAdminWithdrawalRoutes(app: Express, ctx: RouteContext) {
           description: `Withdrawal of ${withdrawAmount.toLocaleString()} XNRT approved${
             onChainTxHash ? ` – tx: ${onChainTxHash}` : ""
           }`,
+        });
+
+        await recordAdminAuditLog({
+          req,
+          targetUserId: withdrawal.userId,
+          entityType: "withdrawal",
+          entityId: id,
+          action: "withdrawal_approved",
+          summary: `Approved withdrawal of ${withdrawAmount.toLocaleString()} XNRT`,
+          metadata: { source: withdrawal.source || "main", walletAddress: normalizedWallet, netAmount: withdrawal.netAmount?.toString() || null, onChainTxHash: onChainTxHash ?? null, notes: notes ?? null },
         });
 
         res.json({
@@ -254,12 +274,12 @@ export function registerAdminWithdrawalRoutes(app: Express, ctx: RouteContext) {
               adminNotes: notes ?? withdrawal.adminNotes,
               approvedBy: req.authUser!.id,
               approvedAt: new Date(),
-              verificationData: {
-                ...(meta as any),
+              verificationData: appendTransactionAuditTrail(meta as any, {
+                action: "withdrawal_rejected",
+                adminUserId: req.authUser!.id,
+                notes: notes ?? null,
                 refundedReservedBalance: shouldRefund,
-                rejectedAt: new Date().toISOString(),
-                rejectedBy: req.authUser!.id,
-              } as any,
+              }) as any,
             },
           });
         });
@@ -270,6 +290,16 @@ export function registerAdminWithdrawalRoutes(app: Express, ctx: RouteContext) {
           description: `Withdrawal of ${withdrawAmount.toLocaleString()} XNRT rejected${
             shouldRefund ? " and reserved balance refunded" : ""
           }${notes ? ` - ${notes}` : ""}`,
+        });
+
+        await recordAdminAuditLog({
+          req,
+          targetUserId: withdrawal.userId,
+          entityType: "withdrawal",
+          entityId: id,
+          action: "withdrawal_rejected",
+          summary: `Rejected withdrawal of ${withdrawAmount.toLocaleString()} XNRT${shouldRefund ? " and refunded reserve" : ""}`,
+          metadata: { source: withdrawal.source || "main", refunded: shouldRefund, notes: notes ?? null },
         });
 
         res.json({ message: "Withdrawal rejected", refunded: shouldRefund });

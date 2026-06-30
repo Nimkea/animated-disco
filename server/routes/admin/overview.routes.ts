@@ -233,6 +233,34 @@ export function registerAdminOverviewRoutes(app: Express, ctx: RouteContext) {
     }
   );
 
+
+  app.get(
+    "/api/admin/audit-logs",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 50, 1), 200);
+        const entityType = typeof req.query.entityType === "string" ? req.query.entityType : undefined;
+        const action = typeof req.query.action === "string" ? req.query.action : undefined;
+
+        const logs = await (prisma as any).adminAuditLog.findMany({
+          where: {
+            ...(entityType ? { entityType } : {}),
+            ...(action ? { action } : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit,
+        });
+
+        res.json(logs);
+      } catch (error) {
+        console.error("Error fetching admin audit logs:", error);
+        res.status(500).json({ message: "Failed to fetch admin audit logs" });
+      }
+    }
+  );
+
   // Platform Info
   app.get(
     "/api/admin/info",

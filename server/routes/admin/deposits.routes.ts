@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import type { RouteContext } from "../../routes";
+import { appendTransactionAuditTrail, recordAdminAuditLog } from "../../services/audit.service";
+import { getDepositScannerStatus, scanForDeposits } from "../../services/depositScanner";
 
 export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -56,6 +58,51 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
       } catch (error) {
         console.error("Error fetching pending deposits:", error);
         res.status(500).json({ message: "Failed to fetch pending deposits" });
+      }
+    }
+  );
+
+
+  app.get(
+    "/api/admin/scanner/status",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        res.json(await getDepositScannerStatus());
+      } catch (error) {
+        console.error("Error fetching scanner status:", error);
+        res.status(500).json({ message: "Failed to fetch scanner status" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/admin/scanner/run",
+    requireAuth,
+    requireAdmin,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        await scanForDeposits();
+        await recordAdminAuditLog({
+          req,
+          entityType: "scanner",
+          action: "scanner_manual_run",
+          summary: "Admin manually triggered the deposit scanner",
+        });
+        res.json({ ok: true, status: await getDepositScannerStatus() });
+      } catch (error: any) {
+        await recordAdminAuditLog({
+          req,
+          entityType: "scanner",
+          action: "scanner_manual_run",
+          status: "failed",
+          summary: "Manual scanner run failed",
+          metadata: { error: error?.message || String(error) },
+        });
+        console.error("Error running scanner:", error);
+        res.status(500).json({ message: error?.message || "Failed to run scanner" });
       }
     }
   );
@@ -136,8 +183,26 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
           return res.status(400).json({ message: "Deposit already processed" });
         }
 
+        const forceApprove = force === true;
+        if (!deposit.verified && !forceApprove) {
+          await recordAdminAuditLog({
+            req,
+            targetUserId: deposit.userId,
+            entityType: "deposit",
+            entityId: id,
+            action: "deposit_approve_blocked_unverified",
+            status: "blocked",
+            summary: `Blocked unverified deposit approval for ${deposit.amount} XNRT`,
+            metadata: { transactionHash: deposit.transactionHash || null },
+          });
+          return res.status(409).json({
+            message: "Deposit is not verified on-chain. Re-run verification or submit with force approval.",
+            requiresForce: true,
+          });
+        }
+
         // Scanner bypass – if not verified OR admin explicitly forces
-        const override = !deposit.verified || !!force;
+        const override = !deposit.verified || forceApprove;
 
         await prisma.$transaction(async (tx) => {
           // Credit user balance
@@ -162,7 +227,13 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
               adminNotes: notes ?? deposit.adminNotes,
               approvedBy: req.authUser!.id,
               approvedAt: new Date(),
-              verificationData: deposit.verificationData as any,
+              verificationData: appendTransactionAuditTrail((deposit.verificationData || {}) as any, {
+                action: "deposit_approved",
+                adminUserId: req.authUser!.id,
+                forceApproved: override,
+                verified: deposit.verified,
+                notes: notes ?? null,
+              }) as any,
             },
           });
 
@@ -177,6 +248,16 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
               },
             });
           }
+        });
+
+        await recordAdminAuditLog({
+          req,
+          targetUserId: deposit.userId,
+          entityType: "deposit",
+          entityId: id,
+          action: override ? "deposit_force_approved" : "deposit_approved",
+          summary: `${override ? "Force-approved" : "Approved"} deposit of ${deposit.amount} XNRT`,
+          metadata: { transactionHash: deposit.transactionHash || null, verified: deposit.verified, notes: notes ?? null },
         });
 
         // Referral commissions + activity + notification
@@ -245,6 +326,16 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
           adminNotes: notes ?? deposit.adminNotes,
         });
 
+        await recordAdminAuditLog({
+          req,
+          targetUserId: deposit.userId,
+          entityType: "deposit",
+          entityId: id,
+          action: "deposit_rejected",
+          summary: `Rejected deposit of ${deposit.amount} XNRT`,
+          metadata: { notes: notes ?? null, transactionHash: deposit.transactionHash || null },
+        });
+
         await storage.createActivity({
           userId: deposit.userId,
           type: "deposit_rejected",
@@ -271,7 +362,7 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
     validateCSRF,
     async (req, res) => {
       try {
-        const { depositIds, notes } = req.body;
+        const { depositIds, notes, force } = req.body;
 
         if (!depositIds || !Array.isArray(depositIds) || depositIds.length === 0) {
           return res.status(400).json({ message: "Invalid deposit IDs" });
@@ -295,7 +386,11 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
               throw new Error(`Deposit ${id} already processed`);
             }
 
-            const override = !deposit.verified;
+            const forceApprove = force === true;
+            if (!deposit.verified && !forceApprove) {
+              throw new Error(`Deposit ${id} is unverified and requires force approval`);
+            }
+            const override = !deposit.verified || forceApprove;
 
             await prisma.$transaction(async (tx) => {
               await tx.balance.upsert({
@@ -322,6 +417,13 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
                   adminNotes: notes ?? deposit.adminNotes,
                   approvedBy: req.authUser!.id,
                   approvedAt: new Date(),
+                  verificationData: appendTransactionAuditTrail((deposit.verificationData || {}) as any, {
+                    action: "deposit_bulk_approved",
+                    adminUserId: req.authUser!.id,
+                    forceApproved: override,
+                    verified: deposit.verified,
+                    notes: notes ?? null,
+                  }) as any,
                 },
               });
 
@@ -334,6 +436,16 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
                   },
                 });
               }
+            });
+
+            await recordAdminAuditLog({
+              req,
+              targetUserId: deposit.userId,
+              entityType: "deposit",
+              entityId: id,
+              action: override ? "deposit_force_approved_bulk" : "deposit_approved_bulk",
+              summary: `${override ? "Force-approved" : "Approved"} deposit of ${deposit.amount} XNRT via bulk action`,
+              metadata: { transactionHash: deposit.transactionHash || null, verified: deposit.verified, notes: notes ?? null },
             });
 
             await storage.distributeReferralCommissions(
@@ -428,6 +540,16 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
               adminNotes: notes || deposit.adminNotes,
               approvedBy: req.authUser!.id,
               approvedAt: new Date(),
+            });
+
+            await recordAdminAuditLog({
+              req,
+              targetUserId: deposit.userId,
+              entityType: "deposit",
+              entityId: id,
+              action: "deposit_rejected_bulk",
+              summary: `Rejected deposit of ${deposit.amount} XNRT via bulk action`,
+              metadata: { notes: notes ?? null, transactionHash: deposit.transactionHash || null },
             });
 
             await storage.createActivity({
@@ -577,6 +699,16 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
           description: `Deposit of ${xnrtAmount.toLocaleString()} XNRT approved via manual match`,
         });
 
+        await recordAdminAuditLog({
+          req,
+          targetUserId: userId,
+          entityType: "unmatched_deposit",
+          entityId: id,
+          action: "unmatched_deposit_matched",
+          summary: `Matched unmatched deposit and credited ${xnrtAmount.toLocaleString()} XNRT`,
+          metadata: { transactionHash: txHash || null, usdtAmount, xnrtAmount },
+        });
+
         res.json({
           message: "Deposit matched and credited successfully",
         });
@@ -595,7 +727,7 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
     async (_req, res) => {
       try {
         const reports = await prisma.depositReport.findMany({
-          where: { status: "pending" },
+          where: { status: { in: ["pending", "open"] } },
           include: { user: { select: { email: true, username: true } } },
           orderBy: { createdAt: "desc" },
           take: 100,
@@ -655,7 +787,15 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
                 amount: new Prisma.Decimal(xnrtAmount),
                 usdtAmount: new Prisma.Decimal(usdtAmount),
                 transactionHash: report.txHash,
+                walletAddress: report.fromAddress,
                 status: "approved",
+                verified: true,
+                verificationData: {
+                  depositReportId: id,
+                  approvedFromReport: true,
+                  approvedBy: req.authUser!.id,
+                  approvedAt: new Date().toISOString(),
+                } as any,
                 adminNotes: adminNotes || "Credited from deposit report",
                 approvedBy: req.authUser!.id,
                 approvedAt: new Date(),
@@ -710,6 +850,16 @@ export function registerAdminDepositRoutes(app: Express, ctx: RouteContext) {
             },
           });
         }
+
+        await recordAdminAuditLog({
+          req,
+          targetUserId: report.userId,
+          entityType: "deposit_report",
+          entityId: id,
+          action: resolution === "approved" ? "deposit_report_approved" : "deposit_report_rejected",
+          summary: `Deposit report ${resolution}`,
+          metadata: { txHash: report.txHash || null, amount: report.amount?.toString() || null, notes: adminNotes || null },
+        });
 
         res.json({ message: `Report ${resolution} successfully` });
       } catch (error) {

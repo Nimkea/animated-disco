@@ -507,5 +507,45 @@ async function sendDepositNotification(userId: string, amount: number, txHash: s
   });
 }
 
+export async function getDepositScannerStatus() {
+  const [state, watchedAddresses, pendingScannerDeposits, unmatchedDeposits, openReports] = await Promise.all([
+    prisma.scannerState.findFirst({ orderBy: { updatedAt: "desc" } }),
+    prisma.user.count({ where: { depositAddress: { not: null } } }),
+    prisma.transaction.count({
+      where: {
+        type: "deposit",
+        status: "pending",
+        verificationData: { path: ["autoDeposit"], equals: true },
+      } as any,
+    }),
+    prisma.unmatchedDeposit.count({ where: { matched: false } }),
+    prisma.depositReport.count({ where: { status: { in: ["pending", "open"] } } }),
+  ]);
+
+  return {
+    enabled: AUTO_DEPOSIT_ENABLED,
+    running: isScanning || !!state?.isScanning,
+    rpcConfigured: !!RPC_URL,
+    usdtConfigured: !!USDT_ADDRESS,
+    treasuryConfigured: !!TREASURY_ADDRESS,
+    xnrtTokenConfigured: !!XNRT_TOKEN_ADDRESS,
+    requiredConfirmations: REQUIRED_CONFIRMATIONS,
+    scanBatch: SCAN_BATCH,
+    watchedAddresses,
+    pendingScannerDeposits,
+    unmatchedDeposits,
+    openReports,
+    state: state
+      ? {
+          lastBlock: state.lastBlock,
+          lastScanAt: state.lastScanAt,
+          updatedAt: state.updatedAt,
+          errorCount: state.errorCount,
+          lastError: state.lastError,
+        }
+      : null,
+  };
+}
+
 // Export for manual trigger if needed
 export { scanForDeposits, sendDepositNotification };
