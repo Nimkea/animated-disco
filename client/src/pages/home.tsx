@@ -119,6 +119,11 @@ type HomeSummary = {
     currentStreak: number;
     lastCheckIn: string | null;
     checkedInToday: boolean;
+    todayKey?: string;
+    nextClaimAt?: string;
+    nextStreak?: number;
+    nextReward?: { xnrtReward: number; xpReward: number };
+    missedStreak?: boolean;
   };
   recentActivities: Activity[];
 };
@@ -126,7 +131,11 @@ type HomeSummary = {
 type CheckinResponse = {
   streak: number;
   xnrtReward: number;
+  requestedXnrtReward?: number;
   xpReward: number;
+  rewardCapped?: boolean;
+  checkinDate?: string;
+  nextClaimAt?: string;
 };
 
 function formatDuration(ms: number) {
@@ -328,12 +337,14 @@ export default function Home() {
     onSuccess: (data) => {
       toast({
         title: "Check-in successful",
-        description: `Day ${data.streak} streak! Earned ${data.xnrtReward} XNRT and ${data.xpReward} XP.`,
+        description: `Day ${data.streak} streak! Earned ${data.xnrtReward} XNRT and ${data.xpReward} XP${data.rewardCapped ? " (cap applied)" : ""}.`,
       });
       if ([7, 14, 30, 60, 90, 180, 365].includes(data.streak)) celebrate("streak");
       queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/checkin/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/checkin/history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
@@ -464,7 +475,9 @@ export default function Home() {
                 <span className="text-left">
                   <span className="block font-semibold">{checkedInToday ? "Checked in today" : "Daily Check-in"}</span>
                   <span className="block text-xs opacity-80">
-                    {checkedInToday ? "Next reward tomorrow" : `${nf(summary.checkin.currentStreak)} day streak`}
+                    {checkedInToday
+                      ? `Next reward ${safeDate(summary.checkin.nextClaimAt || null)}`
+                      : `Day ${nf(summary.checkin.nextStreak || 1)} · +${nf(summary.checkin.nextReward?.xnrtReward ?? 0)} XNRT`}
                   </span>
                 </span>
               </Button>

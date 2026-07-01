@@ -5,6 +5,7 @@ import {
   completeUserTask,
   getCheckinHistory,
   getUserAchievementsWithStatus,
+  getDailyCheckinStatus,
   performDailyCheckIn,
 } from "../services/reward.service";
 import { getEngagementConfig, getLevelProgress } from "../services/engagement.service";
@@ -31,7 +32,6 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
     MINING_SESSION_XP_REWARD,
     getWalletRates,
     decimalValueToNumber,
-    isSameLocalDay,
     normalizeBscAddress,
     getBalanceSourceKey,
     getOrCreateUserDepositAddress,
@@ -438,6 +438,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
         leaderboardRows,
         referralRankRows,
         recentActivities,
+        checkinStatus,
       ] = await Promise.all([
         storage.getBalance(userId),
         prisma.stake.aggregate({
@@ -501,6 +502,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
           [userId]
         ),
         storage.getActivities(userId, 5),
+        getDailyCheckinStatus(userId),
       ]);
 
       const referralCounts = referralGroups.reduce(
@@ -583,11 +585,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
           xpRank: leaderboardRows[0]?.rank ? toLeaderboardNumber(leaderboardRows[0].rank) : null,
           referralRank: referralRankRows[0]?.rank ? toLeaderboardNumber(referralRankRows[0].rank) : null,
         },
-        checkin: {
-          currentStreak: user.streak || 0,
-          lastCheckIn: user.lastCheckIn || null,
-          checkedInToday: isSameLocalDay(user.lastCheckIn),
-        },
+        checkin: checkinStatus,
         recentActivities,
       });
     } catch (error) {
@@ -708,6 +706,19 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
     }
   });
 
+
+
+  app.get("/api/checkin/status", requireAuth, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const status = await getDailyCheckinStatus(userId);
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching check-in status:", error);
+      res.status(500).json({ message: "Failed to fetch check-in status" });
+    }
+  });
+
   // Daily check-in route
   app.post("/api/checkin", requireAuth, validateCSRF, async (req, res) => {
     try {
@@ -724,6 +735,9 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
         xpReward: result.xpReward,
         requestedXnrtReward: result.requestedXnrtReward,
         rewardCapped: result.rewardCapped,
+        checkinDate: result.checkinDate,
+        nextClaimAt: result.nextClaimAt,
+        todayCheckin: result.todayCheckin,
         message: result.message,
       });
     } catch (error) {

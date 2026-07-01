@@ -1,6 +1,6 @@
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Activity, BarChart3, Coins, Flame, Gauge, Save, Settings2, Sparkles, Trophy } from "lucide-react";
+import { Activity, BarChart3, Coins, Flame, Save, Settings2, Sparkles, Trophy } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ interface AdminEngagementSummary {
   metrics: {
     activeTasks: number;
     completedTasksToday: number;
+    dailyCheckinsToday: number;
     xpAwardedToday: number;
     xpEventsToday: number;
     xnrtRewardsToday: number;
@@ -71,7 +72,7 @@ const DEFAULT_FORM: FormState = {
   taskCompletionXpDailyCap: "500",
 };
 
-function numberText(value: number | string | boolean | null | undefined) {
+function numberText(value: number | string | null | undefined) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "0";
 }
@@ -212,7 +213,7 @@ export default function EngagementConfigTab() {
         <StatCard title="XP Awarded Today" value={numberText(metrics?.xpAwardedToday)} note={`${numberText(metrics?.xpEventsToday)} XP events`} icon={Trophy} />
         <StatCard title="XNRT Rewards Today" value={`${numberText(metrics?.xnrtRewardsToday)} XNRT`} note={`${numberText(metrics?.xnrtRewardEventsToday)} reward events`} icon={Coins} />
         <StatCard title="Tasks Completed Today" value={numberText(metrics?.completedTasksToday)} note={`${numberText(metrics?.activeTasks)} active tasks`} icon={Activity} />
-        <StatCard title="Level Step" value={`${numberText(form.levelXpStep)} XP`} note="XP needed per level" icon={Gauge} />
+        <StatCard title="Check-ins Today" value={numberText(metrics?.dailyCheckinsToday)} note="Unique daily streak claims" icon={Flame} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">

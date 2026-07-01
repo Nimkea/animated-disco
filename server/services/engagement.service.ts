@@ -388,10 +388,12 @@ export async function getAdminEngagementSummary() {
   const now = new Date();
   const day = dailyWindow(now);
   const week = weeklyWindow(now);
-  const [config, activeTasks, completedTasksToday, xpToday, xnrtToday, totalXpRows, recentXp] = await Promise.all([
+  const todayKey = day.start.toISOString().slice(0, 10);
+  const [config, activeTasks, completedTasksToday, dailyCheckinsToday, xpToday, xnrtToday, totalXpRows, recentXp] = await Promise.all([
     getEngagementConfig(),
     prisma.task.count({ where: { isActive: true } }),
     prisma.userTask.count({ where: { completed: true, completedAt: { gte: day.start, lt: day.end } } }),
+    db.dailyCheckin.count({ where: { checkinDate: todayKey } }),
     db.xpLedger.aggregate({ where: { createdAt: { gte: day.start, lt: day.end } }, _sum: { amount: true }, _count: { _all: true } }),
     db.rewardCapLedger.aggregate({ where: { createdAt: { gte: day.start, lt: day.end } }, _sum: { amount: true }, _count: { _all: true } }),
     prisma.user.groupBy({ by: ["level"], _count: { _all: true }, orderBy: { level: "asc" } }),
@@ -404,6 +406,7 @@ export async function getAdminEngagementSummary() {
     metrics: {
       activeTasks,
       completedTasksToday,
+      dailyCheckinsToday,
       xpAwardedToday: Number(xpToday?._sum?.amount || 0),
       xpEventsToday: Number(xpToday?._count?._all || 0),
       xnrtRewardsToday: toNumber(xnrtToday?._sum?.amount),

@@ -1,31 +1,86 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Gift, Sparkles, TrendingUp, Award } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CalendarCheck, CheckCircle2, Sparkles, TrendingUp, Award } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import type { Balance } from "@shared/schema";
 import { CheckInCalendar } from "@/components/checkin-calendar";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { nf } from "@/lib/number";
+
+interface CheckinStatus {
+  currentStreak: number;
+  lastCheckIn: string | null;
+  checkedInToday: boolean;
+  nextClaimAt?: string;
+  nextStreak?: number;
+  nextReward?: { xnrtReward: number; xpReward: number };
+  missedStreak?: boolean;
+}
+
+interface CheckinResponse {
+  streak: number;
+  xnrtReward: number;
+  requestedXnrtReward?: number;
+  xpReward: number;
+  rewardCapped?: boolean;
+  nextClaimAt?: string;
+}
 
 export default function Rewards() {
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const { data: balance } = useQuery<Balance>({
     queryKey: ["/api/balance"],
   });
 
-  const nextLevelXP = (user?.level || 1) * 1000;
+  const { data: checkinStatus } = useQuery<CheckinStatus>({
+    queryKey: ["/api/checkin/status"],
+  });
+
+  const checkinMutation = useMutation<CheckinResponse, Error>({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/checkin");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Daily check-in claimed",
+        description: `Day ${data.streak} streak: +${data.xpReward} XP and +${data.xnrtReward} XNRT${data.rewardCapped ? " after cap" : ""}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/checkin/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/checkin/history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
+    },
+    onError: (error) => {
+      toast({ title: "Check-in failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const level = user?.level || 1;
+  const nextLevelXP = level * 1000;
   const currentXP = user?.xp || 0;
   const xpProgress = (currentXP / nextLevelXP) * 100;
 
-  const streakMilestones = [7, 14, 30, 60, 90, 180, 365];
-  const nextMilestone = streakMilestones.find(m => m > (user?.streak || 0)) || 365;
-  const streakReward = nextMilestone === 7 ? 50 : nextMilestone * 10;
+  const currentStreak = checkinStatus?.currentStreak ?? user?.streak ?? 0;
+  const checkedInToday = Boolean(checkinStatus?.checkedInToday);
+  const nextRewardXnrt = checkinStatus?.nextReward?.xnrtReward ?? 0;
+  const nextRewardXp = checkinStatus?.nextReward?.xpReward ?? 0;
+  const nextStreak = checkinStatus?.nextStreak ?? Math.max(1, currentStreak + 1);
+  const streakMilestones = [3, 7, 14, 30, 60, 90, 180, 365];
+  const nextMilestone = streakMilestones.find((m) => m > currentStreak) || 365;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold font-serif">Rewards</h1>
-        <p className="text-muted-foreground">Track your progress and upcoming rewards</p>
+        <p className="text-muted-foreground">Track daily check-ins, XP progress, streaks, and reward history</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -39,9 +94,9 @@ export default function Rewards() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-bold font-mono text-primary">{user?.level}</span>
+              <span className="text-5xl font-bold font-mono text-primary">{level}</span>
               <span className="text-2xl text-muted-foreground">→</span>
-              <span className="text-5xl font-bold font-mono text-muted-foreground">{(user?.level || 1) + 1}</span>
+              <span className="text-5xl font-bold font-mono text-muted-foreground">{level + 1}</span>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
@@ -49,7 +104,7 @@ export default function Rewards() {
                 <span className="font-semibold">{currentXP.toLocaleString()} / {nextLevelXP.toLocaleString()} XP</span>
               </div>
               <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500"
                   style={{ width: `${Math.min(100, xpProgress)}%` }}
                 />
@@ -65,31 +120,38 @@ export default function Rewards() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-secondary" />
-              Streak Rewards
+              Daily Check-in Streak
             </CardTitle>
-            <CardDescription>Next bonus at {nextMilestone} day streak</CardDescription>
+            <CardDescription>
+              {checkedInToday ? "Today’s claim is completed" : `Next claim: Day ${nf(nextStreak)} reward`}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-bold font-mono text-secondary">{user?.streak}</span>
+              <span className="text-5xl font-bold font-mono text-secondary">{nf(currentStreak)}</span>
               <span className="text-2xl text-muted-foreground">days</span>
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Next Reward</span>
-                <Badge variant="secondary" className="font-mono">
-                  +{streakReward} XNRT
-                </Badge>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border bg-background/60 p-3">
+                <p className="text-xs text-muted-foreground">Next XNRT</p>
+                <p className="font-mono text-xl font-bold text-primary">+{nf(nextRewardXnrt)}</p>
               </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-secondary to-chart-5 transition-all duration-500"
-                  style={{ width: `${((user?.streak || 0) / nextMilestone) * 100}%` }}
-                />
+              <div className="rounded-xl border bg-background/60 p-3">
+                <p className="text-xs text-muted-foreground">Next XP</p>
+                <p className="font-mono text-xl font-bold text-primary">+{nf(nextRewardXp)}</p>
               </div>
             </div>
+            <Button
+              onClick={() => checkinMutation.mutate()}
+              disabled={checkedInToday || checkinMutation.isPending}
+              className="w-full gap-2"
+              data-testid="button-rewards-checkin"
+            >
+              {checkedInToday ? <CheckCircle2 className="h-4 w-4" /> : <CalendarCheck className="h-4 w-4" />}
+              {checkedInToday ? "Claimed Today" : checkinMutation.isPending ? "Claiming…" : "Claim Daily Reward"}
+            </Button>
             <p className="text-sm text-muted-foreground">
-              {nextMilestone - (user?.streak || 0)} days until next streak bonus
+              {Math.max(0, nextMilestone - currentStreak)} days until the next streak milestone.
             </p>
           </CardContent>
         </Card>
@@ -100,20 +162,19 @@ export default function Rewards() {
       <Card>
         <CardHeader>
           <CardTitle>Streak Milestones</CardTitle>
-          <CardDescription>Earn XNRT by maintaining your daily check-in streak</CardDescription>
+          <CardDescription>Milestones help unlock streak achievements and status badges.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             {streakMilestones.map((milestone) => {
-              const achieved = (user?.streak || 0) >= milestone;
-              const reward = milestone === 7 ? 50 : milestone * 10;
+              const achieved = currentStreak >= milestone;
 
               return (
                 <div
                   key={milestone}
                   className={`p-4 border rounded-md ${
-                    achieved 
-                      ? "border-chart-2/30 bg-chart-2/5" 
+                    achieved
+                      ? "border-chart-2/30 bg-chart-2/5"
                       : "border-border"
                   }`}
                 >
@@ -124,7 +185,7 @@ export default function Rewards() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-1">days streak</p>
-                  <p className="text-lg font-bold text-primary">+{reward} XNRT</p>
+                  <p className="text-sm font-semibold text-primary">Achievement milestone</p>
                 </div>
               );
             })}

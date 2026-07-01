@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import type { RouteContext } from "../routes";
+import { getDailyCheckinStatus } from "../services/reward.service";
 
 export function registerHomeWalletRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -23,7 +24,6 @@ export function registerHomeWalletRoutes(app: Express, ctx: RouteContext) {
     MINING_SESSION_XP_REWARD,
     getWalletRates,
     decimalValueToNumber,
-    isSameLocalDay,
     normalizeBscAddress,
     getBalanceSourceKey,
     getOrCreateUserDepositAddress,
@@ -199,6 +199,7 @@ export function registerHomeWalletRoutes(app: Express, ctx: RouteContext) {
         xpRankRows,
         referralRankRows,
         recentActivities,
+        checkinStatus,
       ] = await Promise.all([
         storage.getBalance(userId),
         storage.getCurrentMiningSession(userId),
@@ -264,6 +265,7 @@ export function registerHomeWalletRoutes(app: Express, ctx: RouteContext) {
           [userId]
         ),
         storage.getActivities(userId, 8),
+        getDailyCheckinStatus(userId),
       ]);
 
       const referralCounts = referralGroups.reduce(
@@ -382,11 +384,7 @@ export function registerHomeWalletRoutes(app: Express, ctx: RouteContext) {
           xpRank: xpRankRows[0]?.rank ? toLeaderboardNumber(xpRankRows[0].rank) : null,
           referralRank: referralRankRows[0]?.rank ? toLeaderboardNumber(referralRankRows[0].rank) : null,
         },
-        checkin: {
-          currentStreak: user.streak || 0,
-          lastCheckIn: user.lastCheckIn || null,
-          checkedInToday: isSameLocalDay(user.lastCheckIn),
-        },
+        checkin: checkinStatus,
         recentActivities,
       });
     } catch (error) {

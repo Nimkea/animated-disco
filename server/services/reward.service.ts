@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/db";
-import { isSameLocalDay } from "../lib/dates";
+import { addUtcDays, getNextUtcDayStart, getUtcDateKey, getUtcMonthDateKeyRange, isSameUtcDay, startOfUtcDay } from "../lib/dates";
 import { notifyUser } from "../notifications";
 import { storage } from "../storage";
 import {
@@ -10,6 +10,8 @@ import {
   calculateLevelFromXp,
   getEngagementConfig,
 } from "./engagement.service";
+
+const db = prisma as any;
 
 const DEFAULT_ACHIEVEMENTS = [
   { title: "Sign-in Bonus", description: "Claim your first daily check-in reward", icon: "✅", category: "streaks", requirement: 1, xpReward: 5 },
@@ -347,43 +349,150 @@ export async function claimUserAchievement(userId: string, achievementId: string
   };
 }
 
+function toNumber(value: unknown, fallback = 0) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  const parsed = Number((value as any)?.toString?.() ?? value ?? fallback);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function serializeDailyCheckin(row: any) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.userId,
+    checkinDate: row.checkinDate,
+    streakDay: row.streakDay,
+    xpReward: row.xpReward,
+    xnrtReward: toNumber(row.xnrtReward),
+    requestedXnrtReward: toNumber(row.requestedXnrtReward),
+    rewardCapped: Boolean(row.rewardCapped),
+    createdAt: row.createdAt,
+  };
+}
+
+async function getLatestDailyCheckin(userId: string) {
+  return db.dailyCheckin?.findFirst({
+    where: { userId },
+    orderBy: [{ checkinDate: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+export async function getDailyCheckinStatus(userId: string) {
+  const now = new Date();
+  const todayKey = getUtcDateKey(now);
+  const yesterdayKey = getUtcDateKey(addUtcDays(startOfUtcDay(now), -1));
+  const nextClaimAt = getNextUtcDayStart(now);
+
+  const [user, config, todayCheckin, latestCheckin] = await Promise.all([
+    storage.getUser(userId),
+    getEngagementConfig(),
+    db.dailyCheckin?.findUnique({ where: { userId_checkinDate: { userId, checkinDate: todayKey } } }),
+    getLatestDailyCheckin(userId),
+  ]);
+
+  const lastCheckInKey = latestCheckin?.checkinDate || (user?.lastCheckIn ? getUtcDateKey(user.lastCheckIn) : null);
+  const latestStreak = latestCheckin?.streakDay ?? user?.streak ?? 0;
+  const checkedInToday = Boolean(todayCheckin) || isSameUtcDay(user?.lastCheckIn, now);
+  const currentStreak = checkedInToday ? Math.max(latestStreak, user?.streak || 0) : user?.streak || latestStreak || 0;
+  const nextStreak = checkedInToday
+    ? currentStreak + 1
+    : lastCheckInKey === yesterdayKey
+      ? Math.max(currentStreak, latestStreak) + 1
+      : 1;
+  const nextReward = calculateDailyCheckinReward(nextStreak, config);
+  const missedStreak = Boolean(lastCheckInKey && lastCheckInKey !== todayKey && lastCheckInKey !== yesterdayKey && currentStreak > 0);
+
+  return {
+    currentStreak,
+    lastCheckIn: user?.lastCheckIn || latestCheckin?.createdAt || null,
+    checkedInToday,
+    todayKey,
+    yesterdayKey,
+    nextClaimAt,
+    nextStreak,
+    nextReward,
+    missedStreak,
+    todayCheckin: serializeDailyCheckin(todayCheckin),
+  };
+}
+
 export async function performDailyCheckIn(userId: string) {
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = getUtcDateKey(now);
+  const yesterdayKey = getUtcDateKey(addUtcDays(startOfUtcDay(now), -1));
   const user = await storage.getUser(userId);
   if (!user) return { ok: false as const, status: 404, message: "User not found" };
 
-  const lastCheckIn = user.lastCheckIn ? new Date(user.lastCheckIn) : null;
-  const lastCheckInDay = lastCheckIn
-    ? new Date(lastCheckIn.getFullYear(), lastCheckIn.getMonth(), lastCheckIn.getDate())
-    : null;
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const [config, existingToday, latestCheckin] = await Promise.all([
+    getEngagementConfig(),
+    db.dailyCheckin?.findUnique({ where: { userId_checkinDate: { userId, checkinDate: todayKey } } }),
+    getLatestDailyCheckin(userId),
+  ]);
 
-  if (lastCheckIn && lastCheckInDay && lastCheckInDay.getTime() === today.getTime()) {
-    return { ok: false as const, status: 400, message: "Already checked in today" };
+  if (existingToday || isSameUtcDay(user.lastCheckIn, now)) {
+    return {
+      ok: false as const,
+      status: 400,
+      message: "Already checked in today",
+      nextClaimAt: getNextUtcDayStart(now),
+      todayCheckin: serializeDailyCheckin(existingToday),
+    };
   }
 
-  let newStreak = 1;
-  if (lastCheckInDay && lastCheckInDay.getTime() === yesterday.getTime()) {
-    newStreak = (user.streak || 0) + 1;
-  }
-
-  const config = await getEngagementConfig();
+  const previousKey = latestCheckin?.checkinDate || (user.lastCheckIn ? getUtcDateKey(user.lastCheckIn) : null);
+  const previousStreak = latestCheckin?.streakDay ?? user.streak ?? 0;
+  const newStreak = previousKey === yesterdayKey ? previousStreak + 1 : 1;
   const { xnrtReward: requestedStreakReward, xpReward } = calculateDailyCheckinReward(newStreak, config);
+
+  let dailyCheckin;
+  try {
+    dailyCheckin = await db.dailyCheckin.create({
+      data: {
+        userId,
+        checkinDate: todayKey,
+        streakDay: newStreak,
+        xpReward,
+        xnrtReward: new Prisma.Decimal("0"),
+        requestedXnrtReward: new Prisma.Decimal(requestedStreakReward.toString()),
+        rewardCapped: false,
+      },
+    });
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      return {
+        ok: false as const,
+        status: 400,
+        message: "Already checked in today",
+        nextClaimAt: getNextUtcDayStart(now),
+      };
+    }
+    throw error;
+  }
+
   const capResult = await calculateAllowedXnrtReward({
     userId,
     requestedAmount: requestedStreakReward,
     source: "daily_checkin",
+    sourceId: todayKey,
     reason: `Daily check-in day ${newStreak}`,
   });
   const streakReward = capResult.awardedAmount;
+
   const xpResult = await awardUserXpWithLedger({
     userId,
     amount: xpReward,
     reason: `Daily check-in day ${newStreak}`,
     source: "daily_checkin",
-    metadata: { streak: newStreak },
+    sourceId: todayKey,
+    metadata: { streak: newStreak, checkinDate: todayKey },
+  });
+
+  dailyCheckin = await db.dailyCheckin.update({
+    where: { id: dailyCheckin.id },
+    data: {
+      xnrtReward: new Prisma.Decimal(streakReward.toString()),
+      rewardCapped: capResult.capped,
+    },
   });
 
   await storage.updateUser(userId, {
@@ -398,12 +507,40 @@ export async function performDailyCheckIn(userId: string) {
       xnrtBalance: (parseFloat(balance.xnrtBalance) + streakReward).toString(),
       totalEarned: (parseFloat(balance.totalEarned) + streakReward).toString(),
     });
+
+    await storage.createTransaction({
+      userId,
+      type: "reward",
+      amount: streakReward.toString(),
+      source: "daily_checkin",
+      status: "approved",
+      approvedAt: now,
+      verified: true,
+    });
   }
 
   await storage.createActivity({
     userId,
     type: "daily_checkin",
     description: `Day ${newStreak} streak! Earned ${streakReward} XNRT and ${xpReward} XP${capResult.capped ? " (reward cap applied)" : ""}`,
+    metadata: JSON.stringify({ checkinDate: todayKey, rewardCapped: capResult.capped }),
+  });
+
+  void notifyUser(userId, {
+    type: "daily_checkin",
+    title: "🔥 Daily Check-in Claimed",
+    message: `Day ${newStreak} streak complete. You earned ${xpReward} XP and ${streakReward} XNRT${capResult.capped ? " after cap" : ""}.`,
+    url: "/rewards",
+    metadata: {
+      checkinDate: todayKey,
+      streak: newStreak,
+      xpReward,
+      xnrtReward: streakReward,
+      requestedXnrtReward: requestedStreakReward,
+      rewardCapped: capResult.capped,
+    },
+  }).catch((err: unknown) => {
+    console.error("Error sending daily check-in notification:", err);
   });
 
   await storage.checkAndUnlockAchievements(userId);
@@ -415,38 +552,75 @@ export async function performDailyCheckIn(userId: string) {
     requestedXnrtReward: requestedStreakReward,
     xpReward,
     rewardCapped: capResult.capped,
+    checkinDate: todayKey,
+    nextClaimAt: getNextUtcDayStart(now),
+    todayCheckin: serializeDailyCheckin(dailyCheckin),
     message: `Day ${newStreak} check-in complete!`,
   };
 }
 
 export async function getCheckinHistory(userId: string, yearQuery: unknown, monthQuery: unknown) {
   const now = new Date();
-  const targetYear = yearQuery ? parseInt(String(yearQuery), 10) : now.getFullYear();
+  const requestedYear = yearQuery ? parseInt(String(yearQuery), 10) : now.getUTCFullYear();
+  const targetYear = Number.isFinite(requestedYear) ? requestedYear : now.getUTCFullYear();
 
   let targetMonth: number;
   if (typeof monthQuery !== "undefined") {
     const monthNum = parseInt(String(monthQuery), 10);
-    const clamped = Math.min(Math.max(monthNum, 1), 12);
+    const clamped = Number.isFinite(monthNum) ? Math.min(Math.max(monthNum, 1), 12) : now.getUTCMonth() + 1;
     targetMonth = clamped - 1;
   } else {
-    targetMonth = now.getMonth();
+    targetMonth = now.getUTCMonth();
   }
 
-  const startDate = new Date(targetYear, targetMonth, 1);
-  const endDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
-
-  const checkinActivities = await prisma.activity.findMany({
-    where: { userId, type: "daily_checkin", createdAt: { gte: startDate, lte: endDate } },
-    orderBy: { createdAt: "asc" },
+  const { startKey, endKey } = getUtcMonthDateKeyRange(targetYear, targetMonth);
+  const checkins = await db.dailyCheckin.findMany({
+    where: { userId, checkinDate: { gte: startKey, lt: endKey } },
+    orderBy: { checkinDate: "asc" },
   });
 
-  const checkinDates = checkinActivities.map((activity: { createdAt: Date | null }) =>
-    new Date(activity.createdAt!).toISOString().split("T")[0]
-  );
+  let entries = checkins.map(serializeDailyCheckin).filter(Boolean);
 
-  return { dates: checkinDates, year: targetYear, month: targetMonth };
+  if (entries.length === 0) {
+    const startDate = new Date(Date.UTC(targetYear, targetMonth, 1));
+    const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 1));
+    const checkinActivities = await prisma.activity.findMany({
+      where: { userId, type: "daily_checkin", createdAt: { gte: startDate, lt: endDate } },
+      orderBy: { createdAt: "asc" },
+    });
+
+    entries = checkinActivities.map((activity: { id: string; createdAt: Date | null }) => ({
+      id: activity.id,
+      userId,
+      checkinDate: getUtcDateKey(activity.createdAt),
+      streakDay: 0,
+      xpReward: 0,
+      xnrtReward: 0,
+      requestedXnrtReward: 0,
+      rewardCapped: false,
+      createdAt: activity.createdAt,
+    }));
+  }
+
+  const dates = Array.from(new Set(entries.map((entry: any) => entry.checkinDate)));
+  const monthTotalXp = entries.reduce((sum: number, entry: any) => sum + Number(entry.xpReward || 0), 0);
+  const monthTotalXnrt = entries.reduce((sum: number, entry: any) => sum + Number(entry.xnrtReward || 0), 0);
+  const status = await getDailyCheckinStatus(userId);
+
+  return {
+    dates,
+    entries,
+    year: targetYear,
+    month: targetMonth,
+    monthTotalXp,
+    monthTotalXnrt,
+    currentStreak: status.currentStreak,
+    checkedInToday: status.checkedInToday,
+    nextClaimAt: status.nextClaimAt,
+    nextReward: status.nextReward,
+  };
 }
 
 export function hasCheckedInToday(lastCheckIn?: Date | string | null) {
-  return isSameLocalDay(lastCheckIn);
+  return isSameUtcDay(lastCheckIn);
 }

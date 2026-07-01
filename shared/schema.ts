@@ -547,3 +547,15 @@ export interface RewardCapLedger {
   reason?: string | null;
   createdAt: Date;
 }
+
+export interface DailyCheckin {
+  id: string;
+  userId: string;
+  checkinDate: string;
+  streakDay: number;
+  xpReward: number;
+  xnrtReward: string;
+  requestedXnrtReward: string;
+  rewardCapped: boolean;
+  createdAt: Date;
+}

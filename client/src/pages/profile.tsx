@@ -114,6 +114,11 @@ interface ProfileSummary {
     currentStreak: number;
     lastCheckIn?: string | Date | null;
     checkedInToday: boolean;
+    todayKey?: string;
+    nextClaimAt?: string | Date | null;
+    nextStreak?: number;
+    nextReward?: { xnrtReward: number; xpReward: number };
+    missedStreak?: boolean;
   };
   recentActivities: Array<{
     id: string;
@@ -382,7 +387,9 @@ export default function Profile() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Check-in status</span>
                 <span className="font-medium">
-                  {summary?.checkin.checkedInToday ? "Done today" : "Pending today"}
+                  {summary?.checkin.checkedInToday
+                    ? `Done today · next ${formatDate(summary?.checkin.nextClaimAt)}`
+                    : `Pending · next reward +${formatNumber(summary?.checkin.nextReward?.xnrtReward)} XNRT`}
                 </span>
               </div>
               {summary?.profile.referredByUsername && (

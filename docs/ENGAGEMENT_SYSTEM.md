@@ -60,3 +60,16 @@ pnpm prisma generate
 ```
 
 before `pnpm check`.
+
+
+## Patch 32 — Daily Check-in + Streaks v2
+
+Daily check-ins now use a dedicated `DailyCheckin` ledger with a unique `(userId, checkinDate)` constraint. This makes the claim idempotent per UTC day and gives the UI a reliable source for calendar history, monthly totals, cap markers, and next reward preview.
+
+New user endpoints:
+
+- `GET /api/checkin/status`
+- `POST /api/checkin`
+- `GET /api/checkin/history?year=YYYY&month=M`
+
+Admin engagement summary includes `dailyCheckinsToday` so admins can see real daily claim activity.

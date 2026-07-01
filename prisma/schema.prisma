@@ -53,6 +53,7 @@ model User {
   announcements   Announcement[]
   xpLedger       XpLedger[]
   rewardCapLedger RewardCapLedger[]
+  dailyCheckins  DailyCheckin[]
 
   @@index([xp])
 }
@@ -546,4 +547,22 @@ model RewardCapLedger {
   @@index([userId, createdAt])
   @@index([userId, source, createdAt])
   @@index([source, createdAt])
+}
+
+model DailyCheckin {
+  id                  String   @id @default(uuid())
+  userId              String
+  checkinDate         String   @db.VarChar(10)
+  streakDay           Int      @default(1)
+  xpReward            Int      @default(0)
+  xnrtReward          Decimal  @default(0) @db.Decimal(38, 18)
+  requestedXnrtReward Decimal  @default(0) @db.Decimal(38, 18)
+  rewardCapped        Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, checkinDate])
+  @@index([userId, createdAt])
+  @@index([checkinDate])
 }
