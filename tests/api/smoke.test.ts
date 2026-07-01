@@ -22,6 +22,8 @@ describe("API smoke test harness", () => {
       "POST /api/tasks/:id/complete",
       "POST /api/tasks/:id/progress",
       "POST /api/tasks/:id/claim",
+      "GET /api/learn/lessons",
+      "POST /api/learn/lessons/:slug/submit",
     ];
 
     expect(new Set(routesToCover).size).toBe(routesToCover.length);

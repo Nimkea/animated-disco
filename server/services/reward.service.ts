@@ -14,7 +14,7 @@ import {
 const db = prisma as any;
 
 const BADGE_TIERS = ["bronze", "silver", "gold", "diamond"] as const;
-const BADGE_UNLOCKED_NOTIFICATION_TITLE = "🏆 Badge Unlocked";
+export const BADGE_UNLOCKED_NOTIFICATION_TITLE = "🏆 Badge Unlocked";
 
 const BADGE_TIER_RANK: Record<string, number> = { bronze: 1, silver: 2, gold: 3, diamond: 4 };
 const DEFAULT_BADGE_COLORS: Record<string, string> = {
@@ -57,6 +57,8 @@ const DEFAULT_ACHIEVEMENTS = [
   { title: "Quest Champion", description: "Claim 50 mission rewards", icon: "🏆", category: "tasks", requirement: 50, xpReward: 300, badgeTier: "gold", sortOrder: 210 },
   { title: "Stake Starter", description: "Create your first stake", icon: "💠", category: "staking", requirement: 1, xpReward: 40, badgeTier: "bronze", sortOrder: 220 },
   { title: "Stake Builder", description: "Create 5 staking positions", icon: "🔷", category: "staking", requirement: 5, xpReward: 150, badgeTier: "silver", sortOrder: 230 },
+  { title: "Learn Starter", description: "Pass your first Learn & Earn quiz", icon: "🎓", category: "education", requirement: 1, xpReward: 50, badgeTier: "bronze", sortOrder: 235 },
+  { title: "Responsible Learner", description: "Complete the responsible usage safety lesson", icon: "🛡️", category: "responsible_usage", requirement: 1, xpReward: 80, badgeTier: "silver", sortOrder: 236 },
   { title: "Trust Loan Eligible", description: "Build enough engagement for Trust Loan readiness", icon: "🤝", category: "trust_loan", requirement: 1, xpReward: 100, badgeTier: "gold", sortOrder: 240 },
 ] as const;
 
@@ -140,6 +142,19 @@ const DEFAULT_TASKS = [
     isActive: true,
   },
   {
+    title: "Daily Learn & Earn",
+    description: "Pass one Learn & Earn quiz today",
+    category: "daily",
+    missionType: "daily",
+    triggerKey: "lesson_completed",
+    targetCount: 1,
+    sortOrder: 70,
+    xpReward: 30,
+    xnrtReward: "6",
+    requirements: "Open Learn and pass any available quiz",
+    isActive: true,
+  },
+  {
     title: "Weekly Mining Quest",
     description: "Complete 5 mining sessions this week",
     category: "weekly",
@@ -179,6 +194,19 @@ const DEFAULT_TASKS = [
     isActive: true,
   },
   {
+    title: "Weekly Learning Quest",
+    description: "Pass 3 Learn & Earn quizzes this week",
+    category: "weekly",
+    missionType: "weekly",
+    triggerKey: "lesson_completed",
+    targetCount: 3,
+    sortOrder: 135,
+    xpReward: 140,
+    xnrtReward: "90",
+    requirements: "Complete 3 quiz lessons before weekly reset",
+    isActive: true,
+  },
+  {
     title: "Weekly Referral Quest",
     description: "Invite 2 new users this week",
     category: "weekly",
@@ -200,6 +228,7 @@ const AUTOMATED_TRIGGER_KEYS = new Set([
   "mining_completed",
   "stake_created",
   "referral_created",
+  "lesson_completed",
 ]);
 
 type MissionPeriod = { key: string; start?: Date; end?: Date; expiresAt?: Date | null };
@@ -264,6 +293,8 @@ async function getAutomatedMissionProgress(userId: string, triggerKey: string, p
       return prisma.stake.count({ where: { userId, createdAt: { gte: start, lt: end } } });
     case "referral_created":
       return prisma.referral.count({ where: { referrerId: userId, level: 1, createdAt: { gte: start, lt: end } } });
+    case "lesson_completed":
+      return db.userLessonProgress.count({ where: { userId, rewarded: true, completedAt: { gte: start, lt: end } } });
     default:
       return null;
   }

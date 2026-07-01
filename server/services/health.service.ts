@@ -1,6 +1,7 @@
 import { prisma } from "../lib/db";
 import { ensureDefaultAchievements, ensureDefaultTasks } from "./reward.service";
 import { ensureEngagementConfig } from "./engagement.service";
+import { ensureDefaultLessons } from "./learn-earn.service";
 
 export type HealthStatus = "ok" | "degraded" | "unreachable" | "skipped";
 
@@ -212,7 +213,7 @@ export async function runStartupDatabaseSeeds() {
     checkedAt: health.checkedAt,
     latencyMs: health.latencyMs,
     message: health.ok
-      ? "Database reachable. Running default engagement/tasks/achievements seed."
+      ? "Database reachable. Running default engagement/tasks/achievements/lessons seed."
       : `Database unreachable. Startup seed skipped. ${health.error?.message || "Unknown database error"}`,
   };
 
@@ -230,11 +231,12 @@ export async function runStartupDatabaseSeeds() {
     await ensureEngagementConfig();
     await ensureDefaultAchievements();
     await ensureDefaultTasks();
+    await ensureDefaultLessons();
     startupSeedState = {
       ...startupSeedState,
       completed: true,
       skipped: false,
-      message: "Default engagement config, tasks, and achievements are ready.",
+      message: "Default engagement config, tasks, achievements, and lessons are ready.",
     };
   } catch (error) {
     startupSeedState = {

@@ -35,6 +35,7 @@ const WithdrawalPage = lazy(() => import("@/pages/withdrawal"));
 const ProfilePage = lazy(() => import("@/pages/profile"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
 const AchievementsPage = lazy(() => import("@/pages/achievements"));
+const LearnPage = lazy(() => import("@/pages/learn"));
 const RewardsPage = lazy(() => import("@/pages/rewards"));
 const StakingPage = lazy(() => import("@/pages/staking"));
 const MiningPage = lazy(() => import("@/pages/mining"));
@@ -84,6 +85,12 @@ const Tasks = () => (
 const Achievements = () => (
   <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
     <AchievementsPage />
+  </Suspense>
+);
+
+const Learn = () => (
+  <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-muted-foreground">Loading…</div>}>
+    <LearnPage />
   </Suspense>
 );
 
@@ -204,6 +211,7 @@ function AuthenticatedApp() {
                 <Route path="/profile" component={Profile} />
                 <Route path="/tasks" component={Tasks} />
                 <Route path="/achievements" component={Achievements} />
+                <Route path="/learn" component={Learn} />
                 <Route path="/rewards" component={Rewards} />
                 <Route path="/leaderboard" component={Leaderboard} />
                 <Route path="/trust-loan" component={TrustLoan} />

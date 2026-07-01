@@ -1214,6 +1214,8 @@ export class DatabaseStorage implements IStorage {
       createdStakes,
       linkedWallets,
       approvedDeposits,
+      completedLessons,
+      responsibleUsageLessons,
     ] = await Promise.all([
       this.getReferralsByReferrer(userId),
       this.getMiningHistory(userId),
@@ -1221,6 +1223,8 @@ export class DatabaseStorage implements IStorage {
       prisma.stake.count({ where: { userId } }),
       prisma.linkedWallet.count({ where: { userId, active: true } }),
       prisma.transaction.count({ where: { userId, type: "deposit", status: "approved" } }),
+      prisma.userLessonProgress.count({ where: { userId, rewarded: true } }),
+      prisma.userLessonProgress.count({ where: { userId, rewarded: true, lesson: { isResponsibleUsage: true } } }),
     ]);
 
     const totalEarned = parseFloat(balance.totalEarned);
@@ -1260,6 +1264,12 @@ export class DatabaseStorage implements IStorage {
           break;
         case "staking":
           progress = createdStakes;
+          break;
+        case "education":
+          progress = completedLessons;
+          break;
+        case "responsible_usage":
+          progress = responsibleUsageLessons > 0 ? 1 : 0;
           break;
         case "trust_loan":
           progress = trustLoanReady ? 1 : 0;

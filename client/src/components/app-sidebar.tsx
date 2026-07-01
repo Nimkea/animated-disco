@@ -16,6 +16,7 @@ import {
   MessageCircle,
   HandCoins,
   Bell,
+  GraduationCap,
 } from "lucide-react";
 
 import {
@@ -49,6 +50,7 @@ const menuItems = [
   { title: "Profile", url: "/profile", icon: User, testId: "nav-profile" },
   { title: "Tasks", url: "/tasks", icon: ListChecks, testId: "nav-tasks" },
   { title: "Achievements", url: "/achievements", icon: Trophy, testId: "nav-achievements" },
+  { title: "Learn", url: "/learn", icon: GraduationCap, testId: "nav-learn" },
   { title: "Rewards", url: "/rewards", icon: Gift, testId: "nav-rewards" },
   { title: "Notifications", url: "/notifications", icon: Bell, testId: "nav-notifications" },
 ];

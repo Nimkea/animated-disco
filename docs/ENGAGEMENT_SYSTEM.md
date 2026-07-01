@@ -99,3 +99,8 @@ Default triggers include daily check-in, mining started/completed, wallet opened
 ## Patch 34 — Achievements v2 + Badges
 
 Achievements now support tiered badges (`bronze`, `silver`, `gold`, `diamond`) with admin-managed tier/color/sort/status fields. Users can display unlocked badges in a profile trophy case, and unlock notifications include badge tier metadata. The profile summary API includes `achievements.trophyCase` for the top displayed badges.
+
+
+## Patch 35 — Learn & Earn Quiz System
+
+Adds lessons, quizzes, one-time capped quiz rewards, responsible usage education, `/learn`, and Admin Quiz Manager. See `docs/PATCH35_LEARN_EARN_QUIZ_SYSTEM.md`.

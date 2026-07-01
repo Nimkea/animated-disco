@@ -18,6 +18,7 @@ import { registerProgressProfileRoutes } from "./routes/progress-profile.routes"
 import { registerAdminRoutes } from "./routes/admin.routes";
 import { registerTrustLoanRoutes } from "./routes/trust-loan.routes";
 import { registerEngagementRoutes } from "./routes/engagement.routes";
+import { registerLearnEarnRoutes } from "./routes/learn-earn.routes";
 
 // Shared schema/types
 import {
@@ -201,6 +202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAdminRoutes(app, routeContext);
   registerTrustLoanRoutes(app, routeContext);
   registerEngagementRoutes(app, routeContext);
+  registerLearnEarnRoutes(app, routeContext);
 
   const httpServer = createServer(app);
   return httpServer;

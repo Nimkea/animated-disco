@@ -60,3 +60,8 @@ Future optimization can split large admin/dashboard chunks further.
 
 - [Engagement System](./ENGAGEMENT_SYSTEM.md)
 - [Patch 34 — Achievements v2 + Badges](./PATCH34_ACHIEVEMENTS_V2_BADGES.md)
+
+
+## Patch 35 — Learn & Earn Quiz System
+
+Adds lessons, quizzes, one-time capped quiz rewards, responsible usage education, `/learn`, and Admin Quiz Manager. See `docs/PATCH35_LEARN_EARN_QUIZ_SYSTEM.md`.

@@ -330,6 +330,84 @@ export type InsertUserAchievement = {
   featuredSlot?: number | null;
 };
 
+
+// ─── Learn & Earn Lessons ───────────────────────────────────────────────────
+
+export interface LessonQuestion {
+  id: string;
+  lessonId: string;
+  question: string;
+  options: string[];
+  correctAnswer?: number;
+  explanation?: string | null;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt?: Date;
+}
+
+export interface Lesson {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string;
+  content: string;
+  category: string;
+  estimatedMinutes: number;
+  xpReward: number;
+  xnrtReward: string;
+  passingScore: number;
+  isActive: boolean;
+  isResponsibleUsage: boolean;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt?: Date;
+  questions?: LessonQuestion[];
+}
+
+export interface UserLessonProgress {
+  id: string;
+  userId: string;
+  lessonId: string;
+  status: "not_started" | "completed" | string;
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  passed: boolean;
+  rewarded: boolean;
+  xpReward: number;
+  xnrtReward: string;
+  requestedXnrtReward: string;
+  rewardCapped: boolean;
+  answers?: any;
+  completedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type InsertLesson = {
+  slug: string;
+  title: string;
+  summary: string;
+  content: string;
+  category?: string;
+  estimatedMinutes?: number;
+  xpReward?: number;
+  xnrtReward?: string;
+  passingScore?: number;
+  isActive?: boolean;
+  isResponsibleUsage?: boolean;
+  sortOrder?: number;
+};
+
+export type InsertLessonQuestion = {
+  lessonId: string;
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  explanation?: string | null;
+  sortOrder?: number;
+};
+
 // ─── Activity ────────────────────────────────────────────────────────────────
 
 export interface Activity {

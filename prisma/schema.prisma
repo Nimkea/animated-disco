@@ -54,6 +54,7 @@ model User {
   xpLedger       XpLedger[]
   rewardCapLedger RewardCapLedger[]
   dailyCheckins  DailyCheckin[]
+  lessonProgress UserLessonProgress[]
 
   @@index([xp])
 }
@@ -285,6 +286,77 @@ model UserAchievement {
   @@index([userId])
   @@index([achievementId])
   @@index([userId, isFeatured])
+}
+
+
+model Lesson {
+  id                 String   @id @default(uuid())
+  slug               String   @unique
+  title              String
+  summary            String
+  content            String   @db.Text
+  category           String   @default("education")
+  estimatedMinutes   Int      @default(3)
+  xpReward           Int      @default(25)
+  xnrtReward         Decimal  @default(0) @db.Decimal(38, 18)
+  passingScore       Int      @default(70)
+  isActive           Boolean  @default(true)
+  isResponsibleUsage Boolean  @default(false)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  questions LessonQuestion[]
+  progress  UserLessonProgress[]
+
+  @@index([isActive, sortOrder])
+  @@index([category])
+  @@index([isResponsibleUsage])
+}
+
+model LessonQuestion {
+  id            String   @id @default(uuid())
+  lessonId      String
+  question      String   @db.Text
+  options       Json
+  correctAnswer Int
+  explanation   String?  @db.Text
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, sortOrder])
+}
+
+model UserLessonProgress {
+  id                  String    @id @default(uuid())
+  userId              String
+  lessonId            String
+  status              String    @default("not_started")
+  score               Int       @default(0)
+  totalQuestions      Int       @default(0)
+  correctAnswers      Int       @default(0)
+  passed              Boolean   @default(false)
+  rewarded            Boolean   @default(false)
+  xpReward            Int       @default(0)
+  xnrtReward          Decimal   @default(0) @db.Decimal(38, 18)
+  requestedXnrtReward Decimal   @default(0) @db.Decimal(38, 18)
+  rewardCapped        Boolean   @default(false)
+  answers             Json?
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+  @@index([userId, rewarded])
+  @@index([passed, completedAt])
 }
 
 model Activity {

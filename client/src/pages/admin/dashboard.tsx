@@ -14,7 +14,8 @@ import {
   Radar,
   BellRing,
   HandCoins,
-  Gamepad2
+  Gamepad2,
+  GraduationCap
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
@@ -33,6 +34,7 @@ import ScannerDashboardTab from "./tabs/scanner-dashboard";
 import NotificationBroadcastTab from "./tabs/notification-broadcast";
 import TrustLoanConfigTab from "./tabs/trust-loan-config";
 import EngagementConfigTab from "./tabs/engagement-config";
+import LearnEarnTab from "./tabs/learn-earn";
 
 export default function AdminDashboard() {
   const [location, setLocation] = useLocation();
@@ -42,7 +44,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
-    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit", "scanner", "broadcast", "trust-loan", "engagement"].includes(tab)) {
+    if (tab && ["overview", "deposits", "withdrawals", "users", "analytics", "settings", "stakes", "tasks", "achievements", "announcements", "audit", "scanner", "broadcast", "trust-loan", "engagement", "learn"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [location]);
@@ -124,6 +126,10 @@ export default function AdminDashboard() {
             <Gamepad2 className="h-4 w-4" />
             <span className="hidden sm:inline">Engagement</span>
           </TabsTrigger>
+          <TabsTrigger value="learn" className="gap-2" data-testid="tab-learn">
+            <GraduationCap className="h-4 w-4" />
+            <span className="hidden sm:inline">Learn</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -184,6 +190,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="engagement" className="space-y-6">
           <EngagementConfigTab />
+        </TabsContent>
+
+        <TabsContent value="learn" className="space-y-6">
+          <LearnEarnTab />
         </TabsContent>
       </Tabs>
     </div>
