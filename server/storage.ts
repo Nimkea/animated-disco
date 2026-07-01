@@ -14,6 +14,7 @@ import { achievementRepository } from "./repositories/achievement.repository";
 import { leaderboardRepository } from "./repositories/leaderboard.repository";
 import crypto from "crypto";
 import { nanoid } from "nanoid";
+import { calculateLevelFromXp, getEngagementConfig } from "./services/engagement.service";
 import {
   type User,
   type UpsertUser,
@@ -1271,11 +1272,12 @@ export class DatabaseStorage implements IStorage {
 
     if (totalXpReward > 0) {
       const nextXp = (user.xp || 0) + totalXpReward;
+      const engagementConfig = await getEngagementConfig();
       await prisma.user.update({
         where: { id: userId },
         data: {
           xp: nextXp,
-          level: Math.floor(nextXp / 1000) + 1,
+          level: calculateLevelFromXp(nextXp, engagementConfig),
         },
       });
     }

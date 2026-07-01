@@ -7,6 +7,7 @@ import {
   getUserAchievementsWithStatus,
   performDailyCheckIn,
 } from "../services/reward.service";
+import { getEngagementConfig, getLevelProgress } from "../services/engagement.service";
 
 export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -81,6 +82,8 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
           userTask: result.userTask,
           xpReward: result.xpReward,
           xnrtReward: result.xnrtReward,
+          requestedXnrtReward: result.requestedXnrtReward,
+          rewardCapped: result.rewardCapped,
         });
       } catch (error) {
         console.error("Error completing task:", error);
@@ -521,13 +524,9 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
         });
       }
 
+      const engagementConfig = await getEngagementConfig();
       const xp = user.xp || 0;
-      const level = Math.floor(xp / 1000) + 1;
-      const currentLevelXp = (level - 1) * 1000;
-      const nextLevelXp = level * 1000;
-      const xpIntoLevel = Math.max(0, xp - currentLevelXp);
-      const xpRequiredForLevel = 1000;
-      const progressPercent = Math.min(100, Math.round((xpIntoLevel / xpRequiredForLevel) * 100));
+      const xpProgress = getLevelProgress(xp, engagementConfig);
 
       res.json({
         profile: {
@@ -544,15 +543,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },
-        xp: {
-          total: xp,
-          level,
-          currentLevelXp,
-          nextLevelXp,
-          xpIntoLevel,
-          xpRequiredForLevel,
-          progressPercent,
-        },
+        xp: xpProgress,
         balance: {
           xnrtBalance: decimalValueToNumber(balance?.xnrtBalance),
           stakingBalance: decimalValueToNumber(balance?.stakingBalance),
@@ -731,6 +722,8 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
         streak: result.streak,
         xnrtReward: result.xnrtReward,
         xpReward: result.xpReward,
+        requestedXnrtReward: result.requestedXnrtReward,
+        rewardCapped: result.rewardCapped,
         message: result.message,
       });
     } catch (error) {

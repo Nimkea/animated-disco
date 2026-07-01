@@ -15,12 +15,13 @@ Core modules:
 - Mining: 24-hour session, fixed reward rule of 10 XP + 5 XNRT.
 - Staking: tiered simulated platform rewards, maturity countdowns, reward processing, risk UX.
 - Referral: 3-level commission chain, referral tree, idempotent commission ledger.
+- Engagement: admin-configured XP levels, reward caps, XP ledger, and gamification safety.
 - Rewards/Tasks/Achievements: user progress and gamification rewards.
 - Leaderboard: XP, mining, task, achievement, check-in, staking/referral earnings categories.
 - Profile/Home: dashboard summaries and central user hub.
 - Trust Loan: dedicated user page and admin-configurable program.
 - Notifications: inbox, unread badge, push subscriptions, DB preferences, sound settings, admin broadcast.
-- Admin: overview, users, deposits, withdrawals, stakes, tasks, achievements, announcements, analytics, audit logs, scanner, Trust Loan config, broadcast.
+- Admin: overview, users, deposits, withdrawals, stakes, tasks, achievements, engagement config, announcements, analytics, audit logs, scanner, Trust Loan config, broadcast.
 - PWA: service worker, installability, offline shell, push notifications.
 - Theme: light/dark/system mode.
 - Tests: Vitest/Supertest with safe optional integration DB support.
@@ -54,3 +55,7 @@ Future optimization can split large admin/dashboard chunks further.
 3. Wallet proof storage move from local filesystem to object storage if deploying on ephemeral hosting.
 4. Realtime notification stream or websocket/SSE.
 5. Full integration test DB pipeline in CI.
+
+## Related docs
+
+- [Engagement System](./ENGAGEMENT_SYSTEM.md)

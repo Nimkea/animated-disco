@@ -499,3 +499,51 @@ export const STAKING_TIERS = {
 } as const;
 
 export type StakingTier = keyof typeof STAKING_TIERS;
+
+// ─── Engagement / XP / Reward Caps ─────────────────────────────────────────
+
+export interface EngagementConfig {
+  id: string;
+  enabled: boolean;
+  levelXpStep: number;
+  dailyTotalXnrtCap: string;
+  weeklyTotalXnrtCap: string;
+  dailyTaskXnrtCap: string;
+  weeklyTaskXnrtCap: string;
+  dailyCheckinBaseXnrt: string;
+  dailyCheckinStreakBonusXnrt: string;
+  dailyCheckinMaxXnrt: string;
+  dailyCheckinBaseXp: number;
+  dailyCheckinStreakBonusXp: number;
+  dailyCheckinMaxXp: number;
+  taskCompletionXpDailyCap: number;
+  publicLevelLabels?: any;
+  updatedBy?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface XpLedger {
+  id: string;
+  userId: string;
+  amount: number;
+  reason: string;
+  source: string;
+  sourceId?: string | null;
+  totalXpBefore: number;
+  totalXpAfter: number;
+  levelBefore: number;
+  levelAfter: number;
+  metadata?: any;
+  createdAt: Date;
+}
+
+export interface RewardCapLedger {
+  id: string;
+  userId: string;
+  source: string;
+  sourceId?: string | null;
+  amount: string;
+  reason?: string | null;
+  createdAt: Date;
+}

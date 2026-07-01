@@ -3,6 +3,13 @@ import { prisma } from "../lib/db";
 import { isSameLocalDay } from "../lib/dates";
 import { notifyUser } from "../notifications";
 import { storage } from "../storage";
+import {
+  awardUserXpWithLedger,
+  calculateAllowedXnrtReward,
+  calculateDailyCheckinReward,
+  calculateLevelFromXp,
+  getEngagementConfig,
+} from "./engagement.service";
 
 const DEFAULT_ACHIEVEMENTS = [
   { title: "Sign-in Bonus", description: "Claim your first daily check-in reward", icon: "✅", category: "streaks", requirement: 1, xpReward: 5 },
@@ -153,13 +160,14 @@ export function parseTaskPayload(body: any) {
   };
 }
 
-export async function awardUserXp(userId: string, xpReward: number) {
-  if (xpReward <= 0) return null;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { xp: true } });
-  if (!user) return null;
-  const nextXp = (user.xp || 0) + xpReward;
-  const nextLevel = Math.floor(nextXp / 1000) + 1;
-  return prisma.user.update({ where: { id: userId }, data: { xp: nextXp, level: nextLevel } });
+export async function awardUserXp(userId: string, xpReward: number, source = "system", sourceId?: string | null) {
+  return awardUserXpWithLedger({
+    userId,
+    amount: xpReward,
+    reason: source,
+    source,
+    sourceId: sourceId || null,
+  });
 }
 
 export function parseAchievementPayload(body: any) {
@@ -215,45 +223,61 @@ export async function completeUserTask(userId: string, taskId: string) {
     data: { completed: true, completedAt: new Date(), progress: maxProgress },
   });
 
-  await awardUserXp(userId, task.xpReward);
+  await awardUserXp(userId, task.xpReward, "task", task.id);
 
-  const xnrtAmount = Number(task.xnrtReward);
-  if (Number.isFinite(xnrtAmount) && xnrtAmount > 0) {
-    const balance = await storage.getBalance(userId);
-    if (balance) {
-      await storage.updateBalance(userId, {
-        xnrtBalance: (parseFloat(balance.xnrtBalance) + xnrtAmount).toString(),
-        totalEarned: (parseFloat(balance.totalEarned) + xnrtAmount).toString(),
+  const requestedXnrtAmount = Number(task.xnrtReward);
+  let awardedXnrtAmount = 0;
+  let rewardCapped = false;
+  if (Number.isFinite(requestedXnrtAmount) && requestedXnrtAmount > 0) {
+    const capResult = await calculateAllowedXnrtReward({
+      userId,
+      requestedAmount: requestedXnrtAmount,
+      source: "task",
+      sourceId: task.id,
+      reason: `Task completed: ${task.title}`,
+    });
+    awardedXnrtAmount = capResult.awardedAmount;
+    rewardCapped = capResult.capped;
+
+    if (awardedXnrtAmount > 0) {
+      const balance = await storage.getBalance(userId);
+      if (balance) {
+        await storage.updateBalance(userId, {
+          xnrtBalance: (parseFloat(balance.xnrtBalance) + awardedXnrtAmount).toString(),
+          totalEarned: (parseFloat(balance.totalEarned) + awardedXnrtAmount).toString(),
+        });
+      }
+
+      await storage.createTransaction({
+        userId,
+        type: "reward",
+        amount: awardedXnrtAmount.toString(),
+        source: "task",
+        status: "approved",
+        approvedAt: new Date(),
+        verified: true,
       });
     }
-
-    await storage.createTransaction({
-      userId,
-      type: "reward",
-      amount: xnrtAmount.toString(),
-      source: "task",
-      status: "approved",
-      approvedAt: new Date(),
-      verified: true,
-    });
   }
 
   await storage.createActivity({
     userId,
     type: "task_completed",
-    description: `Completed task: ${task.title} (+${task.xpReward} XP, +${task.xnrtReward.toString()} XNRT)`,
+    description: `Completed task: ${task.title} (+${task.xpReward} XP, +${awardedXnrtAmount} XNRT${rewardCapped ? " capped" : ""})`,
   });
 
   void notifyUser(userId, {
     type: "task_completed",
     title: "✅ Task Completed",
-    message: `You earned ${task.xpReward} XP and ${task.xnrtReward.toString()} XNRT from ${task.title}.`,
+    message: `You earned ${task.xpReward} XP and ${awardedXnrtAmount} XNRT from ${task.title}${rewardCapped ? " (reward cap applied)" : ""}.`,
     url: "/tasks",
     metadata: {
       taskId: task.id,
       taskTitle: task.title,
       xpReward: task.xpReward,
-      xnrtReward: task.xnrtReward.toString(),
+      xnrtReward: awardedXnrtAmount.toString(),
+      requestedXnrtReward: task.xnrtReward.toString(),
+      rewardCapped,
     },
   }).catch((err: unknown) => {
     console.error("Error sending task completion notification:", err);
@@ -265,7 +289,9 @@ export async function completeUserTask(userId: string, taskId: string) {
     ok: true as const,
     userTask: completedUserTask,
     xpReward: task.xpReward,
-    xnrtReward: task.xnrtReward.toString(),
+    xnrtReward: awardedXnrtAmount.toString(),
+      requestedXnrtReward: task.xnrtReward.toString(),
+      rewardCapped,
   };
 }
 
@@ -343,19 +369,31 @@ export async function performDailyCheckIn(userId: string) {
     newStreak = (user.streak || 0) + 1;
   }
 
-  const streakReward = Math.min(newStreak * 10, 100);
-  const xpReward = Math.min(newStreak * 5, 50);
-  const nextXp = (user.xp || 0) + xpReward;
+  const config = await getEngagementConfig();
+  const { xnrtReward: requestedStreakReward, xpReward } = calculateDailyCheckinReward(newStreak, config);
+  const capResult = await calculateAllowedXnrtReward({
+    userId,
+    requestedAmount: requestedStreakReward,
+    source: "daily_checkin",
+    reason: `Daily check-in day ${newStreak}`,
+  });
+  const streakReward = capResult.awardedAmount;
+  const xpResult = await awardUserXpWithLedger({
+    userId,
+    amount: xpReward,
+    reason: `Daily check-in day ${newStreak}`,
+    source: "daily_checkin",
+    metadata: { streak: newStreak },
+  });
 
   await storage.updateUser(userId, {
     lastCheckIn: now,
     streak: newStreak,
-    xp: nextXp,
-    level: Math.floor(nextXp / 1000) + 1,
+    level: xpResult?.levelAfter ?? calculateLevelFromXp((user.xp || 0) + xpReward, config),
   });
 
   const balance = await storage.getBalance(userId);
-  if (balance) {
+  if (balance && streakReward > 0) {
     await storage.updateBalance(userId, {
       xnrtBalance: (parseFloat(balance.xnrtBalance) + streakReward).toString(),
       totalEarned: (parseFloat(balance.totalEarned) + streakReward).toString(),
@@ -365,7 +403,7 @@ export async function performDailyCheckIn(userId: string) {
   await storage.createActivity({
     userId,
     type: "daily_checkin",
-    description: `Day ${newStreak} streak! Earned ${streakReward} XNRT and ${xpReward} XP`,
+    description: `Day ${newStreak} streak! Earned ${streakReward} XNRT and ${xpReward} XP${capResult.capped ? " (reward cap applied)" : ""}`,
   });
 
   await storage.checkAndUnlockAchievements(userId);
@@ -374,7 +412,9 @@ export async function performDailyCheckIn(userId: string) {
     ok: true as const,
     streak: newStreak,
     xnrtReward: streakReward,
+    requestedXnrtReward: requestedStreakReward,
     xpReward,
+    rewardCapped: capResult.capped,
     message: `Day ${newStreak} check-in complete!`,
   };
 }

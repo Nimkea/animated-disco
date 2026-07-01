@@ -51,6 +51,8 @@ model User {
   linkedWallets   LinkedWallet[]
   depositReports  DepositReport[]
   announcements   Announcement[]
+  xpLedger       XpLedger[]
+  rewardCapLedger RewardCapLedger[]
 
   @@index([xp])
 }
@@ -484,4 +486,64 @@ model Announcement {
 
   @@index([isActive])
   @@index([createdAt])
+}
+
+
+model EngagementConfig {
+  id                         String   @id @default("default")
+  enabled                    Boolean  @default(true)
+  levelXpStep                Int      @default(1000)
+  dailyTotalXnrtCap          Decimal  @default(200) @db.Decimal(38, 18)
+  weeklyTotalXnrtCap         Decimal  @default(1000) @db.Decimal(38, 18)
+  dailyTaskXnrtCap           Decimal  @default(100) @db.Decimal(38, 18)
+  weeklyTaskXnrtCap          Decimal  @default(500) @db.Decimal(38, 18)
+  dailyCheckinBaseXnrt       Decimal  @default(5) @db.Decimal(38, 18)
+  dailyCheckinStreakBonusXnrt Decimal @default(2) @db.Decimal(38, 18)
+  dailyCheckinMaxXnrt        Decimal  @default(25) @db.Decimal(38, 18)
+  dailyCheckinBaseXp         Int      @default(10)
+  dailyCheckinStreakBonusXp  Int      @default(5)
+  dailyCheckinMaxXp          Int      @default(50)
+  taskCompletionXpDailyCap   Int      @default(500)
+  publicLevelLabels          Json?
+  updatedBy                  String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+model XpLedger {
+  id            String   @id @default(uuid())
+  userId        String
+  amount        Int
+  reason        String
+  source        String
+  sourceId      String?
+  totalXpBefore Int
+  totalXpAfter  Int
+  levelBefore   Int
+  levelAfter    Int
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([source, createdAt])
+}
+
+model RewardCapLedger {
+  id        String   @id @default(uuid())
+  userId    String
+  source    String
+  sourceId  String?
+  amount    Decimal  @db.Decimal(38, 18)
+  reason    String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, source, createdAt])
+  @@index([source, createdAt])
 }

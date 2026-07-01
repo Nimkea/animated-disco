@@ -8,6 +8,7 @@ import { registerAdminAnalyticsRoutes } from "./admin/analytics.routes";
 import { registerAdminAnnouncementRoutes } from "./admin/announcements.routes";
 import { registerAdminNotificationRoutes } from "./admin/notifications.routes";
 import { registerAdminTrustLoanRoutes } from "./admin/trust-loan.routes";
+import { registerAdminEngagementRoutes } from "./admin/engagement.routes";
 
 export function registerAdminRoutes(app: Express, ctx: RouteContext) {
   registerAdminOverviewRoutes(app, ctx);
@@ -18,4 +19,5 @@ export function registerAdminRoutes(app: Express, ctx: RouteContext) {
   registerAdminAnnouncementRoutes(app, ctx);
   registerAdminNotificationRoutes(app, ctx);
   registerAdminTrustLoanRoutes(app, ctx);
+  registerAdminEngagementRoutes(app, ctx);
 }

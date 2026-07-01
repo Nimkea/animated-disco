@@ -1,5 +1,6 @@
 import { prisma } from "../lib/db";
 import { ensureDefaultAchievements, ensureDefaultTasks } from "./reward.service";
+import { ensureEngagementConfig } from "./engagement.service";
 
 export type HealthStatus = "ok" | "degraded" | "unreachable" | "skipped";
 
@@ -211,7 +212,7 @@ export async function runStartupDatabaseSeeds() {
     checkedAt: health.checkedAt,
     latencyMs: health.latencyMs,
     message: health.ok
-      ? "Database reachable. Running default tasks/achievements seed."
+      ? "Database reachable. Running default engagement/tasks/achievements seed."
       : `Database unreachable. Startup seed skipped. ${health.error?.message || "Unknown database error"}`,
   };
 
@@ -226,13 +227,14 @@ export async function runStartupDatabaseSeeds() {
   }
 
   try {
+    await ensureEngagementConfig();
     await ensureDefaultAchievements();
     await ensureDefaultTasks();
     startupSeedState = {
       ...startupSeedState,
       completed: true,
       skipped: false,
-      message: "Default tasks and achievements are ready.",
+      message: "Default engagement config, tasks, and achievements are ready.",
     };
   } catch (error) {
     startupSeedState = {

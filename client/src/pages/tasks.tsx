@@ -16,6 +16,8 @@ import {
   Pickaxe,
   Users,
   Flame,
+  Gauge,
+  Trophy,
 } from "lucide-react";
 import type { Task, UserTask } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -23,6 +25,22 @@ import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/use-confetti";
 
 type UserTaskWithTask = UserTask & { task?: Task | null };
+
+interface EngagementSummary {
+  config?: { levelXpStep: number };
+  xp: {
+    total: number;
+    level: number;
+    label?: string;
+    progressPercent: number;
+    xpIntoLevel: number;
+    xpRequiredForLevel: number;
+  };
+  caps: {
+    daily: { remainingTotal: number; totalCap: number; remainingTask: number; taskCap: number };
+    weekly: { remainingTotal: number; totalCap: number; remainingTask: number; taskCap: number };
+  };
+}
 
 const CATEGORY_ORDER = [
   "onboarding",
@@ -68,6 +86,10 @@ export default function Tasks() {
     queryKey: ["/api/tasks/user"],
   });
 
+  const { data: engagementSummary } = useQuery<EngagementSummary>({
+    queryKey: ["/api/engagement/summary"],
+  });
+
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await apiRequest("POST", `/api/tasks/${taskId}/complete`, {});
@@ -76,13 +98,14 @@ export default function Tasks() {
     onSuccess: (data: any) => {
       const previousXP = user?.xp ?? 0;
       const newXP = previousXP + (data.xpReward || 0);
-      const previousLevel = Math.floor(previousXP / 1000) + 1;
-      const newLevel = Math.floor(newXP / 1000) + 1;
+      const levelStep = Math.max(100, engagementSummary?.config?.levelXpStep || 1000);
+      const previousLevel = Math.floor(previousXP / levelStep) + 1;
+      const newLevel = Math.floor(newXP / levelStep) + 1;
       const leveledUp = newLevel > previousLevel;
 
       toast({
         title: "Task Completed!",
-        description: `You earned ${data.xpReward} XP and ${data.xnrtReward} XNRT!`,
+        description: `You earned ${data.xpReward} XP and ${data.xnrtReward} XNRT${data.rewardCapped ? " (daily/weekly cap applied)" : ""}!`,
       });
 
       if (leveledUp) {
@@ -98,6 +121,7 @@ export default function Tasks() {
       queryClient.invalidateQueries({ queryKey: ["/api/profile/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/home/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/engagement/summary"] });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -126,6 +150,10 @@ export default function Tasks() {
     .filter((userTask) => !userTask.completed)
     .reduce((sum, userTask) => sum + parseFloat(userTask.task?.xnrtReward || "0"), 0);
 
+  const xpProgress = engagementSummary?.xp;
+  const dailyRemaining = engagementSummary?.caps?.daily?.remainingTotal ?? 0;
+  const dailyCap = engagementSummary?.caps?.daily?.totalCap ?? 0;
+
   const groupedTasks = visibleTasks.reduce<Record<string, UserTaskWithTask[]>>((acc, userTask) => {
     const category = userTask.task?.category || "special";
     if (!acc[category]) acc[category] = [];
@@ -143,10 +171,10 @@ export default function Tasks() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold font-serif">Tasks</h1>
-        <p className="text-muted-foreground">Complete tasks to earn XP and XNRT rewards</p>
+        <p className="text-muted-foreground">Complete tasks to earn XP and capped in-app XNRT engagement rewards</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-2">
@@ -176,6 +204,24 @@ export default function Tasks() {
               <Sparkles className="h-5 w-5 text-chart-5" />
             </div>
             <p className="text-3xl font-bold font-mono">{availableXnrt.toLocaleString()} XNRT</p>
+            <p className="mt-1 text-xs text-muted-foreground">Daily cap remaining: {dailyRemaining.toLocaleString()} / {dailyCap.toLocaleString()} XNRT</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground">Engagement Level</p>
+              <Trophy className="h-5 w-5 text-primary" />
+            </div>
+            <p className="text-3xl font-bold font-mono">Level {xpProgress?.level ?? user?.level ?? 1}</p>
+            <div className="mt-3 space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{xpProgress?.label || "Member"}</span>
+                <span>{xpProgress?.progressPercent ?? 0}%</span>
+              </div>
+              <Progress value={xpProgress?.progressPercent ?? 0} />
+            </div>
           </CardContent>
         </Card>
       </div>

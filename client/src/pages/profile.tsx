@@ -64,6 +64,7 @@ interface ProfileSummary {
   xp: {
     total: number;
     level: number;
+    label?: string;
     currentLevelXp: number;
     nextLevelXp: number;
     xpIntoLevel: number;
@@ -327,6 +328,7 @@ export default function Profile() {
   const level = summary?.xp.level ?? user?.level ?? 1;
   const xpTotal = summary?.xp.total ?? user?.xp ?? 0;
   const xpProgress = summary?.xp.progressPercent ?? Math.min(100, Math.round(((xpTotal % 1000) / 1000) * 100));
+  const levelLabel = summary?.xp.label || "Member";
   const referralCode = profile.referralCode || user?.referralCode || "";
 
   return (
@@ -361,7 +363,7 @@ export default function Profile() {
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 <Badge variant="outline" className="gap-2 px-3 py-1.5">
                   <Award className="h-4 w-4 text-primary" />
-                  Level {level}
+                  Level {level} · {levelLabel}
                 </Badge>
                 <Badge variant={summary?.checkin.checkedInToday ? "default" : "secondary"} className="gap-2 px-3 py-1.5">
                   <Flame className="h-4 w-4" />
