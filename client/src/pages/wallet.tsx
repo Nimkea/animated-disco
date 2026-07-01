@@ -21,6 +21,7 @@ import {
   Users,
   Wallet as WalletIcon,
 } from "lucide-react";
+import { useMissionTracker } from "@/hooks/use-mission-tracker";
 
 interface TokenInfo {
   address: string;
@@ -74,6 +75,8 @@ const formatNumber = (value?: number | string | null, digits = 2) => {
 };
 
 export default function Wallet() {
+  useMissionTracker("wallet_opened");
+
   const { data: summary, isLoading: summaryLoading, isError } = useQuery<WalletSummary>({
     queryKey: ["/api/wallet/summary"],
   });

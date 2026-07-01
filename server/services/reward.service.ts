@@ -30,12 +30,270 @@ const DEFAULT_ACHIEVEMENTS = [
 ] as const;
 
 const DEFAULT_TASKS = [
-  { title: "Complete Your Profile", description: "Review your profile and complete your account setup", category: "onboarding", xpReward: 50, xnrtReward: "10", requirements: "Open your profile and make sure your account details are ready", isActive: true },
-  { title: "Daily Check-In", description: "Use the Rewards page daily and build your streak", category: "engagement", xpReward: 25, xnrtReward: "5", requirements: "Visit Rewards and complete your daily check-in", isActive: true },
-  { title: "Start Mining", description: "Visit the mining page and start your earning routine", category: "mining", xpReward: 75, xnrtReward: "15", requirements: "Start or complete your first mining session", isActive: true },
-  { title: "Create First Stake", description: "Create your first staking position", category: "staking", xpReward: 100, xnrtReward: "25", requirements: "Stake any eligible XNRT amount", isActive: true },
-  { title: "Invite A Friend", description: "Share your referral code with a new user", category: "referrals", xpReward: 120, xnrtReward: "30", requirements: "Get at least one direct referral", isActive: true },
+  {
+    title: "Complete Your Profile",
+    description: "Review your profile and complete your account setup",
+    category: "onboarding",
+    missionType: "one_time",
+    triggerKey: "manual",
+    targetCount: 1,
+    sortOrder: 10,
+    xpReward: 50,
+    xnrtReward: "10",
+    requirements: "Open your profile and confirm your account details",
+    isActive: true,
+  },
+  {
+    title: "Daily Check-In",
+    description: "Claim your daily reward and keep your streak alive",
+    category: "daily",
+    missionType: "daily",
+    triggerKey: "daily_checkin_claimed",
+    targetCount: 1,
+    sortOrder: 20,
+    xpReward: 25,
+    xnrtReward: "5",
+    requirements: "Claim the daily check-in reward on the Rewards page",
+    isActive: true,
+  },
+  {
+    title: "Start Mining",
+    description: "Start one mining session today",
+    category: "daily",
+    missionType: "daily",
+    triggerKey: "mining_started",
+    targetCount: 1,
+    sortOrder: 30,
+    xpReward: 35,
+    xnrtReward: "8",
+    requirements: "Open Mining and start a session",
+    isActive: true,
+  },
+  {
+    title: "Open Wallet Page",
+    description: "Review your wallet balances and recent transactions",
+    category: "daily",
+    missionType: "daily",
+    triggerKey: "wallet_opened",
+    targetCount: 1,
+    sortOrder: 40,
+    xpReward: 15,
+    xnrtReward: "3",
+    requirements: "Open the Wallet page once today",
+    isActive: true,
+  },
+  {
+    title: "Check Staking Rewards",
+    description: "Visit staking and review reward status",
+    category: "daily",
+    missionType: "daily",
+    triggerKey: "staking_rewards_viewed",
+    targetCount: 1,
+    sortOrder: 50,
+    xpReward: 15,
+    xnrtReward: "3",
+    requirements: "Open the Staking page once today",
+    isActive: true,
+  },
+  {
+    title: "Read Safety Tip",
+    description: "Read one responsible usage and security tip",
+    category: "daily",
+    missionType: "daily",
+    triggerKey: "safety_tip_read",
+    targetCount: 1,
+    sortOrder: 60,
+    xpReward: 20,
+    xnrtReward: "4",
+    requirements: "Use the Record Progress button after reading the safety note",
+    isActive: true,
+  },
+  {
+    title: "Weekly Mining Quest",
+    description: "Complete 5 mining sessions this week",
+    category: "weekly",
+    missionType: "weekly",
+    triggerKey: "mining_completed",
+    targetCount: 5,
+    sortOrder: 110,
+    xpReward: 150,
+    xnrtReward: "100",
+    requirements: "Complete 5 mining cycles before the weekly reset",
+    isActive: true,
+  },
+  {
+    title: "Weekly Check-in Quest",
+    description: "Check in on 5 different days this week",
+    category: "weekly",
+    missionType: "weekly",
+    triggerKey: "daily_checkin_claimed",
+    targetCount: 5,
+    sortOrder: 120,
+    xpReward: 125,
+    xnrtReward: "80",
+    requirements: "Claim daily check-in rewards on 5 days this week",
+    isActive: true,
+  },
+  {
+    title: "Weekly Staking Quest",
+    description: "Create one stake this week",
+    category: "weekly",
+    missionType: "weekly",
+    triggerKey: "stake_created",
+    targetCount: 1,
+    sortOrder: 130,
+    xpReward: 100,
+    xnrtReward: "50",
+    requirements: "Create any eligible staking position",
+    isActive: true,
+  },
+  {
+    title: "Weekly Referral Quest",
+    description: "Invite 2 new users this week",
+    category: "weekly",
+    missionType: "weekly",
+    triggerKey: "referral_created",
+    targetCount: 2,
+    sortOrder: 140,
+    xpReward: 160,
+    xnrtReward: "120",
+    requirements: "Get 2 direct referrals before weekly reset",
+    isActive: true,
+  },
 ] as const;
+
+const VALID_MISSION_TYPES = new Set(["one_time", "daily", "weekly"]);
+const AUTOMATED_TRIGGER_KEYS = new Set([
+  "daily_checkin_claimed",
+  "mining_started",
+  "mining_completed",
+  "stake_created",
+  "referral_created",
+]);
+
+type MissionPeriod = { key: string; start?: Date; end?: Date; expiresAt?: Date | null };
+
+function normalizeMissionType(value: unknown) {
+  const missionType = String(value || "one_time").trim().toLowerCase();
+  return VALID_MISSION_TYPES.has(missionType) ? missionType : "one_time";
+}
+
+function normalizeTriggerKey(value: unknown) {
+  return (
+    String(value || "manual")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "_")
+      .slice(0, 60) || "manual"
+  );
+}
+
+function startOfUtcWeek(date = new Date()) {
+  const day = startOfUtcDay(date);
+  const weekday = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() - weekday + 1);
+  return day;
+}
+
+function getMissionPeriod(task: any, now = new Date()): MissionPeriod {
+  const missionType = normalizeMissionType(task?.missionType);
+  if (missionType === "daily") {
+    const start = startOfUtcDay(now);
+    const end = addUtcDays(start, 1);
+    return { key: `day:${getUtcDateKey(start)}`, start, end, expiresAt: end };
+  }
+  if (missionType === "weekly") {
+    const start = startOfUtcWeek(now);
+    const end = addUtcDays(start, 7);
+    return { key: `week:${getUtcDateKey(start)}`, start, end, expiresAt: end };
+  }
+  return { key: "all-time", expiresAt: null };
+}
+
+function getTaskTargetCount(task: any) {
+  const parsed = Number(task?.targetCount || task?.maxProgress || 1);
+  return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
+}
+
+async function getAutomatedMissionProgress(userId: string, triggerKey: string, period: MissionPeriod) {
+  if (!period.start || !period.end) return null;
+  const start = period.start;
+  const end = period.end;
+  const startKey = getUtcDateKey(start);
+  const endKey = getUtcDateKey(end);
+
+  switch (triggerKey) {
+    case "daily_checkin_claimed":
+      return db.dailyCheckin.count({ where: { userId, checkinDate: { gte: startKey, lt: endKey } } });
+    case "mining_started":
+      return prisma.miningSession.count({ where: { userId, createdAt: { gte: start, lt: end } } });
+    case "mining_completed":
+      return prisma.miningSession.count({ where: { userId, status: "completed", createdAt: { gte: start, lt: end } } });
+    case "stake_created":
+      return prisma.stake.count({ where: { userId, createdAt: { gte: start, lt: end } } });
+    case "referral_created":
+      return prisma.referral.count({ where: { referrerId: userId, level: 1, createdAt: { gte: start, lt: end } } });
+    default:
+      return null;
+  }
+}
+
+async function refreshAutomatedMissionProgress(userId: string, userTasks: any[]) {
+  const updatedRows: any[] = [];
+
+  for (const userTask of userTasks) {
+    const task = userTask.task;
+    if (!task) {
+      updatedRows.push(userTask);
+      continue;
+    }
+
+    const triggerKey = normalizeTriggerKey(task.triggerKey);
+    if (!AUTOMATED_TRIGGER_KEYS.has(triggerKey)) {
+      updatedRows.push(userTask);
+      continue;
+    }
+
+    const period = getMissionPeriod(task);
+    if (period.key !== userTask.periodKey) {
+      updatedRows.push(userTask);
+      continue;
+    }
+
+    const computed = await getAutomatedMissionProgress(userId, triggerKey, period);
+    if (computed === null) {
+      updatedRows.push(userTask);
+      continue;
+    }
+
+    const maxProgress = getTaskTargetCount(task);
+    const nextProgress = Math.min(maxProgress, Math.max(Number(userTask.progress || 0), Number(computed || 0)));
+
+    if (nextProgress !== userTask.progress || userTask.maxProgress !== maxProgress) {
+      const updated = await prisma.userTask.update({
+        where: { id: userTask.id },
+        data: {
+          progress: nextProgress,
+          maxProgress,
+          progressSource: triggerKey,
+          lastProgressAt: new Date(),
+        },
+        include: { task: true },
+      });
+      updatedRows.push(updated);
+    } else {
+      updatedRows.push(userTask);
+    }
+  }
+
+  return updatedRows;
+}
+
+function sortUserTasks(a: any, b: any) {
+  const ao = Number(a.task?.sortOrder || 0);
+  const bo = Number(b.task?.sortOrder || 0);
+  return ao - bo || String(a.task?.title || "").localeCompare(String(b.task?.title || ""));
+}
 
 export async function ensureDefaultTasks() {
   for (const def of DEFAULT_TASKS) {
@@ -46,6 +304,10 @@ export async function ensureDefaultTasks() {
         update: {
           description: def.description,
           category: def.category,
+          missionType: def.missionType,
+          triggerKey: def.triggerKey,
+          targetCount: def.targetCount,
+          sortOrder: def.sortOrder,
           xpReward: def.xpReward,
           xnrtReward: new Prisma.Decimal(def.xnrtReward),
           requirements: def.requirements,
@@ -82,13 +344,27 @@ export function serializeTask(task: any) {
   if (!task) return null;
   return {
     ...task,
+    missionType: normalizeMissionType(task.missionType),
+    triggerKey: normalizeTriggerKey(task.triggerKey),
+    targetCount: getTaskTargetCount(task),
+    sortOrder: Number(task.sortOrder || 0),
     xnrtReward: task.xnrtReward?.toString?.() ?? String(task.xnrtReward ?? "0"),
   };
 }
 
 export function serializeUserTaskWithTask(userTask: any) {
+  const maxProgress = Math.max(Number(userTask.maxProgress || 1), 1);
+  const progress = Math.max(0, Math.min(Number(userTask.progress || 0), maxProgress));
+  const claimed = Boolean(userTask.claimed ?? userTask.completed);
+  const completed = Boolean(userTask.completed || claimed);
   return {
     ...userTask,
+    progress,
+    maxProgress,
+    completed,
+    claimed,
+    claimable: !completed && progress >= maxProgress,
+    progressPercent: Math.round((progress / maxProgress) * 100),
     task: serializeTask(userTask.task),
   };
 }
@@ -96,37 +372,42 @@ export function serializeUserTaskWithTask(userTask: any) {
 export async function syncUserTasksForActiveTasks(userId: string) {
   const activeTasks = await prisma.task.findMany({
     where: { isActive: true },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
   if (activeTasks.length === 0) return [];
 
-  const taskIds = activeTasks.map((task) => task.id);
-  const existingUserTasks = await prisma.userTask.findMany({
-    where: { userId, taskId: { in: taskIds } },
-    select: { taskId: true },
-  });
-  const existingTaskIds = new Set(existingUserTasks.map((task) => task.taskId));
-  const missingTasks = activeTasks.filter((task) => !existingTaskIds.has(task.id));
-
-  if (missingTasks.length > 0) {
-    await prisma.userTask.createMany({
-      data: missingTasks.map((task) => ({
+  for (const task of activeTasks as any[]) {
+    const period = getMissionPeriod(task);
+    const maxProgress = getTaskTargetCount(task);
+    await db.userTask.upsert({
+      where: { userId_taskId_periodKey: { userId, taskId: task.id, periodKey: period.key } },
+      create: {
         userId,
         taskId: task.id,
+        periodKey: period.key,
         progress: 0,
-        maxProgress: 1,
+        maxProgress,
         completed: false,
-      })),
-      skipDuplicates: true,
+        claimed: false,
+        expiresAt: period.expiresAt || null,
+      },
+      update: {
+        maxProgress,
+        expiresAt: period.expiresAt || null,
+      },
     });
   }
 
-  return prisma.userTask.findMany({
-    where: { userId, taskId: { in: taskIds } },
+  const currentTaskPeriods = activeTasks.map((task) => ({ taskId: task.id, periodKey: getMissionPeriod(task).key }));
+  const userTasks = await prisma.userTask.findMany({
+    where: { userId, OR: currentTaskPeriods },
     include: { task: true },
     orderBy: { createdAt: "asc" },
   });
+
+  const refreshed = await refreshAutomatedMissionProgress(userId, userTasks);
+  return refreshed.sort(sortUserTasks);
 }
 
 export function parseTaskPayload(body: any) {
@@ -145,9 +426,15 @@ export function parseTaskPayload(body: any) {
 
   const xpReward = Number(body?.xpReward ?? 0);
   const xnrtReward = Number(body?.xnrtReward ?? 0);
+  const targetCount = Number(body?.targetCount ?? 1);
+  const sortOrder = Number(body?.sortOrder ?? 0);
+  const missionType = normalizeMissionType(body?.missionType ?? (category === "daily" || category === "weekly" ? category : "one_time"));
+  const triggerKey = normalizeTriggerKey(body?.triggerKey ?? "manual");
 
   if (!Number.isFinite(xpReward) || xpReward < 0) throw new Error("Invalid XP reward");
   if (!Number.isFinite(xnrtReward) || xnrtReward < 0) throw new Error("Invalid XNRT reward");
+  if (!Number.isFinite(targetCount) || targetCount < 1 || targetCount > 1000) throw new Error("Invalid target count");
+  if (!Number.isFinite(sortOrder)) throw new Error("Invalid sort order");
 
   const requirements = String(body?.requirements ?? "").trim();
 
@@ -157,6 +444,10 @@ export function parseTaskPayload(body: any) {
     xpReward: Math.floor(xpReward),
     xnrtReward: new Prisma.Decimal(xnrtReward.toString()),
     category,
+    missionType,
+    triggerKey,
+    targetCount: Math.floor(targetCount),
+    sortOrder: Math.floor(sortOrder),
     requirements: requirements || null,
     isActive: body?.isActive === undefined ? true : Boolean(body.isActive),
   };
@@ -195,37 +486,142 @@ export function parseAchievementPayload(body: any) {
   };
 }
 
-export async function completeUserTask(userId: string, taskId: string) {
+async function getCurrentUserTaskForTask(userId: string, task: any) {
+  const period = getMissionPeriod(task);
+  const maxProgress = getTaskTargetCount(task);
+  const userTask = await db.userTask.upsert({
+    where: { userId_taskId_periodKey: { userId, taskId: task.id, periodKey: period.key } },
+    create: {
+      userId,
+      taskId: task.id,
+      periodKey: period.key,
+      progress: 0,
+      maxProgress,
+      completed: false,
+      claimed: false,
+      expiresAt: period.expiresAt || null,
+    },
+    update: {
+      maxProgress,
+      expiresAt: period.expiresAt || null,
+    },
+    include: { task: true },
+  });
+
+  const refreshed = await refreshAutomatedMissionProgress(userId, [userTask]);
+  return refreshed[0] || userTask;
+}
+
+export async function recordMissionEvent(userId: string, eventKey: string, amount = 1) {
+  const triggerKey = normalizeTriggerKey(eventKey);
+  const increment = Math.max(1, Math.floor(Number(amount || 1)));
+  const tasks = await prisma.task.findMany({ where: { isActive: true, triggerKey } });
+  if (tasks.length === 0) return [];
+
+  const changed: any[] = [];
+  for (const task of tasks as any[]) {
+    const period = getMissionPeriod(task);
+    const maxProgress = getTaskTargetCount(task);
+    const existing = await db.userTask.upsert({
+      where: { userId_taskId_periodKey: { userId, taskId: task.id, periodKey: period.key } },
+      create: {
+        userId,
+        taskId: task.id,
+        periodKey: period.key,
+        progress: 0,
+        maxProgress,
+        completed: false,
+        claimed: false,
+        expiresAt: period.expiresAt || null,
+      },
+      update: { maxProgress, expiresAt: period.expiresAt || null },
+    });
+
+    if (existing.completed || existing.claimed) continue;
+
+    const nextProgress = Math.min(maxProgress, Math.max(Number(existing.progress || 0), Number(existing.progress || 0) + increment));
+    if (nextProgress !== existing.progress || existing.maxProgress !== maxProgress) {
+      const updated = await prisma.userTask.update({
+        where: { id: existing.id },
+        data: {
+          progress: nextProgress,
+          maxProgress,
+          progressSource: triggerKey,
+          lastProgressAt: new Date(),
+        },
+        include: { task: true },
+      });
+      changed.push(updated);
+    }
+  }
+
+  return changed.map(serializeUserTaskWithTask);
+}
+
+export async function recordManualTaskProgress(userId: string, taskId: string, amount = 1) {
   const task = await prisma.task.findUnique({ where: { id: taskId } });
   if (!task || !task.isActive) {
     return { ok: false as const, status: 404, message: "Task not found" };
   }
 
-  const userTask = await prisma.userTask.upsert({
-    where: { userId_taskId: { userId, taskId } },
-    create: { userId, taskId, progress: 0, maxProgress: 1, completed: false },
-    update: {},
-  });
-
-  if (userTask.completed) {
-    return { ok: false as const, status: 400, message: "Task already completed" };
+  const userTask = await getCurrentUserTaskForTask(userId, task);
+  if (userTask.completed || userTask.claimed) {
+    return { ok: false as const, status: 400, message: "Task reward already claimed" };
   }
 
-  const maxProgress = Math.max(userTask.maxProgress || 1, 1);
-  if (maxProgress > 1 && userTask.progress < maxProgress) {
+  const maxProgress = getTaskTargetCount(task);
+  const increment = Math.max(1, Math.floor(Number(amount || 1)));
+  const nextProgress = Math.min(maxProgress, Number(userTask.progress || 0) + increment);
+  const updated = await prisma.userTask.update({
+    where: { id: userTask.id },
+    data: {
+      progress: nextProgress,
+      maxProgress,
+      progressSource: normalizeTriggerKey(task.triggerKey),
+      lastProgressAt: new Date(),
+    },
+    include: { task: true },
+  });
+
+  return { ok: true as const, userTask: serializeUserTaskWithTask(updated) };
+}
+
+export async function claimUserTaskReward(userId: string, taskId: string) {
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task || !task.isActive) {
+    return { ok: false as const, status: 404, message: "Task not found" };
+  }
+
+  const userTask = await getCurrentUserTaskForTask(userId, task);
+  const maxProgress = Math.max(userTask.maxProgress || getTaskTargetCount(task), 1);
+  const progress = Math.max(0, Number(userTask.progress || 0));
+
+  if (userTask.completed || userTask.claimed) {
+    return { ok: false as const, status: 400, message: "Task reward already claimed" };
+  }
+
+  if (progress < maxProgress) {
     return {
       ok: false as const,
       status: 400,
-      message: `Task progress is incomplete (${userTask.progress}/${maxProgress})`,
+      message: `Task progress is incomplete (${progress}/${maxProgress})`,
     };
   }
 
+  const now = new Date();
   const completedUserTask = await prisma.userTask.update({
     where: { id: userTask.id },
-    data: { completed: true, completedAt: new Date(), progress: maxProgress },
+    data: {
+      completed: true,
+      completedAt: now,
+      claimed: true,
+      claimedAt: now,
+      progress: maxProgress,
+    },
+    include: { task: true },
   });
 
-  await awardUserXp(userId, task.xpReward, "task", task.id);
+  await awardUserXp(userId, task.xpReward, "task", `${task.id}:${userTask.periodKey}`);
 
   const requestedXnrtAmount = Number(task.xnrtReward);
   let awardedXnrtAmount = 0;
@@ -235,8 +631,8 @@ export async function completeUserTask(userId: string, taskId: string) {
       userId,
       requestedAmount: requestedXnrtAmount,
       source: "task",
-      sourceId: task.id,
-      reason: `Task completed: ${task.title}`,
+      sourceId: `${task.id}:${userTask.periodKey}`,
+      reason: `Mission claimed: ${task.title}`,
     });
     awardedXnrtAmount = capResult.awardedAmount;
     rewardCapped = capResult.capped;
@@ -256,7 +652,7 @@ export async function completeUserTask(userId: string, taskId: string) {
         amount: awardedXnrtAmount.toString(),
         source: "task",
         status: "approved",
-        approvedAt: new Date(),
+        approvedAt: now,
         verified: true,
       });
     }
@@ -264,37 +660,44 @@ export async function completeUserTask(userId: string, taskId: string) {
 
   await storage.createActivity({
     userId,
-    type: "task_completed",
-    description: `Completed task: ${task.title} (+${task.xpReward} XP, +${awardedXnrtAmount} XNRT${rewardCapped ? " capped" : ""})`,
+    type: "mission_claimed",
+    description: `Claimed mission: ${task.title} (+${task.xpReward} XP, +${awardedXnrtAmount} XNRT${rewardCapped ? " capped" : ""})`,
+    metadata: JSON.stringify({ taskId: task.id, periodKey: userTask.periodKey, missionType: task.missionType }),
   });
 
   void notifyUser(userId, {
     type: "task_completed",
-    title: "✅ Task Completed",
+    title: "🎯 Mission Reward Claimed",
     message: `You earned ${task.xpReward} XP and ${awardedXnrtAmount} XNRT from ${task.title}${rewardCapped ? " (reward cap applied)" : ""}.`,
     url: "/tasks",
     metadata: {
       taskId: task.id,
       taskTitle: task.title,
+      periodKey: userTask.periodKey,
+      missionType: task.missionType,
       xpReward: task.xpReward,
       xnrtReward: awardedXnrtAmount.toString(),
       requestedXnrtReward: task.xnrtReward.toString(),
       rewardCapped,
     },
   }).catch((err: unknown) => {
-    console.error("Error sending task completion notification:", err);
+    console.error("Error sending mission claim notification:", err);
   });
 
   await storage.checkAndUnlockAchievements(userId);
 
   return {
     ok: true as const,
-    userTask: completedUserTask,
+    userTask: serializeUserTaskWithTask(completedUserTask),
     xpReward: task.xpReward,
     xnrtReward: awardedXnrtAmount.toString(),
-      requestedXnrtReward: task.xnrtReward.toString(),
-      rewardCapped,
+    requestedXnrtReward: task.xnrtReward.toString(),
+    rewardCapped,
   };
+}
+
+export async function completeUserTask(userId: string, taskId: string) {
+  return claimUserTaskReward(userId, taskId);
 }
 
 export async function getUserAchievementsWithStatus(userId: string) {
@@ -544,6 +947,7 @@ export async function performDailyCheckIn(userId: string) {
   });
 
   await storage.checkAndUnlockAchievements(userId);
+  await recordMissionEvent(userId, "daily_checkin_claimed", 1);
 
   return {
     ok: true as const,

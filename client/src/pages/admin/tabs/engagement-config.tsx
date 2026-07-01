@@ -72,7 +72,7 @@ const DEFAULT_FORM: FormState = {
   taskCompletionXpDailyCap: "500",
 };
 
-function numberText(value: number | string | null | undefined) {
+function numberText(value: number | string | boolean | null | undefined) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "0";
 }

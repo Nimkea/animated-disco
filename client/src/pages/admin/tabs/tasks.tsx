@@ -51,9 +51,39 @@ interface Task {
   xnrtReward: string;
   category: string;
   requirements: string | null;
+  missionType: string;
+  triggerKey: string;
+  targetCount: number;
+  sortOrder: number;
   isActive: boolean;
   completionCount: number;
 }
+
+const MISSION_TRIGGERS = [
+  { value: "manual", label: "Manual / Button" },
+  { value: "daily_checkin_claimed", label: "Daily check-in claimed" },
+  { value: "mining_started", label: "Mining started" },
+  { value: "mining_completed", label: "Mining completed" },
+  { value: "wallet_opened", label: "Wallet opened" },
+  { value: "staking_rewards_viewed", label: "Staking viewed" },
+  { value: "safety_tip_read", label: "Safety tip read" },
+  { value: "stake_created", label: "Stake created" },
+  { value: "referral_created", label: "Referral created" },
+];
+
+const emptyFormData = {
+  title: "",
+  description: "",
+  xpReward: "",
+  xnrtReward: "0",
+  category: "daily",
+  missionType: "daily",
+  triggerKey: "manual",
+  targetCount: "1",
+  sortOrder: "100",
+  requirements: "",
+  isActive: true,
+};
 
 export default function TasksTab() {
   const { toast } = useToast();
@@ -64,15 +94,7 @@ export default function TasksTab() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    xpReward: "",
-    xnrtReward: "0",
-    category: "daily",
-    requirements: "",
-    isActive: true,
-  });
+  const [formData, setFormData] = useState(emptyFormData);
 
   const { data: tasks, isLoading } = useQuery<Task[]>({
     queryKey: ["/api/admin/tasks"],
@@ -85,15 +107,7 @@ export default function TasksTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/tasks"] });
       setCreateDialogOpen(false);
-      setFormData({
-        title: "",
-        description: "",
-        xpReward: "",
-        xnrtReward: "0",
-        category: "daily",
-        requirements: "",
-        isActive: true,
-      });
+      setFormData(emptyFormData);
       toast({ title: "Success", description: "Task created successfully" });
     },
     onError: () => {
@@ -160,6 +174,10 @@ export default function TasksTab() {
       xpReward: task.xpReward.toString(),
       xnrtReward: task.xnrtReward,
       category: task.category,
+      missionType: task.missionType || "one_time",
+      triggerKey: task.triggerKey || "manual",
+      targetCount: String(task.targetCount || 1),
+      sortOrder: String(task.sortOrder || 0),
       requirements: task.requirements || "",
       isActive: task.isActive,
     });
@@ -199,6 +217,8 @@ export default function TasksTab() {
               <SelectItem value="staking">Staking</SelectItem>
               <SelectItem value="mining">Mining</SelectItem>
               <SelectItem value="referrals">Referrals</SelectItem>
+              <SelectItem value="wallet">Wallet</SelectItem>
+              <SelectItem value="security">Security</SelectItem>
               <SelectItem value="special">Special</SelectItem>
             </SelectContent>
           </Select>
@@ -228,7 +248,8 @@ export default function TasksTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead>Category</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Trigger / Target</TableHead>
                   <TableHead>Rewards</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Completions</TableHead>
@@ -245,7 +266,16 @@ export default function TasksTab() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{task.category}</Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="outline">{task.missionType || "one_time"}</Badge>
+                        <span className="text-xs text-muted-foreground capitalize">{task.category}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div className="font-mono text-xs">{task.triggerKey || "manual"}</div>
+                        <div className="text-muted-foreground">Target: {task.targetCount || 1}</div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
@@ -317,7 +347,7 @@ export default function TasksTab() {
           <DialogHeader>
             <DialogTitle>{editDialogOpen ? "Edit Task" : "Create New Task"}</DialogTitle>
             <DialogDescription>
-              {editDialogOpen ? "Update task details" : "Add a new task to the platform"}
+              {editDialogOpen ? "Update task details" : "Add a daily mission, weekly quest, or one-time task"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -366,23 +396,85 @@ export default function TasksTab() {
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="category">Category</Label>
-              <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                <SelectTrigger data-testid="select-category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="onboarding">Onboarding</SelectItem>
-                  <SelectItem value="engagement">Engagement</SelectItem>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="staking">Staking</SelectItem>
-                  <SelectItem value="mining">Mining</SelectItem>
-                  <SelectItem value="referrals">Referrals</SelectItem>
-                  <SelectItem value="special">Special</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="missionType">Mission Type</Label>
+                <Select
+                  value={formData.missionType}
+                  onValueChange={(value) => setFormData({
+                    ...formData,
+                    missionType: value,
+                    category: value === "daily" || value === "weekly" ? value : formData.category,
+                  })}
+                >
+                  <SelectTrigger id="missionType" data-testid="select-mission-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="one_time">One-time task</SelectItem>
+                    <SelectItem value="daily">Daily mission</SelectItem>
+                    <SelectItem value="weekly">Weekly quest</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="category">Category</Label>
+                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                  <SelectTrigger id="category" data-testid="select-category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="onboarding">Onboarding</SelectItem>
+                    <SelectItem value="engagement">Engagement</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="staking">Staking</SelectItem>
+                    <SelectItem value="mining">Mining</SelectItem>
+                    <SelectItem value="referrals">Referrals</SelectItem>
+                    <SelectItem value="wallet">Wallet</SelectItem>
+                    <SelectItem value="security">Security</SelectItem>
+                    <SelectItem value="special">Special</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="md:col-span-1">
+                <Label htmlFor="triggerKey">Progress Trigger</Label>
+                <Select value={formData.triggerKey} onValueChange={(value) => setFormData({ ...formData, triggerKey: value })}>
+                  <SelectTrigger id="triggerKey" data-testid="select-trigger-key">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MISSION_TRIGGERS.map((trigger) => (
+                      <SelectItem key={trigger.value} value={trigger.value}>{trigger.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="targetCount">Target Count</Label>
+                <Input
+                  id="targetCount"
+                  type="number"
+                  min="1"
+                  value={formData.targetCount}
+                  onChange={(e) => setFormData({ ...formData, targetCount: e.target.value })}
+                  placeholder="1"
+                  data-testid="input-target-count"
+                />
+              </div>
+              <div>
+                <Label htmlFor="sortOrder">Sort Order</Label>
+                <Input
+                  id="sortOrder"
+                  type="number"
+                  value={formData.sortOrder}
+                  onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
+                  placeholder="100"
+                  data-testid="input-sort-order"
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="requirements">Requirements (optional)</Label>

@@ -205,28 +205,45 @@ model Task {
   xnrtReward  Decimal   @default(0) @db.Decimal(38, 18)
   category    String
   requirements String?
+  missionType String    @default("one_time")
+  triggerKey  String    @default("manual")
+  targetCount Int       @default(1)
+  sortOrder   Int       @default(0)
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
 
   userTasks UserTask[]
+
+  @@index([missionType, isActive])
+  @@index([triggerKey])
+  @@index([category])
 }
 
 model UserTask {
   id          String    @id @default(uuid())
   userId      String
   taskId      String
+  periodKey   String    @default("all-time")
   progress    Int       @default(0)
   maxProgress Int       @default(1)
   completed   Boolean   @default(false)
   completedAt DateTime?
+  claimed     Boolean   @default(false)
+  claimedAt   DateTime?
+  progressSource String?
+  lastProgressAt DateTime?
+  expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, taskId])
+  @@unique([userId, taskId, periodKey])
   @@index([userId])
   @@index([taskId])
+  @@index([userId, periodKey])
+  @@index([periodKey, completed])
 }
 
 model Achievement {

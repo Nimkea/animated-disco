@@ -2,11 +2,14 @@ import type { Express } from "express";
 import type { RouteContext } from "../routes";
 import {
   claimUserAchievement,
+  claimUserTaskReward,
   completeUserTask,
   getCheckinHistory,
   getUserAchievementsWithStatus,
   getDailyCheckinStatus,
   performDailyCheckIn,
+  recordManualTaskProgress,
+  recordMissionEvent,
 } from "../services/reward.service";
 import { getEngagementConfig, getLevelProgress } from "../services/engagement.service";
 
@@ -61,6 +64,62 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
     } catch (error) {
       console.error("Error fetching user tasks:", error);
       res.status(500).json({ message: "Failed to fetch user tasks" });
+    }
+  });
+
+  app.post("/api/tasks/track", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const eventKey = String(req.body?.eventKey || "").trim();
+      const amount = Number(req.body?.amount || 1);
+      if (!eventKey) return res.status(400).json({ message: "eventKey is required" });
+
+      const updated = await recordMissionEvent(userId, eventKey, Number.isFinite(amount) ? amount : 1);
+      res.json({ updated });
+    } catch (error) {
+      console.error("Error tracking mission event:", error);
+      res.status(500).json({ message: "Failed to track mission progress" });
+    }
+  });
+
+  app.post("/api/tasks/:taskId/progress", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const { taskId } = req.params;
+      const amount = Number(req.body?.amount || 1);
+      const result = await recordManualTaskProgress(userId, taskId, Number.isFinite(amount) ? amount : 1);
+
+      if (!result.ok) {
+        return res.status(result.status).json({ message: result.message });
+      }
+
+      res.json(result.userTask);
+    } catch (error) {
+      console.error("Error recording task progress:", error);
+      res.status(500).json({ message: "Failed to record task progress" });
+    }
+  });
+
+  app.post("/api/tasks/:taskId/claim", requireAuth, validateCSRF, async (req, res) => {
+    try {
+      const userId = req.authUser!.id;
+      const { taskId } = req.params;
+      const result = await claimUserTaskReward(userId, taskId);
+
+      if (!result.ok) {
+        return res.status(result.status).json({ message: result.message });
+      }
+
+      res.json({
+        userTask: result.userTask,
+        xpReward: result.xpReward,
+        xnrtReward: result.xnrtReward,
+        requestedXnrtReward: result.requestedXnrtReward,
+        rewardCapped: result.rewardCapped,
+      });
+    } catch (error) {
+      console.error("Error claiming task reward:", error);
+      res.status(500).json({ message: "Failed to claim task reward" });
     }
   });
 
@@ -135,7 +194,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
   app.get("/api/admin/tasks", requireAuth, requireAdmin, async (_req, res) => {
     try {
       const [tasks, completionGroups] = await Promise.all([
-        prisma.task.findMany({ orderBy: { createdAt: "asc" } }),
+        prisma.task.findMany({ orderBy: [{ missionType: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }] }),
         prisma.userTask.groupBy({
           by: ["taskId"],
           where: { completed: true },

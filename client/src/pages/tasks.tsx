@@ -25,6 +25,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/use-confetti";
 
 type UserTaskWithTask = UserTask & { task?: Task | null };
+type MissionTask = UserTaskWithTask & {
+  periodKey?: string;
+  claimed?: boolean;
+  claimable?: boolean;
+  progressPercent?: number;
+};
 
 interface EngagementSummary {
   config?: { levelXpStep: number };
@@ -90,9 +96,9 @@ export default function Tasks() {
     queryKey: ["/api/engagement/summary"],
   });
 
-  const completeTaskMutation = useMutation({
+  const claimTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
-      const response = await apiRequest("POST", `/api/tasks/${taskId}/complete`, {});
+      const response = await apiRequest("POST", `/api/tasks/${taskId}/claim`, {});
       return response.json();
     },
     onSuccess: (data: any) => {
@@ -104,7 +110,7 @@ export default function Tasks() {
       const leveledUp = newLevel > previousLevel;
 
       toast({
-        title: "Task Completed!",
+        title: "Mission Reward Claimed!",
         description: `You earned ${data.xpReward} XP and ${data.xnrtReward} XNRT${data.rewardCapped ? " (daily/weekly cap applied)" : ""}!`,
       });
 
@@ -137,9 +143,31 @@ export default function Tasks() {
       }
       toast({
         title: "Error",
-        description: error.message || "Failed to complete task",
+        description: error.message || "Failed to claim mission reward",
         variant: "destructive",
       });
+    },
+  });
+
+  const progressMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await apiRequest("POST", `/api/tasks/${taskId}/progress`, { amount: 1 });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Progress recorded", description: "Mission progress has been updated. Claim reward when the target is complete." });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/engagement/summary"] });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({ title: "Unauthorized", description: "You are logged out. Logging in again...", variant: "destructive" });
+        setTimeout(() => {
+          window.location.href = "/auth";
+        }, 500);
+        return;
+      }
+      toast({ title: "Error", description: error.message || "Failed to record progress", variant: "destructive" });
     },
   });
 
@@ -147,7 +175,7 @@ export default function Tasks() {
   const completedCount = visibleTasks.filter((userTask) => userTask.completed).length;
   const totalTasks = visibleTasks.length;
   const availableXnrt = visibleTasks
-    .filter((userTask) => !userTask.completed)
+    .filter((userTask) => !userTask.completed && userTask.progress >= userTask.maxProgress)
     .reduce((sum, userTask) => sum + parseFloat(userTask.task?.xnrtReward || "0"), 0);
 
   const xpProgress = engagementSummary?.xp;
@@ -258,8 +286,9 @@ export default function Tasks() {
                 <TaskItem
                   key={userTask.id}
                   userTask={userTask}
-                  onComplete={() => completeTaskMutation.mutate(userTask.taskId)}
-                  isPending={completeTaskMutation.isPending}
+                  onClaim={() => claimTaskMutation.mutate(userTask.taskId)}
+                  onProgress={() => progressMutation.mutate(userTask.taskId)}
+                  isPending={claimTaskMutation.isPending || progressMutation.isPending}
                 />
               ))}
             </CardContent>
@@ -282,11 +311,13 @@ export default function Tasks() {
 
 function TaskItem({
   userTask,
-  onComplete,
+  onClaim,
+  onProgress,
   isPending,
 }: {
-  userTask: UserTaskWithTask;
-  onComplete: () => void;
+  userTask: MissionTask;
+  onClaim: () => void;
+  onProgress: () => void;
   isPending: boolean;
 }) {
   const task = userTask.task;
@@ -295,7 +326,10 @@ function TaskItem({
   const progress = userTask.maxProgress > 0 ? (userTask.progress / userTask.maxProgress) * 100 : 0;
   const meta = getCategoryMeta(task.category);
   const CategoryIcon = meta.icon;
-  const canComplete = !userTask.completed && (userTask.maxProgress <= 1 || userTask.progress >= userTask.maxProgress);
+  const triggerKey = (task as any).triggerKey || "manual";
+  const missionType = (task as any).missionType || "one_time";
+  const canClaim = !userTask.completed && userTask.progress >= userTask.maxProgress;
+  const canRecordProgress = !userTask.completed && userTask.progress < userTask.maxProgress && (triggerKey === "manual" || triggerKey === "safety_tip_read");
 
   return (
     <div
@@ -316,12 +350,16 @@ function TaskItem({
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <p className="font-semibold">{task.title}</p>
             <Badge variant="secondary" className="capitalize">{meta.label}</Badge>
+            <Badge variant="outline" className="capitalize">{missionType.replace("_", " ")}</Badge>
           </div>
           <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
+          {triggerKey !== "manual" && (
+            <p className="text-xs text-muted-foreground mb-2">Progress trigger: <span className="font-mono">{triggerKey}</span></p>
+          )}
           {task.requirements && (
             <p className="text-xs text-muted-foreground mb-2">Requirement: {task.requirements}</p>
           )}
-          {!userTask.completed && userTask.maxProgress > 1 && (
+          {!userTask.completed && (
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Progress</span>
@@ -344,16 +382,23 @@ function TaskItem({
           )}
         </div>
         {userTask.completed ? (
-          <Badge variant="default" className="bg-chart-2">Completed</Badge>
+          <Badge variant="default" className="bg-chart-2">Claimed</Badge>
         ) : (
-          <Button
-            size="sm"
-            disabled={!canComplete || isPending}
-            onClick={onComplete}
-            data-testid={`button-complete-${userTask.id}`}
-          >
-            {canComplete ? "Complete" : "In Progress"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canRecordProgress && (
+              <Button size="sm" variant="outline" disabled={isPending} onClick={onProgress} data-testid={`button-progress-${userTask.id}`}>
+                Record Progress
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={!canClaim || isPending}
+              onClick={onClaim}
+              data-testid={`button-claim-${userTask.id}`}
+            >
+              {canClaim ? "Claim Reward" : "In Progress"}
+            </Button>
+          </div>
         )}
       </div>
     </div>

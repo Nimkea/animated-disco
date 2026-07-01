@@ -73,3 +73,25 @@ New user endpoints:
 - `GET /api/checkin/history?year=YYYY&month=M`
 
 Admin engagement summary includes `dailyCheckinsToday` so admins can see real daily claim activity.
+
+## Patch 33 — Missions v2
+
+Daily missions and weekly quests now use period-scoped user progress. A task can be `one_time`, `daily`, or `weekly`, and each user gets a separate `UserTask.periodKey` such as `day:2026-06-30` or `week:2026-06-29`.
+
+Rewards are not paid just because progress changes. Progress must reach the configured `targetCount`, then the user presses **Claim Reward**. This keeps progress tracking and reward payout separate and audit-friendly.
+
+Admin controls now support:
+
+```txt
+Mission Type
+Progress Trigger
+Target Count
+Sort Order
+XP Reward
+XNRT Reward
+Category
+Active/Inactive toggle
+```
+
+Default triggers include daily check-in, mining started/completed, wallet opened, staking viewed, stake created, referral created, safety tip read, and manual progress.
+

@@ -10,8 +10,11 @@ import { StakingHistoryTab } from "./staking/history-tab";
 import { CreateStakeDialog } from "./staking/create-stake-dialog";
 import { useStakingPage } from "./staking/use-staking-page";
 import { buildTierSummaries, formatXnrt } from "./staking/utils";
+import { useMissionTracker } from "@/hooks/use-mission-tracker";
 
 export default function Staking() {
+  useMissionTracker("staking_rewards_viewed");
+
   const staking = useStakingPage();
 
   if (staking.isLoading) {

@@ -219,8 +219,13 @@ export interface Task {
   xnrtReward: string;
   category: string;
   requirements?: string | null;
+  missionType: "one_time" | "daily" | "weekly" | string;
+  triggerKey: string;
+  targetCount: number;
+  sortOrder: number;
   isActive: boolean;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 export type InsertTask = {
@@ -230,6 +235,10 @@ export type InsertTask = {
   xnrtReward?: string;
   category: string;
   requirements?: string | null;
+  missionType?: "one_time" | "daily" | "weekly" | string;
+  triggerKey?: string;
+  targetCount?: number;
+  sortOrder?: number;
   isActive?: boolean;
 };
 
@@ -239,20 +248,32 @@ export interface UserTask {
   id: string;
   userId: string;
   taskId: string;
+  periodKey: string;
   progress: number;
   maxProgress: number;
   completed: boolean;
   completedAt?: Date | null;
+  claimed: boolean;
+  claimedAt?: Date | null;
+  progressSource?: string | null;
+  lastProgressAt?: Date | null;
+  expiresAt?: Date | null;
   createdAt: Date;
 }
 
 export type InsertUserTask = {
   userId: string;
   taskId: string;
+  periodKey?: string;
   progress?: number;
   maxProgress?: number;
   completed?: boolean;
   completedAt?: Date | null;
+  claimed?: boolean;
+  claimedAt?: Date | null;
+  progressSource?: string | null;
+  lastProgressAt?: Date | null;
+  expiresAt?: Date | null;
 };
 
 // ─── Achievement ─────────────────────────────────────────────────────────────

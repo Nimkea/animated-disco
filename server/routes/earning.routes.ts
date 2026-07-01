@@ -15,6 +15,7 @@ import {
   StakingServiceError,
   withdrawStakeForUser,
 } from "../services/staking.service";
+import { recordMissionEvent } from "../services/reward.service";
 
 export function registerEarningRoutes(app: Express, ctx: RouteContext) {
   const {
@@ -86,6 +87,7 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
     try {
       const userId = req.authUser!.id;
       const stake = await createStakeForUser(userId, req.body ?? {});
+      await recordMissionEvent(userId, "stake_created", 1);
       res.status(201).json(stake);
     } catch (error: any) {
       const statusCode = error instanceof StakingServiceError ? error.statusCode : 500;
@@ -144,6 +146,9 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
     try {
       const userId = req.authUser!.id;
       const result = await processMiningRewardsForUser(userId);
+      if (Number(result?.processedCount || 0) > 0) {
+        await recordMissionEvent(userId, "mining_completed", Number(result.processedCount || 1));
+      }
       res.json({ success: true, ...result });
     } catch (error) {
       console.error("Error processing mining rewards:", error);
@@ -160,6 +165,7 @@ export function registerEarningRoutes(app: Express, ctx: RouteContext) {
         return res.status(result.status).json({ message: result.message });
       }
 
+      await recordMissionEvent(userId, "mining_started", 1);
       res.json(result.session);
     } catch (error) {
       console.error("Error starting mining:", error);
