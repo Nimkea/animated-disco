@@ -278,6 +278,8 @@ export type InsertUserTask = {
 
 // ─── Achievement ─────────────────────────────────────────────────────────────
 
+export type BadgeTier = "bronze" | "silver" | "gold" | "diamond";
+
 export interface Achievement {
   id: string;
   title: string;
@@ -286,7 +288,12 @@ export interface Achievement {
   category: string;
   requirement: number;
   xpReward: number;
+  badgeTier: BadgeTier | string;
+  badgeColor?: string | null;
+  sortOrder: number;
+  isActive: boolean;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 export type InsertAchievement = {
@@ -296,6 +303,10 @@ export type InsertAchievement = {
   category: string;
   requirement: number;
   xpReward: number;
+  badgeTier?: BadgeTier | string;
+  badgeColor?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
 };
 
 // ─── UserAchievement ─────────────────────────────────────────────────────────
@@ -307,12 +318,16 @@ export interface UserAchievement {
   unlockedAt: Date;
   claimed: boolean;
   claimedAt?: Date | null;
+  isFeatured: boolean;
+  featuredSlot?: number | null;
 }
 
 export type InsertUserAchievement = {
   userId: string;
   achievementId: string;
   unlockedAt?: Date;
+  isFeatured?: boolean;
+  featuredSlot?: number | null;
 };
 
 // ─── Activity ────────────────────────────────────────────────────────────────

@@ -95,3 +95,7 @@ Active/Inactive toggle
 
 Default triggers include daily check-in, mining started/completed, wallet opened, staking viewed, stake created, referral created, safety tip read, and manual progress.
 
+
+## Patch 34 — Achievements v2 + Badges
+
+Achievements now support tiered badges (`bronze`, `silver`, `gold`, `diamond`) with admin-managed tier/color/sort/status fields. Users can display unlocked badges in a profile trophy case, and unlock notifications include badge tier metadata. The profile summary API includes `achievements.trophyCase` for the top displayed badges.

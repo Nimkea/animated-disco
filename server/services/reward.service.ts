@@ -13,20 +13,51 @@ import {
 
 const db = prisma as any;
 
+const BADGE_TIERS = ["bronze", "silver", "gold", "diamond"] as const;
+const BADGE_UNLOCKED_NOTIFICATION_TITLE = "🏆 Badge Unlocked";
+
+const BADGE_TIER_RANK: Record<string, number> = { bronze: 1, silver: 2, gold: 3, diamond: 4 };
+const DEFAULT_BADGE_COLORS: Record<string, string> = {
+  bronze: "amber",
+  silver: "slate",
+  gold: "yellow",
+  diamond: "cyan",
+};
+
+function normalizeBadgeTier(value: unknown) {
+  const tier = String(value || "bronze").trim().toLowerCase();
+  return BADGE_TIERS.includes(tier as any) ? tier : "bronze";
+}
+
+function getBadgeTierRank(value: unknown) {
+  return BADGE_TIER_RANK[normalizeBadgeTier(value)] || 1;
+}
+
 const DEFAULT_ACHIEVEMENTS = [
-  { title: "Sign-in Bonus", description: "Claim your first daily check-in reward", icon: "✅", category: "streaks", requirement: 1, xpReward: 5 },
-  { title: "First Earnings", description: "Earn a total of 1,000 XNRT from any source", icon: "💰", category: "earnings", requirement: 1000, xpReward: 25 },
-  { title: "Rising Earner", description: "Earn a total of 5,000 XNRT", icon: "📈", category: "earnings", requirement: 5000, xpReward: 75 },
-  { title: "Pro Earner", description: "Earn a total of 25,000 XNRT", icon: "🏅", category: "earnings", requirement: 25000, xpReward: 150 },
-  { title: "First Referral", description: "Invite your first friend to XNRT", icon: "👥", category: "referrals", requirement: 1, xpReward: 25 },
-  { title: "Team Builder", description: "Refer 5 direct users", icon: "🧱", category: "referrals", requirement: 5, xpReward: 75 },
-  { title: "Community Leader", description: "Refer 25 direct users", icon: "👑", category: "referrals", requirement: 25, xpReward: 200 },
-  { title: "3-Day Streak", description: "Check in 3 days in a row", icon: "🔥", category: "streaks", requirement: 3, xpReward: 30 },
-  { title: "Weekly Grinder", description: "Maintain a 7-day login streak", icon: "📆", category: "streaks", requirement: 7, xpReward: 70 },
-  { title: "Monthly Legend", description: "Maintain a 30-day login streak", icon: "🏆", category: "streaks", requirement: 30, xpReward: 200 },
-  { title: "First Mining Session", description: "Complete your first mining session", icon: "⛏️", category: "mining", requirement: 1, xpReward: 15 },
-  { title: "Daily Miner", description: "Complete 10 mining sessions", icon: "🪙", category: "mining", requirement: 10, xpReward: 60 },
-  { title: "Pro Miner", description: "Complete 50 mining sessions", icon: "⚙️", category: "mining", requirement: 50, xpReward: 200 },
+  { title: "First Steps", description: "Create your account and enter the XNRT platform", icon: "✅", category: "onboarding", requirement: 1, xpReward: 10, badgeTier: "bronze", sortOrder: 10 },
+  { title: "Wallet Ready", description: "Add or receive a wallet address for deposits", icon: "👛", category: "wallet", requirement: 1, xpReward: 20, badgeTier: "bronze", sortOrder: 20 },
+  { title: "Sign-in Bonus", description: "Claim your first daily check-in reward", icon: "🔥", category: "streaks", requirement: 1, xpReward: 15, badgeTier: "bronze", sortOrder: 30 },
+  { title: "3-Day Streak", description: "Check in 3 days in a row", icon: "🔥", category: "streaks", requirement: 3, xpReward: 30, badgeTier: "bronze", sortOrder: 40 },
+  { title: "Weekly Grinder", description: "Maintain a 7-day login streak", icon: "📆", category: "streaks", requirement: 7, xpReward: 70, badgeTier: "silver", sortOrder: 50 },
+  { title: "Monthly Legend", description: "Maintain a 30-day login streak", icon: "🏆", category: "streaks", requirement: 30, xpReward: 200, badgeTier: "diamond", sortOrder: 60 },
+  { title: "First Mining Session", description: "Complete your first mining session", icon: "⛏️", category: "mining", requirement: 1, xpReward: 15, badgeTier: "bronze", sortOrder: 70 },
+  { title: "Daily Miner", description: "Complete 10 mining sessions", icon: "🪙", category: "mining", requirement: 10, xpReward: 60, badgeTier: "silver", sortOrder: 80 },
+  { title: "Pro Miner", description: "Complete 50 mining sessions", icon: "⚙️", category: "mining", requirement: 50, xpReward: 200, badgeTier: "gold", sortOrder: 90 },
+  { title: "Diamond Miner", description: "Complete 200 mining sessions", icon: "💎", category: "mining", requirement: 200, xpReward: 500, badgeTier: "diamond", sortOrder: 100 },
+  { title: "First Earnings", description: "Earn a total of 1,000 XNRT from any source", icon: "💰", category: "earnings", requirement: 1000, xpReward: 25, badgeTier: "bronze", sortOrder: 110 },
+  { title: "Rising Earner", description: "Earn a total of 5,000 XNRT", icon: "📈", category: "earnings", requirement: 5000, xpReward: 75, badgeTier: "silver", sortOrder: 120 },
+  { title: "Pro Earner", description: "Earn a total of 25,000 XNRT", icon: "🏅", category: "earnings", requirement: 25000, xpReward: 150, badgeTier: "gold", sortOrder: 130 },
+  { title: "Diamond Earner", description: "Earn a total of 100,000 XNRT", icon: "💎", category: "earnings", requirement: 100000, xpReward: 450, badgeTier: "diamond", sortOrder: 140 },
+  { title: "First Referral", description: "Invite your first friend to XNRT", icon: "👥", category: "referrals", requirement: 1, xpReward: 25, badgeTier: "bronze", sortOrder: 150 },
+  { title: "Team Builder", description: "Refer 5 direct users", icon: "🧱", category: "referrals", requirement: 5, xpReward: 75, badgeTier: "silver", sortOrder: 160 },
+  { title: "Community Leader", description: "Refer 25 direct users", icon: "👑", category: "referrals", requirement: 25, xpReward: 200, badgeTier: "gold", sortOrder: 170 },
+  { title: "Network Diamond", description: "Refer 100 direct users", icon: "💎", category: "referrals", requirement: 100, xpReward: 600, badgeTier: "diamond", sortOrder: 180 },
+  { title: "Mission Starter", description: "Claim your first mission reward", icon: "🎯", category: "tasks", requirement: 1, xpReward: 25, badgeTier: "bronze", sortOrder: 190 },
+  { title: "Mission Finisher", description: "Claim 10 mission rewards", icon: "✅", category: "tasks", requirement: 10, xpReward: 100, badgeTier: "silver", sortOrder: 200 },
+  { title: "Quest Champion", description: "Claim 50 mission rewards", icon: "🏆", category: "tasks", requirement: 50, xpReward: 300, badgeTier: "gold", sortOrder: 210 },
+  { title: "Stake Starter", description: "Create your first stake", icon: "💠", category: "staking", requirement: 1, xpReward: 40, badgeTier: "bronze", sortOrder: 220 },
+  { title: "Stake Builder", description: "Create 5 staking positions", icon: "🔷", category: "staking", requirement: 5, xpReward: 150, badgeTier: "silver", sortOrder: 230 },
+  { title: "Trust Loan Eligible", description: "Build enough engagement for Trust Loan readiness", icon: "🤝", category: "trust_loan", requirement: 1, xpReward: 100, badgeTier: "gold", sortOrder: 240 },
 ] as const;
 
 const DEFAULT_TASKS = [
@@ -323,15 +354,25 @@ export async function ensureDefaultTasks() {
 export async function ensureDefaultAchievements() {
   for (const def of DEFAULT_ACHIEVEMENTS) {
     try {
+      const badgeTier = normalizeBadgeTier(def.badgeTier);
       await prisma.achievement.upsert({
         where: { title: def.title },
-        create: def,
+        create: {
+          ...def,
+          badgeTier,
+          badgeColor: DEFAULT_BADGE_COLORS[badgeTier],
+          isActive: true,
+        },
         update: {
           description: def.description,
           icon: def.icon,
           category: def.category,
           requirement: def.requirement,
           xpReward: def.xpReward,
+          badgeTier,
+          badgeColor: DEFAULT_BADGE_COLORS[badgeTier],
+          sortOrder: def.sortOrder,
+          isActive: true,
         },
       });
     } catch (err) {
@@ -350,6 +391,29 @@ export function serializeTask(task: any) {
     sortOrder: Number(task.sortOrder || 0),
     xnrtReward: task.xnrtReward?.toString?.() ?? String(task.xnrtReward ?? "0"),
   };
+}
+
+export function serializeAchievement(achievement: any) {
+  if (!achievement) return null;
+  const badgeTier = normalizeBadgeTier(achievement.badgeTier);
+  return {
+    ...achievement,
+    badgeTier,
+    badgeColor: achievement.badgeColor || DEFAULT_BADGE_COLORS[badgeTier],
+    badgeTierRank: getBadgeTierRank(badgeTier),
+    sortOrder: Number(achievement.sortOrder || 0),
+    isActive: achievement.isActive !== false,
+  };
+}
+
+function sortAchievementsForTrophyCase(a: any, b: any) {
+  const aFeatured = Number(Boolean(a.isFeatured));
+  const bFeatured = Number(Boolean(b.isFeatured));
+  const aSlot = Number.isFinite(Number(a.featuredSlot)) ? Number(a.featuredSlot) : 999;
+  const bSlot = Number.isFinite(Number(b.featuredSlot)) ? Number(b.featuredSlot) : 999;
+  const aTier = getBadgeTierRank(a.badgeTier);
+  const bTier = getBadgeTierRank(b.badgeTier);
+  return bFeatured - aFeatured || aSlot - bSlot || bTier - aTier || Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
 }
 
 export function serializeUserTaskWithTask(userTask: any) {
@@ -464,25 +528,49 @@ export async function awardUserXp(userId: string, xpReward: number, source = "sy
 }
 
 export function parseAchievementPayload(body: any) {
-  const { title, description, icon = "🏆", category = "earnings", requirement, xpReward } = body || {};
+  const {
+    title,
+    description,
+    icon = "🏆",
+    category = "earnings",
+    requirement,
+    xpReward,
+    badgeTier = "bronze",
+    badgeColor,
+    sortOrder = 0,
+    isActive = true,
+  } = body || {};
 
   if (!title || !description) throw new Error("Title and description are required");
 
   const requirementNum = Number(requirement);
   const xpRewardNum = Number(xpReward);
+  const sortOrderNum = Number(sortOrder);
 
   if (!Number.isFinite(requirementNum) || requirementNum < 0) throw new Error("Invalid requirement");
   if (!Number.isFinite(xpRewardNum) || xpRewardNum < 0) throw new Error("Invalid XP reward");
+  if (!Number.isFinite(sortOrderNum)) throw new Error("Invalid sort order");
 
-  const allowedCategories = new Set(["earnings", "referrals", "streaks", "mining"]);
+  const normalizedCategory =
+    String(category || "earnings")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "_") || "earnings";
+  const normalizedTier = normalizeBadgeTier(badgeTier);
+  const normalizedColor = String(badgeColor || DEFAULT_BADGE_COLORS[normalizedTier] || "primary").trim().slice(0, 32);
+  const normalizedActive = typeof isActive === "string" ? isActive !== "false" : Boolean(isActive);
 
   return {
-    title: String(title),
-    description: String(description),
-    icon: String(icon || "🏆"),
-    category: allowedCategories.has(category) ? category : "earnings",
+    title: String(title).trim(),
+    description: String(description).trim(),
+    icon: String(icon || "🏆").slice(0, 8),
+    category: normalizedCategory,
     requirement: Math.floor(requirementNum),
     xpReward: Math.floor(xpRewardNum),
+    badgeTier: normalizedTier,
+    badgeColor: normalizedColor,
+    sortOrder: Math.floor(sortOrderNum),
+    isActive: normalizedActive,
   };
 }
 
@@ -711,14 +799,77 @@ export async function getUserAchievementsWithStatus(userId: string) {
     const claimedAt = ua?.claimedAt ?? null;
 
     return {
-      ...achievement,
+      ...serializeAchievement(achievement),
       unlocked,
       unlockedAt: ua?.unlockedAt ?? ua?.createdAt ?? null,
       claimed,
       claimedAt,
       claimable: unlocked && !claimed,
+      isFeatured: Boolean(ua?.isFeatured),
+      featuredSlot: ua?.featuredSlot ?? null,
     };
   });
+}
+
+export async function getUserTrophyCase(userId: string, limit = 4) {
+  const achievements = await getUserAchievementsWithStatus(userId);
+  const unlocked = achievements.filter((achievement: any) => achievement.unlocked);
+  const featured = unlocked.filter((achievement: any) => achievement.isFeatured).sort(sortAchievementsForTrophyCase);
+  const fallback = unlocked.filter((achievement: any) => !achievement.isFeatured).sort(sortAchievementsForTrophyCase);
+  return [...featured, ...fallback].slice(0, Math.max(1, Math.min(Number(limit || 4), 12)));
+}
+
+export async function setUserAchievementFeatured(userId: string, achievementId: string, input: { featured?: boolean; slot?: number | null }) {
+  const achievement = await prisma.achievement.findUnique({ where: { id: achievementId } });
+  if (!achievement || achievement.isActive === false) return { ok: false as const, status: 404, message: "Achievement not found" };
+
+  const userAchievement = await prisma.userAchievement.findFirst({ where: { userId, achievementId } });
+  if (!userAchievement) return { ok: false as const, status: 400, message: "Achievement not unlocked yet" };
+
+  const featured = input.featured === undefined ? !userAchievement.isFeatured : Boolean(input.featured);
+  const rawSlot = input.slot === null || input.slot === undefined ? null : Number(input.slot);
+  const featuredSlot = featured && Number.isFinite(rawSlot) ? Math.max(1, Math.min(Math.floor(rawSlot as number), 4)) : null;
+
+  if (featured) {
+    const featuredCount = await prisma.userAchievement.count({
+      where: { userId, isFeatured: true, NOT: { id: userAchievement.id } },
+    });
+    if (featuredCount >= 4 && !userAchievement.isFeatured) {
+      return { ok: false as const, status: 400, message: "Trophy case can show up to 4 featured badges" };
+    }
+    if (featuredSlot !== null) {
+      await prisma.userAchievement.updateMany({
+        where: { userId, featuredSlot, NOT: { id: userAchievement.id } },
+        data: { featuredSlot: null },
+      });
+    }
+  }
+
+  const updated = await prisma.userAchievement.update({
+    where: { id: userAchievement.id },
+    data: { isFeatured: featured, featuredSlot },
+    include: { achievement: true },
+  });
+
+  await storage.createActivity({
+    userId,
+    type: featured ? "badge_featured" : "badge_unfeatured",
+    description: `${featured ? "Added" : "Removed"} badge ${achievement.title} ${featured ? "to" : "from"} trophy case`,
+    metadata: JSON.stringify({ achievementId, featured, featuredSlot }),
+  });
+
+  return {
+    ok: true as const,
+    achievement: {
+      ...serializeAchievement((updated as any).achievement),
+      unlocked: true,
+      unlockedAt: updated.unlockedAt,
+      claimed: updated.claimed,
+      claimedAt: updated.claimedAt,
+      isFeatured: updated.isFeatured,
+      featuredSlot: updated.featuredSlot,
+    },
+  };
 }
 
 export async function claimUserAchievement(userId: string, achievementId: string) {

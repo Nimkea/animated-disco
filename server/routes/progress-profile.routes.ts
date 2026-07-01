@@ -6,10 +6,12 @@ import {
   completeUserTask,
   getCheckinHistory,
   getUserAchievementsWithStatus,
+  getUserTrophyCase,
   getDailyCheckinStatus,
   performDailyCheckIn,
   recordManualTaskProgress,
   recordMissionEvent,
+  setUserAchievementFeatured,
 } from "../services/reward.service";
 import { getEngagementConfig, getLevelProgress } from "../services/engagement.service";
 
@@ -190,6 +192,30 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
     }
   );
 
+  app.post(
+    "/api/achievements/:id/feature",
+    requireAuth,
+    validateCSRF,
+    async (req, res) => {
+      try {
+        const userId = req.authUser!.id;
+        const result = await setUserAchievementFeatured(userId, req.params.id, {
+          featured: req.body?.featured,
+          slot: req.body?.slot,
+        });
+
+        if (!result.ok) {
+          return res.status(result.status).json({ message: result.message });
+        }
+
+        res.json(result.achievement);
+      } catch (error) {
+        console.error("Error updating trophy case badge:", error);
+        res.status(500).json({ message: "Failed to update trophy case" });
+      }
+    }
+  );
+
   // Admin Task Management
   app.get("/api/admin/tasks", requireAuth, requireAdmin, async (_req, res) => {
     try {
@@ -337,7 +363,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
       try {
         const [achievements, unlockGroups] = await Promise.all([
           prisma.achievement.findMany({
-            orderBy: { createdAt: "asc" },
+            orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { requirement: "asc" }, { createdAt: "asc" }],
           }),
           prisma.userAchievement.groupBy({
             by: ["achievementId"],
@@ -363,6 +389,10 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
           category: a.category,
           requirement: a.requirement,
           xpReward: a.xpReward,
+          badgeTier: (a as any).badgeTier || "bronze",
+          badgeColor: (a as any).badgeColor || null,
+          sortOrder: Number((a as any).sortOrder || 0),
+          isActive: (a as any).isActive !== false,
           unlockCount: unlockMap.get(a.id) ?? 0,
         }));
 
@@ -498,6 +528,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
         referralRankRows,
         recentActivities,
         checkinStatus,
+        trophyCase,
       ] = await Promise.all([
         storage.getBalance(userId),
         prisma.stake.aggregate({
@@ -562,6 +593,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
         ),
         storage.getActivities(userId, 5),
         getDailyCheckinStatus(userId),
+        getUserTrophyCase(userId, 4),
       ]);
 
       const referralCounts = referralGroups.reduce(
@@ -639,6 +671,7 @@ export function registerProgressProfileRoutes(app: Express, ctx: RouteContext) {
           unlocked: unlockedAchievementCount,
           total: totalAchievementCount,
           progressPercent: totalAchievementCount > 0 ? Math.round((unlockedAchievementCount / totalAchievementCount) * 100) : 0,
+          trophyCase,
         },
         leaderboard: {
           xpRank: leaderboardRows[0]?.rank ? toLeaderboardNumber(leaderboardRows[0].rank) : null,

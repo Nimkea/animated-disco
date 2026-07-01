@@ -51,6 +51,10 @@ interface Achievement {
   category: string;
   requirement: number;
   xpReward: number;
+  badgeTier: "bronze" | "silver" | "gold" | "diamond" | string;
+  badgeColor?: string | null;
+  sortOrder: number;
+  isActive: boolean;
   unlockCount: number;
 }
 
@@ -70,6 +74,10 @@ export default function AchievementsTab() {
     category: "earnings",
     requirement: "",
     xpReward: "",
+    badgeTier: "bronze",
+    badgeColor: "amber",
+    sortOrder: "0",
+    isActive: "true",
   });
 
   const { data: achievements, isLoading } = useQuery<Achievement[]>({
@@ -90,6 +98,10 @@ export default function AchievementsTab() {
         category: "earnings",
         requirement: "",
         xpReward: "",
+        badgeTier: "bronze",
+        badgeColor: "amber",
+        sortOrder: "0",
+        isActive: "true",
       });
       toast({ title: "Success", description: "Achievement created successfully" });
     },
@@ -145,6 +157,10 @@ export default function AchievementsTab() {
       category: achievement.category,
       requirement: achievement.requirement.toString(),
       xpReward: achievement.xpReward.toString(),
+      badgeTier: achievement.badgeTier || "bronze",
+      badgeColor: achievement.badgeColor || "",
+      sortOrder: String(achievement.sortOrder || 0),
+      isActive: String(achievement.isActive !== false),
     });
     setEditDialogOpen(true);
   };
@@ -160,7 +176,23 @@ export default function AchievementsTab() {
       case "referrals": return "bg-blue-500/20 text-blue-500";
       case "streaks": return "bg-purple-500/20 text-purple-500";
       case "mining": return "bg-amber-500/20 text-amber-500";
+      case "tasks": return "bg-cyan-500/20 text-cyan-500";
+      case "staking": return "bg-indigo-500/20 text-indigo-500";
+      case "wallet": return "bg-teal-500/20 text-teal-500";
+      case "onboarding": return "bg-primary/20 text-primary";
+      case "trust_loan": return "bg-yellow-500/20 text-yellow-500";
       default: return "bg-gray-500/20 text-gray-500";
+    }
+  };
+
+
+  const getTierBadgeColor = (tier: string) => {
+    switch (tier) {
+      case "diamond": return "bg-cyan-500/20 text-cyan-500 border-cyan-500/30";
+      case "gold": return "bg-yellow-500/20 text-yellow-500 border-yellow-500/30";
+      case "silver": return "bg-slate-500/20 text-slate-500 border-slate-500/30";
+      case "bronze":
+      default: return "bg-orange-500/20 text-orange-500 border-orange-500/30";
     }
   };
 
@@ -189,6 +221,11 @@ export default function AchievementsTab() {
               <SelectItem value="referrals">Referrals</SelectItem>
               <SelectItem value="streaks">Streaks</SelectItem>
               <SelectItem value="mining">Mining</SelectItem>
+              <SelectItem value="tasks">Missions</SelectItem>
+              <SelectItem value="staking">Staking</SelectItem>
+              <SelectItem value="wallet">Wallet</SelectItem>
+              <SelectItem value="onboarding">Onboarding</SelectItem>
+              <SelectItem value="trust_loan">Trust Loan</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -218,6 +255,8 @@ export default function AchievementsTab() {
                 <TableRow>
                   <TableHead>Achievement</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Requirement</TableHead>
                   <TableHead>XP Reward</TableHead>
                   <TableHead>Unlocked By</TableHead>
@@ -240,6 +279,14 @@ export default function AchievementsTab() {
                       <Badge className={getCategoryBadgeColor(achievement.category)}>
                         {achievement.category}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={getTierBadgeColor(achievement.badgeTier)}>
+                        {achievement.badgeTier}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={achievement.isActive ? "default" : "secondary"}>{achievement.isActive ? "Active" : "Hidden"}</Badge>
                     </TableCell>
                     <TableCell>{achievement.requirement.toLocaleString()}</TableCell>
                     <TableCell>{achievement.xpReward} XP</TableCell>
@@ -335,8 +382,64 @@ export default function AchievementsTab() {
                     <SelectItem value="referrals">Referrals</SelectItem>
                     <SelectItem value="streaks">Streaks</SelectItem>
                     <SelectItem value="mining">Mining</SelectItem>
+                    <SelectItem value="tasks">Missions</SelectItem>
+                    <SelectItem value="staking">Staking</SelectItem>
+                    <SelectItem value="wallet">Wallet</SelectItem>
+                    <SelectItem value="onboarding">Onboarding</SelectItem>
+                    <SelectItem value="trust_loan">Trust Loan</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="badgeTier">Badge Tier</Label>
+                <Select value={formData.badgeTier} onValueChange={(value) => setFormData({ ...formData, badgeTier: value })}>
+                  <SelectTrigger data-testid="select-badge-tier">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bronze">Bronze</SelectItem>
+                    <SelectItem value="silver">Silver</SelectItem>
+                    <SelectItem value="gold">Gold</SelectItem>
+                    <SelectItem value="diamond">Diamond</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="isActive">Status</Label>
+                <Select value={formData.isActive} onValueChange={(value) => setFormData({ ...formData, isActive: value })}>
+                  <SelectTrigger data-testid="select-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Active</SelectItem>
+                    <SelectItem value="false">Hidden</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="badgeColor">Badge Color</Label>
+                <Input
+                  id="badgeColor"
+                  value={formData.badgeColor}
+                  onChange={(e) => setFormData({ ...formData, badgeColor: e.target.value })}
+                  placeholder="amber"
+                  data-testid="input-badge-color"
+                />
+              </div>
+              <div>
+                <Label htmlFor="sortOrder">Sort Order</Label>
+                <Input
+                  id="sortOrder"
+                  type="number"
+                  value={formData.sortOrder}
+                  onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
+                  placeholder="0"
+                  data-testid="input-sort-order"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -355,6 +458,11 @@ export default function AchievementsTab() {
                   {formData.category === "referrals" && "Number of referrals"}
                   {formData.category === "streaks" && "Login streak days"}
                   {formData.category === "mining" && "Mining sessions completed"}
+                  {formData.category === "tasks" && "Mission rewards claimed"}
+                  {formData.category === "staking" && "Stakes created"}
+                  {formData.category === "wallet" && "Wallet ready flag"}
+                  {formData.category === "onboarding" && "Profile ready flag"}
+                  {formData.category === "trust_loan" && "Trust Loan readiness flag"}
                 </p>
               </div>
               <div>

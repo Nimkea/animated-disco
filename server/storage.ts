@@ -1200,74 +1200,123 @@ export class DatabaseStorage implements IStorage {
     const balance = await this.getBalance(userId);
     if (!balance) return;
 
-    const allAchievements = await this.getAllAchievements();
+    const allAchievements = await prisma.achievement.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { requirement: "asc" }, { createdAt: "asc" }],
+    });
     const userAchievementsList = await this.getUserAchievements(userId);
-    const unlockedIds = new Set(
-      userAchievementsList.map((ua) => ua.achievementId)
-    );
+    const unlockedIds = new Set(userAchievementsList.map((ua) => ua.achievementId));
+
+    const [
+      userReferrals,
+      miningSessions,
+      completedTasks,
+      createdStakes,
+      linkedWallets,
+      approvedDeposits,
+    ] = await Promise.all([
+      this.getReferralsByReferrer(userId),
+      this.getMiningHistory(userId),
+      prisma.userTask.count({ where: { userId, completed: true } }),
+      prisma.stake.count({ where: { userId } }),
+      prisma.linkedWallet.count({ where: { userId, active: true } }),
+      prisma.transaction.count({ where: { userId, type: "deposit", status: "approved" } }),
+    ]);
 
     const totalEarned = parseFloat(balance.totalEarned);
-    const userReferrals = await this.getReferralsByReferrer(userId);
     const directReferrals = userReferrals.filter((r) => r.level === 1);
-    const miningSessions = await this.getMiningHistory(userId);
-    const completedMining = miningSessions.filter(
-      (s) => s.status === "completed"
-    );
+    const completedMining = miningSessions.filter((s) => s.status === "completed");
+    const profileCompleted = Boolean(user.username && user.email);
+    const walletReady = Boolean(user.depositAddress) || linkedWallets > 0 || approvedDeposits > 0;
+    const trustLoanReady = directReferrals.length >= 3 && createdStakes >= 1 && (user.streak || 0) >= 7;
 
     let totalXpReward = 0;
 
-    for (const achievement of allAchievements) {
+    for (const achievement of allAchievements as any[]) {
       if (unlockedIds.has(achievement.id)) continue;
 
-      let shouldUnlock = false;
-
+      let progress = 0;
       switch (achievement.category) {
+        case "onboarding":
+          progress = profileCompleted ? 1 : 0;
+          break;
+        case "wallet":
+          progress = walletReady ? 1 : 0;
+          break;
         case "earnings":
-          shouldUnlock = totalEarned >= achievement.requirement;
+          progress = totalEarned;
           break;
         case "referrals":
-          shouldUnlock = directReferrals.length >= achievement.requirement;
+          progress = directReferrals.length;
           break;
         case "streaks":
-          shouldUnlock = (user.streak || 0) >= achievement.requirement;
+          progress = user.streak || 0;
           break;
         case "mining":
-          shouldUnlock = completedMining.length >= achievement.requirement;
+          progress = completedMining.length;
           break;
+        case "tasks":
+          progress = completedTasks;
+          break;
+        case "staking":
+          progress = createdStakes;
+          break;
+        case "trust_loan":
+          progress = trustLoanReady ? 1 : 0;
+          break;
+        default:
+          progress = 0;
       }
 
-      if (shouldUnlock) {
-        await this.createUserAchievement({
-          userId,
-          achievementId: achievement.id,
-        });
+      if (progress < achievement.requirement) continue;
 
-        totalXpReward += achievement.xpReward;
-
-        await this.createActivity({
-          userId,
-          type: "achievement_unlocked",
-          description: `Unlocked achievement: ${achievement.title} (+${achievement.xpReward} XP)`,
-        });
-
-        const { notifyUser } = await import("./notifications");
-        void notifyUser(userId, {
-          type: "achievement_unlocked",
-          title: "🏆 Achievement Unlocked!",
-          message: `${achievement.title} - You earned ${achievement.xpReward} XP!`,
-          url: "/achievements",
-          metadata: {
+      try {
+        const existingFeatured = await prisma.userAchievement.count({ where: { userId, isFeatured: true } });
+        const shouldAutoFeature = existingFeatured < 4;
+        await prisma.userAchievement.create({
+          data: {
+            userId,
             achievementId: achievement.id,
-            achievementTitle: achievement.title,
-            xpReward: achievement.xpReward,
+            isFeatured: shouldAutoFeature,
+            featuredSlot: shouldAutoFeature ? existingFeatured + 1 : null,
           },
-        }).catch((err) => {
-          console.error(
-            "Error sending achievement notification (non-blocking):",
-            err
-          );
         });
+      } catch (error: any) {
+        if (error?.code !== "P2002") throw error;
+        continue;
       }
+
+      totalXpReward += achievement.xpReward;
+
+      const tierLabel = String(achievement.badgeTier || "bronze").replace(/_/g, " ");
+      await this.createActivity({
+        userId,
+        type: "achievement_unlocked",
+        description: `Unlocked ${tierLabel} badge: ${achievement.title} (+${achievement.xpReward} XP)`,
+        metadata: JSON.stringify({
+          achievementId: achievement.id,
+          badgeTier: achievement.badgeTier || "bronze",
+          category: achievement.category,
+          xpReward: achievement.xpReward,
+        }),
+      });
+
+      const { notifyUser } = await import("./notifications");
+      void notifyUser(userId, {
+        type: "achievement_unlocked",
+        title: "🏆 Badge Unlocked!",
+        message: `${achievement.icon || "🏆"} ${achievement.title} (${tierLabel}) — you earned ${achievement.xpReward} XP.`,
+        url: "/achievements",
+        metadata: {
+          achievementId: achievement.id,
+          achievementTitle: achievement.title,
+          badgeTier: achievement.badgeTier || "bronze",
+          category: achievement.category,
+          xpReward: achievement.xpReward,
+        },
+      }).catch((err) => {
+        console.error("Error sending achievement notification (non-blocking):", err);
+      });
     }
 
     if (totalXpReward > 0) {

@@ -254,9 +254,18 @@ model Achievement {
   category    String
   requirement Int
   xpReward    Int
+  badgeTier   String   @default("bronze")
+  badgeColor  String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
   userAchievements UserAchievement[]
+
+  @@index([badgeTier])
+  @@index([category, badgeTier])
+  @@index([isActive, sortOrder])
 }
 
 model UserAchievement {
@@ -266,12 +275,16 @@ model UserAchievement {
   unlockedAt    DateTime  @default(now())
   claimed       Boolean   @default(false)
   claimedAt     DateTime?
+  isFeatured    Boolean   @default(false)
+  featuredSlot  Int?
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, achievementId])
   @@index([userId])
   @@index([achievementId])
+  @@index([userId, isFeatured])
 }
 
 model Activity {

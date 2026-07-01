@@ -105,6 +105,19 @@ interface ProfileSummary {
     unlocked: number;
     total: number;
     progressPercent: number;
+    trophyCase?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      icon: string;
+      category: string;
+      xpReward: number;
+      badgeTier: string;
+      badgeColor?: string | null;
+      isFeatured?: boolean;
+      featuredSlot?: number | null;
+      unlockedAt?: string | Date | null;
+    }>;
   };
   leaderboard: {
     xpRank: number | null;
@@ -148,6 +161,25 @@ function formatDate(value: string | Date | null | undefined) {
   } catch {
     return "N/A";
   }
+}
+
+function getBadgeTierClass(tier?: string | null) {
+  switch (String(tier || "bronze").toLowerCase()) {
+    case "diamond":
+      return "border-cyan-400/40 bg-cyan-400/10 text-cyan-700 dark:text-cyan-200";
+    case "gold":
+      return "border-yellow-400/40 bg-yellow-400/10 text-yellow-700 dark:text-yellow-200";
+    case "silver":
+      return "border-slate-400/40 bg-slate-400/10 text-slate-700 dark:text-slate-200";
+    case "bronze":
+    default:
+      return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-200";
+  }
+}
+
+function getBadgeTierLabel(tier?: string | null) {
+  const value = String(tier || "bronze").toLowerCase();
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function getInitials(user?: Partial<UserType> | ProfileSummary["profile"] | null) {
@@ -335,6 +367,7 @@ export default function Profile() {
   const xpProgress = summary?.xp.progressPercent ?? Math.min(100, Math.round(((xpTotal % 1000) / 1000) * 100));
   const levelLabel = summary?.xp.label || "Member";
   const referralCode = profile.referralCode || user?.referralCode || "";
+  const trophyCase = summary?.achievements.trophyCase || [];
 
   return (
     <div className="space-y-6">
@@ -479,6 +512,38 @@ export default function Profile() {
           </Card>
         </div>
       </div>
+
+      <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-primary" /> Trophy Case</CardTitle>
+              <CardDescription>Top unlocked badges displayed on your profile</CardDescription>
+            </div>
+            <Badge variant="secondary">{trophyCase.length}/4 displayed</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {trophyCase.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {trophyCase.map((badge) => (
+                <div key={badge.id} className={`rounded-2xl border p-4 text-center ${getBadgeTierClass(badge.badgeTier)}`}>
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-background/70 text-3xl shadow-sm">
+                    {badge.icon || "🏆"}
+                  </div>
+                  <p className="font-semibold line-clamp-1">{badge.title}</p>
+                  <p className="mt-1 text-xs capitalize">{getBadgeTierLabel(badge.badgeTier)} · {badge.category.replace(/_/g, " ")}</p>
+                  <p className="mt-2 text-xs opacity-80">+{badge.xpReward} XP badge</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground">
+              Unlock badges from Achievements to fill your trophy case.
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard title="XNRT Balance" value={`${formatNumber(summary?.balance.xnrtBalance)} XNRT`} description="Available main balance" icon={Wallet} />

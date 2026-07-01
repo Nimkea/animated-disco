@@ -59,3 +59,4 @@ Future optimization can split large admin/dashboard chunks further.
 ## Related docs
 
 - [Engagement System](./ENGAGEMENT_SYSTEM.md)
+- [Patch 34 — Achievements v2 + Badges](./PATCH34_ACHIEVEMENTS_V2_BADGES.md)
