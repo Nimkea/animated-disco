@@ -1,9 +1,10 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../lib/db';
-import { verifyToken } from './jwt';
-import { validateCSRFToken } from './csrf';
-import rateLimit from 'express-rate-limit';
+import type { NextFunction, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 
+import { prisma } from "../lib/db";
+import { handleApiError, sendDbUnavailable, sendForbidden, sendUnauthorized } from "../lib/api-response";
+import { validateCSRFToken } from "./csrf";
+import { verifyToken } from "./jwt";
 
 declare global {
   namespace Express {
@@ -19,26 +20,39 @@ declare global {
 
 export type AuthRequest = Request;
 
+function clearAuthCookies(res: Response) {
+  res.clearCookie("sid", { path: "/" });
+  res.clearCookie("csrfToken", { path: "/" });
+}
+
 export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const token = req.cookies.sid;
-    
+
     if (!token) {
-      return res.status(401).json({ message: 'Unauthorized: No token provided' });
+      return sendUnauthorized(res, "Unauthorized: Please log in first");
     }
 
     const payload = verifyToken(token);
     if (!payload) {
-      return res.status(401).json({ message: 'Unauthorized: Invalid token' });
+      clearAuthCookies(res);
+      return sendUnauthorized(res, "Unauthorized: Invalid or expired session");
     }
 
-    // Check if session is revoked
-    const session = await prisma.session.findUnique({
-      where: { jwtId: payload.jwtId },
-    });
+    // Check if session is revoked. DB outages are reported as 503 instead of a generic 500.
+    let session;
+    try {
+      session = await prisma.session.findUnique({
+        where: { jwtId: payload.jwtId },
+        select: { id: true, revokedAt: true },
+      });
+    } catch (error) {
+      return sendDbUnavailable(res, error);
+    }
 
     if (!session || session.revokedAt) {
-      return res.status(401).json({ message: 'Unauthorized: Session revoked' });
+      clearAuthCookies(res);
+      return sendUnauthorized(res, "Unauthorized: Session revoked or expired");
     }
 
     req.authUser = {
@@ -49,39 +63,42 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
 
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    return handleApiError(error, res, "auth.requireAuth");
   }
 }
 
 export async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     if (!req.authUser) {
-      return res.status(401).json({ message: 'Unauthorized: Please log in first' });
+      return sendUnauthorized(res, "Unauthorized: Please log in first");
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.authUser.id },
-      select: { isAdmin: true },
-    });
+    let user;
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: req.authUser.id },
+        select: { isAdmin: true },
+      });
+    } catch (error) {
+      return sendDbUnavailable(res, error);
+    }
 
     if (!user?.isAdmin) {
-      return res.status(403).json({ message: 'Forbidden: Admin access required' });
+      return sendForbidden(res, "Forbidden: Admin access required");
     }
 
     next();
   } catch (error) {
-    console.error('Admin middleware error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    return handleApiError(error, res, "auth.requireAdmin");
   }
 }
 
 export function validateCSRF(req: Request, res: Response, next: NextFunction) {
-  const headerToken = req.headers['x-csrf-token'] as string;
+  const headerToken = req.headers["x-csrf-token"] as string;
   const cookieToken = req.cookies.csrfToken;
 
   if (!validateCSRFToken(headerToken, cookieToken)) {
-    return res.status(403).json({ message: 'Invalid CSRF token' });
+    return sendForbidden(res, "Invalid CSRF token");
   }
 
   next();
@@ -90,10 +107,8 @@ export function validateCSRF(req: Request, res: Response, next: NextFunction) {
 export const loginRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 5, // 5 requests per minute
-  message: 'Too many login attempts, please try again later',
+  message: { message: "Too many login attempts, please try again later", code: "RATE_LIMITED" },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    return process.env.NODE_ENV === 'development';
-  },
+  skip: () => process.env.NODE_ENV === "development",
 });

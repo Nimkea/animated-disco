@@ -8,7 +8,8 @@ import { startRetryWorker, stopRetryWorker } from "./retryWorker";
 import { startDepositScanner } from "./services/depositScanner";
 import { logTokenServiceStatus } from "./services/tokenService";
 import { disconnectPrisma } from "./lib/db";
-import { getApplicationHealth, getDatabaseHealth, getStartupHealthSnapshot } from "./services/health.service";
+import { handleApiError } from "./lib/api-response";
+import { getApplicationHealth, getDatabaseHealth, getSchemaReadiness, getStartupHealthSnapshot } from "./services/health.service";
 
 const app = express();
 
@@ -141,10 +142,11 @@ app.get("/healthz", (_req, res) => res.status(200).json({ ok: true, env: app.get
 
 app.get("/readyz", (_req, res) => {
   const startup = getStartupHealthSnapshot();
-  const ready = startup.databaseOk !== false;
+  const ready = startup.databaseOk !== false && startup.schemaOk !== false;
   res.status(ready ? 200 : 503).json({
     ready,
     databaseOk: startup.databaseOk,
+    schemaOk: startup.schemaOk,
     startupSeed: startup,
   });
 });
@@ -158,16 +160,17 @@ app.get("/api/health/db", async (_req, res) => {
   res.status(health.ok ? 200 : 503).json(health);
 });
 
+app.get("/api/health/schema", async (_req, res) => {
+  const health = await getSchemaReadiness();
+  res.status(health.ok ? 200 : 503).json(health);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 (async () => {
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err?.status || err?.statusCode || 500;
-    const message = err?.message || "Internal Server Error";
-    res.status(status).json({ message });
-    // Surface to logs
-    console.error(err);
+    return handleApiError(err, res, "express.globalError");
   });
 
   if (isDevelopment) {

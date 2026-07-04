@@ -65,3 +65,8 @@ Future optimization can split large admin/dashboard chunks further.
 ## Patch 35 — Learn & Earn Quiz System
 
 Adds lessons, quizzes, one-time capped quiz rewards, responsible usage education, `/learn`, and Admin Quiz Manager. See `docs/PATCH35_LEARN_EARN_QUIZ_SYSTEM.md`.
+
+
+## Patch 36 — API/Auth/DB Safety Cleanup
+
+Adds central API error helpers, Prisma DB error classification, hardened auth/admin middleware, schema readiness checks, granular startup seed reporting, and `/api/health/schema`. See `docs/PATCH36_API_AUTH_DB_SAFETY_CLEANUP.md`.
